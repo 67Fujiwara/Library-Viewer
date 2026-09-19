@@ -13,7 +13,7 @@ var Viewer3D = (function () {
   var edgeMat = null, ghostOpacity = 0.07;
   var raycaster, pointer = { down: false, button: 0, x: 0, y: 0, sx: 0, sy: 0, moved: 0, shift: false };
   var callbacks = { onSelect: null, onHover: null };
-  var pickHandler = null, overlayGroup = null, renderHooks = [];
+  var pickHandler = null, overlayGroup = null, renderHooks = [], camAnim = null;
 
   function init(opts) {
     canvas = $('#gl'); viewport = $('#viewport');
@@ -63,8 +63,28 @@ var Viewer3D = (function () {
   function loop() {
     if (!running) { running = true; }
     requestAnimationFrame(loop);
+    if (camAnim) camAnim();
     if (!needsRender) return;
     renderNow();
+  }
+
+  /* 視点を滑らかに移す。位置関係を見失わないよう、瞬間移動はしない */
+  function animateTo(to, ms) {
+    var from = { theta: ctrl.theta, phi: ctrl.phi, dist: ctrl.dist, target: ctrl.target.clone() };
+    var dTheta = to.theta - from.theta;
+    while (dTheta > Math.PI) dTheta -= Math.PI * 2;      // 近い方に回る
+    while (dTheta < -Math.PI) dTheta += Math.PI * 2;
+    var t0 = performance.now();
+    camAnim = function () {
+      var k = Math.min(1, (performance.now() - t0) / ms);
+      var e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;   // easeInOutQuad
+      ctrl.theta = from.theta + dTheta * e;
+      ctrl.phi = from.phi + (to.phi - from.phi) * e;
+      ctrl.dist = from.dist * Math.pow(to.dist / from.dist, e);        // 距離は対数で補間
+      ctrl.target.lerpVectors(from.target, to.target, e);
+      updateCamera();
+      if (k >= 1) camAnim = null;
+    };
   }
 
   /* ---- テーマ: CSS 変数を読んで 3D 側の色をすべて更新 ---- */
@@ -267,9 +287,94 @@ var Viewer3D = (function () {
   function fitAll() { moveToBox(boxOf(null)); }
   function fitNode(node) { moveToBox(boxOf(node)); }
 
+  /* ---- 「この部品に寄る」: 隠れていたら見える角度へ回り込んでから寄る ---- */
+  var occRay = new THREE.Raycaster();
+
+  /* 部品の表面から、遮蔽を調べる標本点を拾う (三角形の重心と面法線) */
+  function samplePoints(node, maxN) {
+    var ls = leavesOf(node).filter(function (n) { return n.mesh && n.visible !== false; });
+    var total = 0;
+    ls.forEach(function (n) { total += n.tris || 0; });
+    var pts = [];
+    if (!total) return pts;
+    var va = new THREE.Vector3(), vb = new THREE.Vector3(), vc = new THREE.Vector3(), u = new THREE.Vector3(), v = new THREE.Vector3();
+    ls.forEach(function (n) {
+      var geo = n.mesh.geometry, idx = geo.index.array, pos = geo.attributes.position.array;
+      var triCount = idx.length / 3;
+      var want = Math.max(1, Math.round(maxN * (n.tris || 0) / total));
+      var step = Math.max(1, Math.floor(triCount / want));
+      for (var t = 0; t < triCount && pts.length < maxN * 2; t += step) {
+        va.fromArray(pos, idx[t * 3] * 3); vb.fromArray(pos, idx[t * 3 + 1] * 3); vc.fromArray(pos, idx[t * 3 + 2] * 3);
+        u.subVectors(vb, va); v.subVectors(vc, va);
+        pts.push({
+          p: new THREE.Vector3((va.x + vb.x + vc.x) / 3, (va.y + vb.y + vc.y) / 3, (va.z + vb.z + vc.z) / 3),
+          n: u.clone().cross(v).normalize()
+        });
+      }
+    });
+    return pts;
+  }
+  function camPosFor(target, dist, theta, phi) {
+    var sp = Math.sin(phi);
+    return new THREE.Vector3(target.x + dist * sp * Math.cos(theta), target.y + dist * sp * Math.sin(theta), target.z + dist * Math.cos(phi));
+  }
+  /* その位置から「カメラを向いている面」のうち何割が遮られずに見えるか。
+   * 裏側の面は最初から見えないので分母から外す (閉じた立体でも 1.0 になりうるようにする)。
+   * 対象自身も遮蔽物に含めるので、自分の手前の面に隠れる部分は見えない扱いになる。 */
+  function visibleFraction(camPos, pts, objs, eps) {
+    var front = 0, seen = 0, dir = new THREE.Vector3();
+    for (var i = 0; i < pts.length; i++) {
+      dir.subVectors(pts[i].p, camPos);
+      var len = dir.length();
+      if (!(len > eps)) continue;
+      dir.divideScalar(len);
+      if (dir.dot(pts[i].n) >= 0) continue;   // カメラに背を向けている面
+      front++;
+      occRay.set(camPos, dir);
+      occRay.near = 0; occRay.far = len - eps;
+      if (!occRay.intersectObjects(objs, false).length) seen++;
+    }
+    return front ? seen / front : 0;
+  }
+  function focusNode(node) {
+    var box = boxOf(node);
+    if (!box) return;
+    var c = box.getCenter(new THREE.Vector3()), s2 = box.getSize(new THREE.Vector3());
+    var r = Math.max(s2.length() / 2, 0.5);
+    var dist = r / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2)) * 1.15;
+    var pts = samplePoints(node, 12);
+    var objs = [];
+    leaves.forEach(function (n) { if (n.mesh && n.visible !== false) objs.push(n.mesh); });
+    var eps = Math.max(r * 1e-3, 1e-4);
+    var best = { theta: ctrl.theta, phi: ctrl.phi, score: pts.length ? visibleFraction(camPosFor(c, dist, ctrl.theta, ctrl.phi), pts, objs, eps) : 1 };
+
+    // 今の角度でそこそこ見えているなら回さない (むやみに視点を変えない)
+    if (best.score < 0.3 && pts.length) {
+      var cands = [];
+      for (var pi = 0; pi < 3; pi++) {
+        var phi = [Math.PI * 0.32, Math.PI * 0.5, Math.PI * 0.68][pi];
+        for (var ti = 0; ti < 12; ti++) {
+          var theta = ctrl.theta + (ti + 0.5) * Math.PI * 2 / 12;
+          var dT = Math.abs(((theta - ctrl.theta + Math.PI) % (Math.PI * 2)) - Math.PI);
+          cands.push({ theta: theta, phi: phi, move: dT + Math.abs(phi - ctrl.phi) });
+        }
+      }
+      cands.sort(function (a, b) { return a.move - b.move; });   // 動きの小さい角度から試す
+      var deadline = performance.now() + 150;                    // 巨大なモデルでも待たせない
+      for (var k = 0; k < cands.length; k++) {
+        var sc = visibleFraction(camPosFor(c, dist, cands[k].theta, cands[k].phi), pts, objs, eps);
+        if (sc > best.score + 1e-6) { best = { theta: cands[k].theta, phi: cands[k].phi, score: sc }; }
+        if (best.score >= 0.9 || performance.now() > deadline) break;
+      }
+    }
+    animateTo({ theta: best.theta, phi: best.phi, dist: dist, target: c }, 420);
+    return best.score;
+  }
+
   function bindPointer() {
     canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
     canvas.addEventListener('pointerdown', function (e) {
+      camAnim = null;
       pointer.down = true; pointer.button = e.button; pointer.shift = e.shiftKey;
       pointer.x = pointer.sx = e.clientX; pointer.y = pointer.sy = e.clientY; pointer.moved = 0;
       canvas.setPointerCapture(e.pointerId);
@@ -299,6 +404,7 @@ var Viewer3D = (function () {
     canvas.addEventListener('pointerleave', function () { if (!pointer.down && hoverLeaves.length) { setHover(null); if (callbacks.onHover) callbacks.onHover(null); } });
     canvas.addEventListener('wheel', function (e) {
       e.preventDefault();
+      camAnim = null;
       ctrl.dist *= Math.exp(e.deltaY * 0.0012);
       ctrl.dist = Math.max(sceneRadius * 0.005, Math.min(sceneRadius * 100, ctrl.dist));
       updateCamera();
@@ -362,7 +468,7 @@ var Viewer3D = (function () {
     init: init, addDevice: addDevice, removeDevice: removeDevice, applyTheme: applyTheme,
     setHover: setHover, setSelected: setSelected, setMode: setMode, setGhost: setGhost, setEdges: setEdges,
     setSection: setSection, sectionValue: sectionValue, updateAllStates: updateAllStates, updateStates: updateStates,
-    fitAll: fitAll, fitNode: fitNode, moveToNode: fitNode, leavesOf: leavesOf, stats: stats, requestRender: requestRender,
+    fitAll: fitAll, fitNode: fitNode, focusNode: focusNode, moveToNode: fitNode, leavesOf: leavesOf, stats: stats, requestRender: requestRender,
     sceneBox: function () { return sceneBox; }, sceneRadius: function () { return sceneRadius; },
     setPickHandler: setPickHandler, toScreen: toScreen, overlay: overlay, onRender: onRender, camera: cameraRef
   };

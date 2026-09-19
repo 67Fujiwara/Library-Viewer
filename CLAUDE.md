@@ -33,6 +33,8 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
 - 計測中に部品を選択しない。3D のクリックは `Viewer3D.setPickHandler()` で計測へ横取りする（二重に扱わない）
 - 装置を消す・再メッシュするときは `Measure.clear()` を呼ぶ（無くなった形状を指した計測を残さない）
 - ツリーのチェック操作でカメラを動かさない
+- 案件横断のカード移動は **角度を変えない**（`Viewer3D.fitNode` / `moveToNode`）。
+  回り込むのは「この部品に寄る」（`focusNode`）だけ。この 2 つを 1 つの関数にまとめない
 - Fusion スクリプト (`fusion/LibraryExport/`) とビューアで、フォルダ階層プリセット・`meta.json` のスキーマ・**ネーミングルールの解析規則**を別々に変えない。必ず両方を同時に直す
   （`src/js/03b-naming.js` の `parse`/`format` と `LibraryExport.py` の `naming_parse`/`naming_format` は同じ規則）
 - 格納するファイル群の組み立ては `Store.buildPackage()` に集約する。格納ダイアログと受信箱で別々に作らない
@@ -66,6 +68,9 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
 - 計測の線・点は `Viewer3D.overlay()` に入れ、`depthTest: false` で常に手前に描く。
   `LineDashedMaterial` は `computeLineDistances()` を呼ばないと破線にならない
 - テストで角をクリックするときはシルエット際でレイが外れる。面の内側へ数 px 寄せる（`clickWorld` の inset）
+- 「この部品に寄る」の遮蔽判定は、**カメラを向いている面だけを分母にする**。
+  閉じた立体は標本点の半分が裏側なので、全点を分母にすると遮る物が無くても 0.5 止まりになり
+  しきい値が意味を持たなくなる（実測で判明）
 - **リサイズ後は同じフレーム内で描き切る**（`Viewer3D.resize()` → `renderNow()`）。
   `setSize` は描画バッファを空にするので、`requestRender()` で次の rAF に回すとそのフレームが
   黒く合成される。サイドバーの開閉アニメ中はこれが毎フレーム起きて画面が暗く見えた
@@ -103,7 +108,7 @@ src/js/08-library.js     ライブラリ (フォルダ走査 / 受信箱 inbox /
 src/js/09-store.js       格納ダイアログ (FS Access API または ZIP)
 src/js/10-app.js         配線
 fusion/LibraryExport/    Fusion 360 スクリプト (STEP + meta.json をライブラリに直接格納)
-tools/gen_test_step.py   AP214 STEP テストデータ生成 (箱 / 階層アセンブリ / 穴あき板)
+tools/gen_test_step.py   AP214 STEP テストデータ生成 (箱 / 階層アセンブリ / 穴あき板 / 遮蔽の検証用)
 tools/make_sample_library.mjs  サンプルライブラリ生成 (models / inbox / 名簿まで一式)
 test/read_step.mjs       occt が階層を返すか
 test/test_glb_zip.mjs    GLB を gltf-transform で / ZIP を unzip で
@@ -112,6 +117,7 @@ test/library_test.mjs    FS Access API を偽ハンドルにして 走査→受�
 test/sample_library_test.mjs  生成したサンプルライブラリをビューアが読めるか
 test/panels_test.mjs     サイドバー開閉 (953px の窓で: 折りたたみ / 復元 / キー / 3D の追従)
 test/measure_test.mjs    計測 (寸法既知の STEP でスナップ位置・距離・ΔXYZ・穴中心・角度を検証)
+test/focus_test.mjs      「この部品に寄る」(隠れている部品へ回り込む / 見えていれば角度を保つ)
 test/env_check.mjs       file:// / localhost で使える API の確認
 ```
 

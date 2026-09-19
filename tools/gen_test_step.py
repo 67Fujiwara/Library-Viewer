@@ -299,6 +299,24 @@ def gen_assembly(scale=1.0, fname="assembly.step", root="DEVICE_A"):
     return w.dump(fname)
 
 
+def gen_occluded():
+    """既定のカメラ角度から、小さい部品が大きな板の陰に完全に隠れる配置。
+
+    既定視点は theta=-45°, phi=60° なので、視線方向は約 (0.61, -0.61, 0.50)。
+    その延長線上に大きな板を置くと SMALL_PART が隠れる。「この部品に寄る」の検証用。
+    """
+    w = Writer()
+    ctx = Ctx(w)
+    small = part(ctx, "SMALL_PART", 20, 20, 20, color=(0.8, 0.5, 0.3))
+    plate = part(ctx, "BIG_PLATE", 5, 400, 400, color=(0.55, 0.55, 0.6))
+    assembly(ctx, "OCCLUDED", [
+        ("SMALL_PART", small, (0, 0, 0)),
+        ("BIG_PLATE", plate, (71, -200, -140)),
+    ])
+    ctx.finish()
+    return w.dump("occluded.step")
+
+
 def gen_holes():
     """穴の中心・径が厳密に分かっている板。計測精度の検証用。
 
@@ -331,6 +349,8 @@ def main():
         f.write(gen_assembly(scale=1.4, fname="assembly_b.step", root="DEVICE_B"))
     with open(os.path.join(out, "holes.step"), "w") as f:
         f.write(gen_holes())
+    with open(os.path.join(out, "occluded.step"), "w") as f:
+        f.write(gen_occluded())
     print("wrote", sorted(f for f in os.listdir(out) if f.endswith(".step")))
 
 

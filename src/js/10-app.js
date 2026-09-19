@@ -37,7 +37,7 @@ var App = (function () {
     }); });
     $('#chk-edges').addEventListener('change', function (e) { Viewer3D.setEdges(e.target.checked); });
     $('#btn-fit').addEventListener('click', function () { Viewer3D.fitAll(); });
-    $('#btn-fit-sel').addEventListener('click', function () { if (selectedNode) Viewer3D.fitNode(selectedNode); });
+    $('#btn-fit-sel').addEventListener('click', function () { if (selectedNode) Viewer3D.focusNode(selectedNode); });
     // 断面
     $$('input[name="secaxis"]').forEach(function (r) { r.addEventListener('change', function () { if (r.checked) { Viewer3D.setSection(r.value, null, null); Viewer3D.updateAllStates(); updateSectionLabel(); } }); });
     $('#sec-pos').addEventListener('input', function (e) { Viewer3D.setSection(null, e.target.value / 1000, null); updateSectionLabel(); });
