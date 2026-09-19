@@ -27,6 +27,10 @@
       <svg viewBox="0 0 24 24"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg><span class="lbl">ファイルを開く</span>
       <input type="file" id="file-input" multiple accept=".step,.stp,.STEP,.STP,.glb">
     </label>
+    <label class="btn secondary file-btn" for="dir-input" title="フォルダを丸ごと開きます（中の STEP だけを読み込み、フォルダ構成をそのままツリーにします）">
+      <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/><path d="M12 17v-6M9 14l3-3 3 3"/></svg><span class="lbl">フォルダを開く</span>
+      <input type="file" id="dir-input" webkitdirectory directory multiple>
+    </label>
     <div class="field-inline">
       <label for="precision" class="lbl">精度</label>
       <select id="precision" title="メッシュ精度">
@@ -68,6 +72,7 @@
         <input type="search" id="tree-search" placeholder="部品名で絞り込み" autocomplete="off">
       </div>
       <div class="counter mono" id="tree-counter">0 / 0 表示中</div>
+      <p id="load-note" class="load-note small" hidden></p>
       <div id="tree" class="tree" role="tree"></div>
       <p id="tree-empty" class="empty">STEP ファイルをウィンドウにドロップするか、<br>「ファイルを開く」「ライブラリを開く」から始めてください。</p>
     </section>
@@ -129,8 +134,8 @@
     </div>
     <div id="drop-hint" class="drop-hint">
       <svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
-      <p>ここに <strong>.step / .stp</strong> をドロップ</p>
-      <p class="muted small">複数同時可・変換はすべてこの PC 内で完結します</p>
+      <p>ここに <strong>.step / .stp</strong> かフォルダをドロップ</p>
+      <p class="muted small">フォルダは中の STEP だけを読み込み、フォルダ構成をそのままツリーにします<br>変換はすべてこの PC 内で完結します</p>
     </div>
     <div id="measure-label" class="measure-label mono" hidden></div>
     <div id="measure-bar" class="measure-bar" hidden>

@@ -150,6 +150,7 @@ body.left-collapsed #left, body.right-collapsed #right { border: 0; padding-left
 .search-row svg { position: absolute; left: 20px; top: 18px; width: 14px; height: 14px; color: var(--muted); pointer-events: none; }
 .search-row input { padding-left: 30px; height: 32px; }
 .counter { padding: 0 var(--sp-sm) 6px; font-size: 11px; color: var(--muted); }
+.load-note { margin: 0 var(--sp-sm) 6px; padding: 5px 8px; border-radius: var(--r-sm); background: var(--surface-card); color: var(--muted); font-size: 11px; line-height: 1.5; }
 .empty { padding: var(--sp-lg) var(--sp-md); color: var(--muted); font-size: 13px; text-align: center; line-height: 1.7; }
 .tabs { display: flex; border-bottom: 1px solid var(--hairline); padding: 6px var(--sp-sm) 0; gap: 4px; }
 .tabs input { position: absolute; opacity: 0; pointer-events: none; }
@@ -173,6 +174,9 @@ body.left-collapsed #left, body.right-collapsed #right { border: 0; padding-left
 .tree-row .name:hover { color: var(--primary-active); }
 .tree-row .name label { cursor: pointer; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
 .tree-row.device > .name { font-weight: 500; }
+.tree-row.group > .name { font-weight: 500; color: var(--muted); }
+.tree-row.group > .name svg { width: 13px; height: 13px; }
+.tree-row.group { background: linear-gradient(to right, var(--surface-soft), transparent 70%); }
 .tree-row .cnt { font-size: 11px; color: var(--muted-soft); font-family: var(--font-mono); flex: none; }
 .tree-row .xbadge { flex: none; }
 .tree-row .solo { opacity: 0; height: 22px; padding: 0 8px; flex: none; }

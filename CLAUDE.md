@@ -33,6 +33,8 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
 - 計測中に部品を選択しない。3D のクリックは `Viewer3D.setPickHandler()` で計測へ横取りする（二重に扱わない）
 - 装置を消す・再メッシュするときは `Measure.clear()` を呼ぶ（無くなった形状を指した計測を残さない）
 - ツリーのチェック操作でカメラを動かさない
+- **フォルダから読むのは `.step` / `.stp` だけ。** 他の拡張子は読み込まず、件数だけ知らせる
+  (`#load-note`)。`.glb` を読むのは「ファイルを開く」とライブラリからのときだけ
 - 案件横断のカード移動は **角度を変えない**（`Viewer3D.fitNode` / `moveToNode`）。
   回り込むのは「この部品に寄る」（`focusNode`）だけ。この 2 つを 1 つの関数にまとめない
 - Fusion スクリプト (`fusion/LibraryExport/`) とビューアで、フォルダ階層プリセット・`meta.json` のスキーマ・**ネーミングルールの解析規則**を別々に変えない。必ず両方を同時に直す
@@ -58,6 +60,11 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
 - ネーミングルールで区切り文字を含んでよいのは **装置名だけ**（左右の項目を先に確定し、残りを装置名にする）
 - `inbox/` は装置フォルダの走査対象から外す（`SKIP_DIRS`）。取り込めたファイルだけ `removeEntry` で消す
 - Playwright の `setInputFiles` は **非 ASCII のファイルパスを渡せない**。日本語ファイル名のテストは `{name, buffer}` 形式で渡す
+  （フォルダのテストは `webkitRelativePath` を付けた `File` を `DataTransfer` 経由で `#dir-input` に流し込む）
+- ドロップされた `DataTransferItem` は **ハンドラを抜けると無効になる**。`getAsFileSystemHandle()` /
+  `webkitGetAsEntry()` は同期のうちに呼び、Promise だけを持ち越す
+- ツリーの装置行 (depth 0) のラベルは `device.name`。フォルダから読んだものはファイル名を使う
+  (同じ STEP 内部名の部品が並ぶと区別できないため)。STEP 内の名称はツールチップに出す
 - 計測は B-rep を持たないメッシュから拾うが、**精度は落ちない**。
   OpenCASCADE のメッシュ節点は元の曲面上に厳密に乗っている（粗い設定でも分割数が減るだけ）ため、
   円形の境界ループに円を当てはめれば中心・径は公称値と一致する。
@@ -79,6 +86,11 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
 ## レイアウト（構成は変更しない）
 
 ヘッダー / 左パネル 310px（構成ツリー | ライブラリ の 2 タブ） / 中央 3D ビュー / 右横断パネル 288px / フッター（選択部品の情報バー）
+
+ツリーは 2 段構え: フォルダから読み込んだときは **フォルダのグループ行** → 装置 → 部品 の順に入れ子になる。
+グループ行は `Tree.buildForest()` が `device.groupPath` から毎回組み立て直す（`nodesById` に混ぜるので
+チェックの 3 状態・ソロ・検索・開閉はそのまま効く）。グループの行をクリックすると開閉する（選択はしない。
+`CrossRef` や footer が `node.device` を前提にしているため）。
 
 左右のパネルは畳める（`src/js/01b-panels.js`、ヘッダーのアイコン・端のハンドル・`[` `]` キー、状態は localStorage）。
 - **畳んだ状態は尊重する。** 3D での部品選択やライブラリからの読み込みで勝手に開き直さない
@@ -102,7 +114,7 @@ src/js/04-step.js        occt-import-js のロードと STEP → 内部モデル
 src/js/05-viewer.js      three.js シーン・カメラ・表示モード・断面・エッジ・ハイライト
 src/js/05b-circle.js     メッシュからの円検出 (穴・丸軸の中心と径)
 src/js/05c-measure.js    計測モード (距離 / 角度、頂点・円・エッジ・面スナップ)
-src/js/06-tree.js        構成ツリー
+src/js/06-tree.js        構成ツリー (フォルダのグループ行を含む)
 src/js/07-crossref.js    案件横断 (名寄せ)
 src/js/08-library.js     ライブラリ (フォルダ走査 / 受信箱 inbox / ルール / 書き込み / members.json / catalog.json)
 src/js/09-store.js       格納ダイアログ (FS Access API または ZIP)
@@ -118,6 +130,7 @@ test/sample_library_test.mjs  生成したサンプルライブラリをビュ�
 test/panels_test.mjs     サイドバー開閉 (953px の窓で: 折りたたみ / 復元 / キー / 3D の追従)
 test/measure_test.mjs    計測 (寸法既知の STEP でスナップ位置・距離・ΔXYZ・穴中心・角度を検証)
 test/focus_test.mjs      「この部品に寄る」(隠れている部品へ回り込む / 見えていれば角度を保つ)
+test/folder_test.mjs     フォルダ読み込み (STEP だけ拾う / 階層をツリーに再現 / ドロップ 2 経路)
 test/env_check.mjs       file:// / localhost で使える API の確認
 ```
 

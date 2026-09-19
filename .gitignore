@@ -1,5 +1,5 @@
-node_modules/
-test/out/
-.playwright/
 *.log
+.playwright/
+node_modules/
 sample-library/
+test/out/
