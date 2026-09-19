@@ -163,6 +163,42 @@ var TreeEdit = (function () {
     }
   }
 
+  /* ---- タグ (ディレクトリに付ける。検索で名称と一緒に引っかかる) ---- */
+  function editTags(n) {
+    if (!n || !n.isGroup) return;
+    var key = n.path.join('/');
+    var d = $('#tags-dialog'), input = $('#tag-input'), known = $('#tag-known');
+    $('#tag-target').textContent = n.path.join(' / ');
+    input.value = Tags.get(key).join(' ');
+    known.textContent = '';
+    Tags.all().forEach(function (t) {
+      known.appendChild(el('button.tag', { type: 'button', text: t.tag, title: t.count + ' 個のフォルダーで使用中', onclick: function () {
+        var cur = Tags.parse(input.value);
+        if (cur.some(function (x) { return Tags.fold(x) === Tags.fold(t.tag); })) return;
+        input.value = cur.concat([t.tag]).join(' ');
+        input.focus();
+      } }));
+    });
+    if (!known.children.length) known.appendChild(el('span.muted.small', { text: 'まだありません' }));
+    // Enter でも保存できるように、ボタンではなく form の submit を拾う (method="dialog" の既定は保存せず閉じる)
+    var form = d.querySelector('form');
+    function close() {
+      form.removeEventListener('submit', onSave); $('#tag-cancel').removeEventListener('click', close);
+      if (d.open) d.close();
+    }
+    function onSave(e) {
+      e.preventDefault();
+      Tags.set(key, Tags.parse(input.value));
+      close();
+      Tree.rerender();
+      Search.refresh();
+    }
+    form.addEventListener('submit', onSave);
+    $('#tag-cancel').addEventListener('click', close);
+    d.showModal();
+    input.focus(); input.select();
+  }
+
   /* ---- 右クリックメニュー ---- */
   function onContextMenu(e) {
     var row = e.target.closest('.tree-row');
@@ -178,6 +214,10 @@ var TreeEdit = (function () {
     var parent = n ? (n.isGroup ? n.path.slice() : (n.device ? (n.device.groupPath || []).slice() : [])) : [];
     items.push({ label: '新しいフォルダー', run: function () { newFolder(parent); } });
     if (many) items.push({ label: '選択した ' + targets.length + ' 件を新しいフォルダーへ', run: function () { moveToNewFolder(targets, parent); } });
+    if (n && n.isGroup) {
+      items.push({ sep: true });
+      items.push({ label: Tags.has(n.path.join('/')) ? 'タグを編集…' : 'タグを付ける…', run: function () { editTags(n); } });
+    }
     if (n && Tree.selectable(n)) {
       items.push({ sep: true });
       if (!many) items.push({ label: '名前の変更', hint: 'F2', run: function () { startRename(n); } });
@@ -224,5 +264,5 @@ var TreeEdit = (function () {
   function hideMenu() { if (menuEl) { menuEl.remove(); menuEl = null; } }
   function onKeyDown(e) { if (e.key === 'Escape') hideMenu(); }
 
-  return { init: init, newFolder: newFolder, startRename: startRename, isEditing: function () { return !!editing; } };
+  return { init: init, newFolder: newFolder, startRename: startRename, editTags: editTags, isEditing: function () { return !!editing; } };
 })();

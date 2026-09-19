@@ -179,6 +179,9 @@ body.left-collapsed #left, body.right-collapsed #right { border: 0; padding-left
 .tree-row.group { background: linear-gradient(to right, var(--surface-soft), transparent 70%); }
 .tree-row .cnt { font-size: 11px; color: var(--muted-soft); font-family: var(--font-mono); flex: none; }
 .tree-row .xbadge { flex: none; }
+.row-actions { position: absolute; right: 4px; top: 2px; display: inline-flex; align-items: center; gap: 2px; border-radius: var(--r-sm); }
+.tree-row:hover .row-actions { background: var(--surface-soft); box-shadow: -10px 0 10px 2px var(--surface-soft); }
+.tree-row.selected:hover .row-actions, .tree-row.picked:hover .row-actions { background: var(--surface-strong); box-shadow: -10px 0 10px 2px var(--surface-strong); }
 .tree-row .solo { opacity: 0; height: 22px; padding: 0 8px; flex: none; }
 .tree-row:hover .solo, .tree-row .solo.active { opacity: 1; }
 .tree-row .close { opacity: 0; height: 22px; width: 22px; padding: 0; justify-content: center; flex: none; border-color: transparent; background: none; color: var(--muted); }
@@ -284,6 +287,27 @@ body.measuring #gl { cursor: crosshair; }
   box-shadow: var(--shadow); white-space: nowrap; }
 
 /* ==== 横断パネル ==== */
+/* ==== タグ (ディレクトリに付ける) ==== */
+.tree-row .tags { display: inline-flex; align-items: center; gap: 3px; flex: 0 1 auto; min-width: 0; max-width: 42%; overflow: hidden; margin-right: 2px; }
+.tree-row .tags:empty { display: none; }
+.tag.more { cursor: default; background: none; border-color: transparent; padding: 0 2px; }
+.tag {
+  display: inline-flex; align-items: center; height: 16px; max-width: 56px; padding: 0 5px; flex: 0 1 auto; min-width: 0;
+  border: 1px solid var(--hairline); border-radius: var(--r-pill); background: var(--surface-soft);
+  color: var(--muted); font: 500 10px/1 var(--font-sans); cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tag:hover { border-color: var(--primary); color: var(--primary-active); background: var(--primary-ring); }
+.tag-known { display: flex; flex-wrap: wrap; gap: 4px; }
+.tag-known .tag { height: 22px; max-width: none; padding: 0 8px; font-size: 12px; }
+
+/* ==== 右パネル: 検索結果 / 案件横断 ==== */
+.right-section { display: flex; flex-direction: column; gap: var(--sp-sm); min-height: 0; }
+.sp-actions { display: flex; gap: var(--sp-xs); margin-top: var(--sp-xs); }
+.hit-card .dev { display: flex; align-items: center; gap: 6px; }
+.hit-card .dev svg { width: 13px; height: 13px; flex: none; color: var(--muted); }
+.hit-card .dev > span:first-of-type { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .xref-current { border: 1px solid var(--hairline); border-radius: var(--r-lg); padding: 10px 12px; background: var(--surface-card); font-size: 12px; }
 .xref-current .n { font-weight: 500; color: var(--ink); font-size: 14px; }
 .xref-list { display: flex; flex-direction: column; gap: 6px; }

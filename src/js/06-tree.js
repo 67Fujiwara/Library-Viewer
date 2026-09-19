@@ -45,6 +45,7 @@ var Tree = (function () {
         if (n.isGroup) { var list = devicesUnder(n); removeFolder(n); callbacks.onClose(list); }   // フォルダごと片づける
         else callbacks.onClose(n.device);
       }
+      else if (b.classList.contains('tag')) { setSearch(b.dataset.tag); }
       else if (b.classList.contains('name')) { callbacks.onSelect(n); }   // フォルダは上の分岐で開閉になる
     });
     container.addEventListener('mouseover', function (e) {
@@ -52,7 +53,7 @@ var Tree = (function () {
       callbacks.onHover(n || null);
     });
     container.addEventListener('mouseleave', function () { callbacks.onHover(null); });
-    searchEl.addEventListener('input', debounce(function () { filter = searchEl.value.trim().toLowerCase(); applyRowVisibility(); }, 120));
+    searchEl.addEventListener('input', debounce(function () { applySearch(searchEl.value); }, 120));
     $('#btn-show-all').addEventListener('click', function () { allLeaves().forEach(function (n) { n.visible = true; }); soloNode = null; refresh(); });
     $('#btn-invert').addEventListener('click', function () { allLeaves().forEach(function (n) { n.visible = !n.visible; }); soloNode = null; refresh(); });
     $('#chk-ghost').addEventListener('change', function (e) { Viewer3D.setGhost(e.target.checked); });
@@ -161,13 +162,32 @@ var Tree = (function () {
     var cb = el('input', { type: 'checkbox', id: 'cb-' + n.id, dataset: { id: n.id }, title: 'このフォルダをまとめて表示 / 非表示' });
     cb.checked = true;
     var nameBtn = el('button.name', { type: 'button', title: n.path.join(' / ') }, [svgIcon(ICON.folder), el('label', { text: n.name })]);
+    var tags = tagChips(n);
     var cnt = el('span.cnt', { text: devicesUnder(n).length + ' 件' });
     var solo = el('button.solo.btn.small.secondary', { type: 'button', text: 'ソロ', title: 'このフォルダだけ表示 / もう一度で全部戻す' });
     var close = el('button.close.btn.small', { type: 'button', title: 'このフォルダを閉じる（中の装置も表示から外します。ファイルは消えません）' }, [svgIcon('M6 6l12 12M18 6L6 18')]);
-    [tw, cb, nameBtn, cnt, solo, close].forEach(function (c) { row.appendChild(c); });
+    [tw, cb, nameBtn, tags, cnt, actions(solo, close)].forEach(function (c) { row.appendChild(c); });
     parentEl.appendChild(row);
     rows[n.id] = row; n.row = row; n.cb = cb; n.xbadge = null;
   }
+  /* 行の右端のボタン。VS Code と同じくホバーのときだけ名前の上に重ねる
+   * (常に場所を取ると、狭い左パネルで名前とタグが入りきらない) */
+  function actions(solo, close) {
+    return el('span.row-actions', {}, [solo, close]);
+  }
+
+  /* フォルダ行のタグ。押すとそのタグで検索する (<div> に onclick を付けない)。
+   * 行が名前で埋まらないよう、出すのは 2 つまでで残りは +N にする (全部はツールチップに) */
+  var CHIPS = 2;
+  function tagChips(n) {
+    var box = el('span.tags'), list = Tags.get(n.path.join('/'));
+    list.slice(0, CHIPS).forEach(function (t) {
+      box.appendChild(el('button.tag', { type: 'button', dataset: { tag: t }, title: '「' + t + '」で検索', text: t }));
+    });
+    if (list.length > CHIPS) box.appendChild(el('span.tag.more', { text: '+' + (list.length - CHIPS), title: list.join(' · ') }));
+    return box;
+  }
+
   function renderNode(n, parentEl) {
     var row = el('div.tree-row', { role: 'treeitem', draggable: n.depth === 0 ? 'true' : 'false', dataset: { id: n.id } });
     row.style.paddingLeft = (6 + (n.depth + ((n.device && n.device.depthOffset) || 0)) * 16) + 'px';
@@ -190,7 +210,7 @@ var Tree = (function () {
     var close = n.depth === 0
       ? el('button.close.btn.small', { type: 'button', title: 'この装置を閉じる（表示から外すだけで、ファイルは消えません）' }, [svgIcon('M6 6l12 12M18 6L6 18')])
       : null;
-    [tw, cb, nameBtn, cnt, xb, solo, close].forEach(function (c) { if (c) row.appendChild(c); });
+    [tw, cb, nameBtn, cnt, xb, actions(solo, close)].forEach(function (c) { if (c) row.appendChild(c); });
     parentEl.appendChild(row);
     rows[n.id] = row; n.row = row; n.cb = cb; n.xbadge = xb;
     n.children.forEach(function (c) { renderNode(c, parentEl); });
@@ -219,11 +239,19 @@ var Tree = (function () {
     applyRowVisibility();
   }
 
+  /* 名称かタグに当たるか (タグはフォルダだけが持つ) */
+  function nodeMatches(n) {
+    if (!filter) return false;
+    if (Tags.fold(n.name).indexOf(filter) >= 0) return true;
+    if (n.isGroup && Tags.hit(n.path.join('/'), filter)) return true;
+    return false;
+  }
   function rowVisibility(n) {
     var hidden = false;
     if (filter) {
-      var match = n.name.toLowerCase().indexOf(filter) >= 0 || n.leaves.some(function (l) { return l.name.toLowerCase().indexOf(filter) >= 0; });
-      hidden = !match && !hasMatchingDescendant(n);
+      var match = nodeMatches(n) || n.leaves.some(function (l) { return Tags.fold(l.name).indexOf(filter) >= 0; });
+      // 当たったフォルダの中身は、名前が違っても出す (タグで探して中を見るため)
+      hidden = !match && !hasMatchingDescendant(n) && !hasMatchingAncestor(n);
     } else {
       for (var p = n.parent; p; p = p.parent) if (p.collapsed) { hidden = true; break; }
     }
@@ -238,7 +266,51 @@ var Tree = (function () {
     });
   }
   function hasMatchingDescendant(n) {
-    return n.children.some(function (c) { return c.name.toLowerCase().indexOf(filter) >= 0 || hasMatchingDescendant(c); });
+    return n.children.some(function (c) { return nodeMatches(c) || hasMatchingDescendant(c); });
+  }
+  function hasMatchingAncestor(n) {
+    for (var p = n.parent; p; p = p.parent) if (nodeMatches(p)) return true;
+    return false;
+  }
+
+  /* ---- 検索 (左の絞り込みと右の結果一覧はひとつの問い合わせで動く) ---- */
+  function applySearch(raw) {
+    filter = Tags.fold(String(raw || '').trim());
+    applyRowVisibility();
+    if (window.Search) Search.run(raw);
+  }
+  function setSearch(raw) {
+    searchEl.value = raw == null ? '' : raw;
+    applySearch(searchEl.value);
+  }
+
+  /* 検索結果から選んだものだけ残す: 関係ない部品はチェックを外して非表示にする。
+   * ソロと同じ状態にするので、もう一度ソロを押す / 「すべて表示」で戻せる */
+  function isolate(n) {
+    if (!n) return;
+    allLeaves().forEach(function (l) { l.visible = false; });
+    n.leaves.forEach(function (l) { l.visible = true; });
+    soloNode = n;
+    refresh();
+    reveal(n);
+  }
+  /* その行が見えるところまで親を開いてスクロールする (選択はしない) */
+  function reveal(n) {
+    if (!n) return;
+    for (var p = n.parent; p; p = p.parent) {
+      if (!p.collapsed) continue;
+      p.collapsed = false;
+      if (p.isGroup) collapsedGroups[p.path.join('/')] = false;
+      if (p.row) p.row.classList.remove('collapsed');
+    }
+    applyRowVisibility();
+    if (n.row) n.row.scrollIntoView({ block: 'nearest' });
+  }
+  /* 検索が見に行くノード: フォルダ → 装置 → 部品 */
+  function allNodes() {
+    var out = groups.slice();
+    devices.forEach(function (d) { out = out.concat(d.nodes); });
+    return out;
   }
 
   function select(n) {
@@ -336,6 +408,7 @@ var Tree = (function () {
    * フォルダの id はパスから作るので、選択中の行も付け替える */
   function repath(oldPath, newPath) {
     var oldKey = oldPath.join('/'), newKey = newPath.join('/');
+    Tags.repath(oldKey, newKey);   // フォルダの id はパスから作るので、タグも一緒に動かす
     if (focusedId && focusedId.indexOf('g:') === 0) {
       var fk = focusedId.slice(2);
       if (fk === oldKey) focusedId = 'g:' + newKey;
@@ -449,7 +522,8 @@ var Tree = (function () {
     devicesUnder: devicesUnder, registerDeviceFolders: registerDeviceFolders,
     focused: function () { return focusedId ? nodesById[focusedId] : null; }, setFocused: setFocused,
     picked: pickedNodes, setPicked: setPicked, isPicked: isPicked, moveNodes: moveNodes, selectable: selectable,
-    nodeById: function (id) { return nodesById[id]; },
+    nodeById: function (id) { return nodesById[id]; }, allNodes: allNodes,
+    isolate: isolate, reveal: reveal, setSearch: setSearch, query: function () { return filter; },
     rerender: function () { render(devices); }, container: function () { return container; }
   };
 })();
