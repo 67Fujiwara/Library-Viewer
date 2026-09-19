@@ -51,9 +51,15 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
 - `inbox/` は装置フォルダの走査対象から外す（`SKIP_DIRS`）。取り込めたファイルだけ `removeEntry` で消す
 - Playwright の `setInputFiles` は **非 ASCII のファイルパスを渡せない**。日本語ファイル名のテストは `{name, buffer}` 形式で渡す
 
-## レイアウト（変更しない）
+## レイアウト（構成は変更しない）
 
 ヘッダー / 左パネル 310px（構成ツリー | ライブラリ の 2 タブ） / 中央 3D ビュー / 右横断パネル 288px / フッター（選択部品の情報バー）
+
+左右のパネルは畳める（`src/js/01b-panels.js`、ヘッダーのアイコン・端のハンドル・`[` `]` キー、状態は localStorage）。
+- **畳んだ状態は尊重する。** 3D での部品選択やライブラリからの読み込みで勝手に開き直さない
+- 幅は `#main` の `--left-w` / `--right-w` で 0 にする。`display:none` にしない（ResizeObserver で 3D が追従できなくなる）
+- 初回のみ、窓幅 1200px 未満なら右パネルを畳んだ状態で開く（保存された設定があればそちらが優先）
+- 窓が狭いときはヘッダーのラベルを落としてアイコンだけにする（折り返して 2 行にしない）
 
 ## ファイル構成
 
@@ -63,6 +69,7 @@ src/template.html        HTML 骨格 ({{APP_CSS}} {{THREE_JS}} {{OCCT_JS}} {{WAS
 src/app.css              トークン (DESIGN.md) と UI
 src/js/00-util.js        DOM ヘルパ, Storage, nextFrames, cssVar
 src/js/01-theme.js       時刻によるライト/ダーク
+src/js/01b-panels.js     左右サイドバーの開閉
 src/js/02-glb.js         GLB ライター/リーダー (node でも require 可)
 src/js/03-zip.js         ZIP ライター (格納方式, UTF-8 フラグ)
 src/js/03b-naming.js     ネーミングルール (ファイル名 ⇔ 案件情報)
@@ -81,6 +88,7 @@ test/test_glb_zip.mjs    GLB を gltf-transform で / ZIP を unzip で
 test/browser_test.mjs    file:// 通しテスト (読み込み→ツリー→横断→格納→再変換→ルール事前入力)
 test/library_test.mjs    FS Access API を偽ハンドルにして 走査→受信箱→格納→ルール→名簿
 test/sample_library_test.mjs  生成したサンプルライブラリをビューアが読めるか
+test/panels_test.mjs     サイドバー開閉 (953px の窓で: 折りたたみ / 復元 / キー / 3D の追従)
 test/env_check.mjs       file:// / localhost で使える API の確認
 ```
 

@@ -6,6 +6,7 @@ var App = (function () {
   function init() {
     overlay = $('#overlay'); overlayTitle = $('#overlay-title'); overlayMsg = $('#overlay-msg');
     Theme.init();
+    Panels.init();
     Viewer3D.init({ onSelect: function (n) { select(n); }, onHover: function (n) { /* 3D 側ホバーはツリー連動なし */ } });
     Theme.onChange(function () { Viewer3D.applyTheme(); });
     Tree.init({ onSelect: function (n) { select(n); }, onHover: function (n) { Viewer3D.setHover(n); } });
@@ -46,7 +47,9 @@ var App = (function () {
     // キーボード
     window.addEventListener('keydown', function (e) {
       var t = e.target; if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.closest('dialog'))) return;
-      if (e.key === 'ArrowLeft') { CrossRef.step(-1); e.preventDefault(); }
+      if (e.key === '[') { Panels.toggle('left'); e.preventDefault(); }
+      else if (e.key === ']') { Panels.toggle('right'); e.preventDefault(); }
+      else if (e.key === 'ArrowLeft') { CrossRef.step(-1); e.preventDefault(); }
       else if (e.key === 'ArrowRight') { CrossRef.step(1); e.preventDefault(); }
       else if (e.key === 'Escape') select(null);
       else if (e.key === 'f' || e.key === 'F') Viewer3D.fitAll();

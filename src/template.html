@@ -11,36 +11,42 @@
 <body>
 <header id="header">
   <div class="brand">
+    <button type="button" id="btn-toggle-left" class="btn icon" aria-pressed="true" aria-controls="left" title="左サイドバー（構成・ライブラリ）の表示 / 非表示  [">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
+    </button>
     <svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v20M2 12h20M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg>
     <h1>Library Viewer</h1>
     <span class="ver mono">v{{VERSION}}</span>
   </div>
   <div class="header-actions">
     <button type="button" id="btn-open-lib" class="btn secondary" title="共有ライブラリのフォルダ (DirectCloud 同期フォルダ) を開きます">
-      <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>ライブラリを開く
+      <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg><span class="lbl">ライブラリを開く</span>
     </button>
     <span id="lib-status" class="status muted"></span>
-    <label class="btn secondary file-btn" for="file-input">
-      <svg viewBox="0 0 24 24"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg>ファイルを開く
+    <label class="btn secondary file-btn" for="file-input" title="STEP / glb を開きます">
+      <svg viewBox="0 0 24 24"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg><span class="lbl">ファイルを開く</span>
       <input type="file" id="file-input" multiple accept=".step,.stp,.STEP,.STP,.glb">
     </label>
     <div class="field-inline">
-      <label for="precision">精度</label>
-      <select id="precision">
+      <label for="precision" class="lbl">精度</label>
+      <select id="precision" title="メッシュ精度">
         <option value="coarse">粗い（最軽量）</option>
         <option value="standard" selected>標準</option>
         <option value="fine">細かい</option>
       </select>
-      <button type="button" id="btn-remesh" class="btn secondary" disabled>再変換</button>
+      <button type="button" id="btn-remesh" class="btn secondary" disabled title="今の精度で STEP を変換し直します">再変換</button>
     </div>
-    <button type="button" id="btn-store" class="btn primary" disabled>
-      <svg viewBox="0 0 24 24"><path d="M4 4h12l4 4v12H4z M8 4v5h8V4 M8 20v-6h8v6"/></svg>格納する
+    <button type="button" id="btn-store" class="btn primary" disabled title="案件情報を付けてライブラリに格納します">
+      <svg viewBox="0 0 24 24"><path d="M4 4h12l4 4v12H4z M8 4v5h8V4 M8 20v-6h8v6"/></svg><span class="lbl">格納する</span>
     </button>
     <div class="seg" role="group" aria-label="テーマ">
       <input type="radio" name="theme" id="theme-auto" value="auto" checked><label for="theme-auto">自動</label>
       <input type="radio" name="theme" id="theme-light" value="light"><label for="theme-light">ライト</label>
       <input type="radio" name="theme" id="theme-dark" value="dark"><label for="theme-dark">ダーク</label>
     </div>
+    <button type="button" id="btn-toggle-right" class="btn icon" aria-pressed="true" aria-controls="right" title="右サイドバー（案件横断）の表示 / 非表示  ]">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>
+    </button>
   </div>
 </header>
 
@@ -92,6 +98,12 @@
 
   <div id="viewport">
     <canvas id="gl"></canvas>
+    <button type="button" id="edge-left" class="edge-handle left" hidden title="左サイドバーを開く  [">
+      <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+    </button>
+    <button type="button" id="edge-right" class="edge-handle right" hidden title="右サイドバーを開く  ]">
+      <svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>
+    </button>
     <div id="hud" class="hud">
       <div class="seg" role="group" aria-label="表示モード">
         <input type="radio" name="viewmode" id="vm-normal" value="normal" checked><label for="vm-normal">外観</label>
@@ -117,7 +129,7 @@
       <p>ここに <strong>.step / .stp</strong> をドロップ</p>
       <p class="muted small">複数同時可・変換はすべてこの PC 内で完結します</p>
     </div>
-    <div id="hud-hint" class="hud-hint mono small">左ドラッグ 回転 · 右/Shift+ドラッグ 移動 · ホイール 拡大 · クリック 選択 · ← → 同名ユニット</div>
+    <div id="hud-hint" class="hud-hint mono small">左ドラッグ 回転 · 右/Shift+ドラッグ 移動 · ホイール 拡大 · クリック 選択 · ← → 同名ユニット · [ ] サイドバー</div>
   </div>
 
   <aside id="right">
