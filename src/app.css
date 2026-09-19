@@ -68,6 +68,10 @@ svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 1.8; stroke
 .btn.primary:hover { background: var(--primary-active); border-color: var(--primary-active); }
 .btn.primary:disabled { background: var(--primary-disabled); color: var(--muted); border-color: var(--primary-disabled); opacity: 1; }
 .btn.small { height: 28px; padding: 0 10px; font-size: 12px; }
+.btn.danger { background: var(--error); color: #fff; border-color: var(--error); }
+.btn.danger:hover { filter: brightness(0.92); }
+.btn.ghost-danger { border-color: transparent; background: none; color: var(--muted); }
+.btn.ghost-danger:hover { background: var(--error); color: #fff; border-color: var(--error); }
 .btn.icon { width: 32px; height: 32px; padding: 0; justify-content: center; border-color: transparent; background: none; color: var(--muted); }
 .btn.icon:hover { background: var(--surface-soft); color: var(--ink); }
 .btn.icon[aria-pressed="false"] { color: var(--muted-soft); }
@@ -173,6 +177,10 @@ body.left-collapsed #left, body.right-collapsed #right { border: 0; padding-left
 .tree-row .xbadge { flex: none; }
 .tree-row .solo { opacity: 0; height: 22px; padding: 0 8px; flex: none; }
 .tree-row:hover .solo, .tree-row .solo.active { opacity: 1; }
+.tree-row .close { opacity: 0; height: 22px; width: 22px; padding: 0; justify-content: center; flex: none; border-color: transparent; background: none; color: var(--muted); }
+.tree-row:hover .close { opacity: 1; }
+.tree-row .close:hover { background: var(--error); color: #fff; }
+.tree-row .close svg { width: 11px; height: 11px; }
 .tree-row .solo.active { background: var(--surface-strong); }
 
 /* ==== ライブラリ一覧 ==== */
@@ -184,7 +192,9 @@ body.left-collapsed #left, body.right-collapsed #right { border: 0; padding-left
 .lib-card .t { font-weight: 500; color: var(--ink); display: flex; gap: 8px; align-items: baseline; }
 .lib-card .t .code { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
 .lib-card .m { font-size: 12px; color: var(--muted); display: flex; gap: 8px; flex-wrap: wrap; }
-.lib-card .acts { display: flex; gap: 6px; margin-top: 4px; align-items: center; }
+.lib-card .acts { display: flex; gap: 6px; margin-top: 4px; align-items: center; flex-wrap: wrap; }
+.lib-card .acts .spacer { flex: 1; min-width: 0; }
+.lib-card .acts a { white-space: nowrap; }
 .lib-card .acts a { color: var(--primary); font-size: 12px; }
 .lib-card .warn { color: var(--warning); font-size: 11px; }
 

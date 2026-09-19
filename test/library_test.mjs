@@ -45,7 +45,12 @@ await page.addInitScript((seed) => {
     async getFileHandle(n, o) { const h = this._e.get(n); if (h && h.kind === 'file') return h; if (o && o.create) { const f = new FileH(n, new Uint8Array()); this._e.set(n, f); return f; } throw Object.assign(new Error('NotFound ' + n), { name: 'NotFoundError' }); }
     async getDirectoryHandle(n, o) { const h = this._e.get(n); if (h && h.kind === 'directory') return h; if (o && o.create) { const d = new DirH(n); this._e.set(n, d); return d; } throw Object.assign(new Error('NotFound ' + n), { name: 'NotFoundError' }); }
     async *entries() { for (const kv of [...this._e]) yield kv; }
-    async removeEntry(n, o) { if (!this._e.has(n)) throw Object.assign(new Error('NotFound ' + n), { name: 'NotFoundError' }); this._e.delete(n); }
+    async removeEntry(n, o) {
+      const h = this._e.get(n);
+      if (!h) throw Object.assign(new Error('NotFound ' + n), { name: 'NotFoundError' });
+      if (h.kind === 'directory' && h._e.size && !(o && o.recursive)) throw Object.assign(new Error('not empty: ' + n), { name: 'InvalidModificationError' });
+      this._e.delete(n);
+    }
     async queryPermission() { return 'granted'; } async requestPermission() { return 'granted'; } }
   const root = new DirH('Library');
   const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
@@ -148,6 +153,48 @@ await page.fill('#roster-text', '設計1課, 山田\n設計2課, 鈴木\n生産�
 await page.click('#roster-save');
 await page.waitForTimeout(300);
 check((await page.evaluate(() => window.__ls('members.json'))).text.includes('高橋'), 'members.json updated in library');
+
+// ---- 削除: 装置フォルダごと消え、空になった親も掃除される ----
+await page.click('label[for="tab-lib"]');
+await page.waitForTimeout(200);
+const before = (await page.$$('.lib-card')).length;
+check((await page.evaluate(() => window.__ls('models/設計2課'))).length === 3, '設計2課 has 3 project folders before delete');
+
+// 確認ダイアログでキャンセルすると消えない
+await page.locator('.lib-card', { hasText: '組立装置C' }).locator('button', { hasText: '削除' }).click();
+await page.waitForSelector('#confirm-dialog[open]');
+const cbody = await page.textContent('#confirm-body');
+check(cbody.includes('models/設計2課/P2026-003_組立装置C/_/') && cbody.includes('meta.json'), 'confirm shows the path and files');
+check(cbody.includes('全員から見えなくなります'), 'confirm warns it is shared');
+await page.click('#confirm-cancel');
+await page.waitForTimeout(300);
+check((await page.$$('.lib-card')).length === before, 'cancel keeps the entry');
+check(await page.evaluate(() => window.__ls('models/設計2課/P2026-003_組立装置C')) !== null, 'cancel keeps the folder');
+
+// 削除する
+await page.locator('.lib-card', { hasText: '組立装置C' }).locator('button', { hasText: '削除' }).click();
+await page.waitForSelector('#confirm-dialog[open]');
+await page.click('#confirm-ok');
+await page.waitForSelector('#msg-dialog[open]', { timeout: 15000 });
+await page.keyboard.press('Escape');
+await page.waitForFunction((n) => document.querySelectorAll('.lib-card').length === n, before - 1, { timeout: 15000 });
+check(true, 'entry removed from the list (' + before + ' → ' + (before - 1) + ')');
+check(await page.evaluate(() => window.__ls('models/設計2課/P2026-003_組立装置C')) === null, 'device folder deleted from the library');
+check((await page.evaluate(() => window.__ls('models/設計2課'))).length === 2, 'sibling folders untouched');
+
+// 部署が空になったら、その部署フォルダも消える
+check((await page.evaluate(() => window.__ls('models/設計1課'))).length === 2, '設計1課 has 2 project folders');
+for (const name of ['溶接装置D', '検査装置A']) {
+  await page.locator('.lib-card', { hasText: name }).locator('button', { hasText: '削除' }).click();
+  await page.waitForSelector('#confirm-dialog[open]');
+  await page.click('#confirm-ok');
+  await page.waitForSelector('#msg-dialog[open]', { timeout: 15000 });
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(600);
+}
+check(await page.evaluate(() => window.__ls('models/設計1課')) === null, 'empty department folder cleaned up too');
+check(await page.evaluate(() => window.__ls('models')) !== null, 'models/ itself is kept');
+await page.screenshot({ path: outDir + '/shot-18-after-delete.png' });
 
 console.log('errors:', errors.length ? errors : 'none');
 await browser.close();

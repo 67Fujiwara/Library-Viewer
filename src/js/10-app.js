@@ -9,7 +9,7 @@ var App = (function () {
     Panels.init();
     Viewer3D.init({ onSelect: function (n) { select(n); }, onHover: function (n) { /* 3D 側ホバーはツリー連動なし */ } });
     Theme.onChange(function () { Viewer3D.applyTheme(); });
-    Tree.init({ onSelect: function (n) { select(n); }, onHover: function (n) { Viewer3D.setHover(n); } });
+    Tree.init({ onSelect: function (n) { select(n); }, onHover: function (n) { Viewer3D.setHover(n); }, onClose: function (d) { removeDevice(d); } });
     CrossRef.init(); Library.init(); Store.init(); Measure.init();
     bindUI();
     // 起動直後の空き時間に WASM を展開しておく (初回変換を速くする)

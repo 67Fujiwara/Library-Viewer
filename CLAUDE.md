@@ -36,6 +36,8 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
 - Fusion スクリプト (`fusion/LibraryExport/`) とビューアで、フォルダ階層プリセット・`meta.json` のスキーマ・**ネーミングルールの解析規則**を別々に変えない。必ず両方を同時に直す
   （`src/js/03b-naming.js` の `parse`/`format` と `LibraryExport.py` の `naming_parse`/`naming_format` は同じ規則）
 - 格納するファイル群の組み立ては `Store.buildPackage()` に集約する。格納ダイアログと受信箱で別々に作らない
+- **共有フォルダを消す操作は必ず `showConfirm()` で確認を取る。** 何が消えるか（パス・ファイル一覧・格納者）を
+  本文に出す。ツリーの × は表示から外すだけでファイルは消さない（この 2 つを混同しない）
 
 ## 間違えやすい点
 
@@ -49,6 +51,8 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
 - 変換前に 2 フレーム待たないとオーバーレイが描画されない（`nextFrames(2)`）
 - `EdgesGeometry` は重い。初回 ON のときだけ生成する
 - File System Access API のディレクトリハンドルは IndexedDB に保存できるが、次回は `requestPermission` にユーザー操作が要る
+- 中身のあるディレクトリは `removeEntry(name, { recursive: true })` でないと消せない。
+  削除後は空になった親フォルダも `models/` の 1 つ下まで遡って片づける（空フォルダを残さない）
 - ネーミングルールで区切り文字を含んでよいのは **装置名だけ**（左右の項目を先に確定し、残りを装置名にする）
 - `inbox/` は装置フォルダの走査対象から外す（`SKIP_DIRS`）。取り込めたファイルだけ `removeEntry` で消す
 - Playwright の `setInputFiles` は **非 ASCII のファイルパスを渡せない**。日本語ファイル名のテストは `{name, buffer}` 形式で渡す

@@ -87,6 +87,26 @@ function sanitizeSegment(s) { return String(s || '').trim().replace(/[\\/:*?"<>|
 function baseName(filename) { return String(filename).replace(/\.(step|stp|glb)$/i, ''); }
 function debounce(fn, ms) { var t; return function () { var a = arguments, s = this; clearTimeout(t); t = setTimeout(function () { fn.apply(s, a); }, ms); }; }
 
+/* 取り返しのつかない操作の確認。true / false を返す */
+function showConfirm(title, body, okLabel) {
+  return new Promise(function (resolve) {
+    var d = $('#confirm-dialog'), ok = $('#confirm-ok'), cancel = $('#confirm-cancel');
+    $('#confirm-title').textContent = title;
+    $('#confirm-body').textContent = body;
+    ok.textContent = okLabel || '削除する';
+    function done(v) {
+      ok.removeEventListener('click', onOk); cancel.removeEventListener('click', onCancel); d.removeEventListener('close', onClose);
+      if (d.open) d.close();
+      resolve(v);
+    }
+    function onOk() { done(true); }
+    function onCancel() { done(false); }
+    function onClose() { done(false); }
+    ok.addEventListener('click', onOk); cancel.addEventListener('click', onCancel); d.addEventListener('close', onClose);
+    d.showModal();
+  });
+}
+
 function showMessage(title, body) {
   $('#msg-title').textContent = title; $('#msg-body').textContent = body;
   var d = $('#msg-dialog'); if (!d.open) d.showModal();

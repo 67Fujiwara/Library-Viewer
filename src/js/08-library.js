@@ -249,6 +249,11 @@ var Library = (function () {
       el('button.btn.small.secondary', { type: 'button', text: '追加', title: '今の表示に追加して読み込む（横断比較）', onclick: function () { openEntry(e, true); } })
     ]);
     if (m.source && m.source.fusionWebURL) acts.appendChild(el('a', { href: m.source.fusionWebURL, target: '_blank', rel: 'noopener', text: 'Fusion で開く', title: 'Autodesk Fusion のデータパネルで開きます（ブラウザで外部サイトへ移動）' }));
+    acts.appendChild(el('span.spacer'));
+    acts.appendChild(el('button.btn.small.ghost-danger', {
+      type: 'button', title: 'ライブラリから削除します（共有フォルダから消えます）',
+      onclick: function () { deleteEntry(e); }
+    }, [svgIcon('M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13h10l1-13M10 11v6M14 11v6'), '削除']));
     return el('div.lib-card', {}, [
       el('div.t', {}, [el('span', { text: m.deviceName || e.rel[e.rel.length - 1] }), el('span.code', { text: m.projectCode || '' })]),
       el('div.m', {}, [
@@ -293,6 +298,50 @@ var Library = (function () {
     if (e.files.some(function (f) { return f.glb && f.glb.indexOf('.glb') > 0; })) { renderList(); }
   }
 
+  /* ---- 削除: 装置フォルダごと消し、空になった親フォルダも掃除する ---- */
+  async function dirAt(segments) {
+    var d = handle;
+    for (var i = 0; i < segments.length; i++) d = await d.getDirectoryHandle(segments[i]);
+    return d;
+  }
+  async function isEmpty(dir) {
+    for await (var entry of dir.entries()) { return false; }
+    return true;
+  }
+  async function deleteEntry(e) {
+    if (!handle || !e.rel.length) { showMessage('削除できません', 'ライブラリの直下にあるため削除できません。'); return; }
+    var fileList = [];
+    e.files.forEach(function (f) { if (f.glb) fileList.push(f.glb); if (f.step) fileList.push(f.step); });
+    fileList.push('meta.json', 'index.json');
+    var m = e.meta;
+    var body = [
+      (m.deviceName || '') + '  ' + (m.projectCode || ''),
+      '格納者: ' + (m.department || '') + ' / ' + (m.owner || '') + '   ' + fmtDate(m.savedAt),
+      '',
+      handle.name + '/' + e.rel.join('/') + '/',
+      fileList.map(function (f) { return '  ' + f; }).join('\n'),
+      '',
+      'このフォルダを共有フォルダから削除します。ライブラリを見ている全員から見えなくなります。'
+    ].join('\n');
+    if (!await showConfirm('ライブラリから削除しますか？', body)) return;
+    try {
+      var parent = await dirAt(e.rel.slice(0, -1));
+      await parent.removeEntry(e.rel[e.rel.length - 1], { recursive: true });
+      // 空になった親を models/ の 1 つ下まで遡って削除する
+      for (var d = e.rel.length - 2; d >= 1; d--) {
+        var up = await dirAt(e.rel.slice(0, d));
+        var dir = await up.getDirectoryHandle(e.rel[d]);
+        if (!await isEmpty(dir)) break;
+        await up.removeEntry(e.rel[d]);
+      }
+      showMessage('削除しました', e.rel.join('/') + '/');
+    } catch (err) {
+      showMessage('削除に失敗しました', String(err && err.message || err));
+      return;
+    }
+    await scan();
+  }
+
   /* Store から呼ばれる: パス配下にファイル群を書き込む */
   async function writeFiles(segments, files) {
     var dir = await ensureDir(segments);
@@ -318,6 +367,6 @@ var Library = (function () {
   return {
     init: init, supported: supported, open: open, scan: scan, writeFiles: writeFiles, ensureConfig: ensureConfig, saveMembers: saveMembers,
     connected: function () { return !!handle; }, name: function () { return handle ? handle.name : ''; }, processInbox: processInbox,
-    entries: function () { return entries; }, config: function () { return config; }, members: function () { return members; }
+    entries: function () { return entries; }, config: function () { return config; }, members: function () { return members; }, deleteEntry: deleteEntry
   };
 })();

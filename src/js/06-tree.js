@@ -19,6 +19,7 @@ var Tree = (function () {
       var row = b.closest('.tree-row'); var n = row && nodesById[row.dataset.id]; if (!n) return;
       if (b.classList.contains('twisty')) { n.collapsed = !n.collapsed; row.classList.toggle('collapsed', n.collapsed); applyRowVisibility(); }
       else if (b.classList.contains('solo')) { toggleSolo(n); }
+      else if (b.classList.contains('close')) { callbacks.onClose(n.device); }
       else if (b.classList.contains('name')) { callbacks.onSelect(n); }
     });
     container.addEventListener('mouseover', function (e) {
@@ -81,7 +82,11 @@ var Tree = (function () {
     var cnt = n.children.length ? el('span.cnt', { text: String(n.children.length) }) : null;
     var xb = el('span.xbadge', { hidden: true });
     var solo = el('button.solo.btn.small.secondary', { type: 'button', text: 'ソロ', title: 'この部品だけ表示 / もう一度で全部戻す' });
-    [tw, cb, nameBtn, cnt, xb, solo].forEach(function (c) { if (c) row.appendChild(c); });
+    // 装置の行だけ「閉じる」を出す (表示から外すだけで、ライブラリのファイルは消さない)
+    var close = n.depth === 0
+      ? el('button.close.btn.small', { type: 'button', title: 'この装置を閉じる（表示から外すだけで、ファイルは消えません）' }, [svgIcon('M6 6l12 12M18 6L6 18')])
+      : null;
+    [tw, cb, nameBtn, cnt, xb, solo, close].forEach(function (c) { if (c) row.appendChild(c); });
     parentEl.appendChild(row);
     rows[n.id] = row; n.row = row; n.cb = cb; n.xbadge = xb;
     n.children.forEach(function (c) { renderNode(c, parentEl); });

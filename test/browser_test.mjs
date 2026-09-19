@@ -117,6 +117,26 @@ await page.click('#btn-remesh');
 await page.waitForSelector('#overlay', { state: 'hidden', timeout: 60000 });
 check((await page.$$('.tree-row')).length === 10, 'tree rebuilt after remesh');
 
+// ツリーの装置行「閉じる」でその装置だけ表示から外す
+check((await page.$$('.tree-row.device')).length === 2, '2 devices loaded');
+await page.locator('.tree-row.device', { hasText: 'DEVICE_A' }).locator('button.close').click();
+await page.waitForTimeout(300);
+const left = await page.$$eval('.tree-row.device .name', r => r.map(x => x.textContent));
+check(left.length === 1 && left[0] === 'DEVICE_B', 'closing DEVICE_A leaves only DEVICE_B: ' + left);
+check((await page.textContent('#tree-counter')).includes('3 / 3'), 'counter reflects the remaining device');
+check(await page.evaluate(() => App.devices().length) === 1, 'App state has one device');
+check((await page.textContent('#sel-info')).includes('DEVICE_B'), 'selection kept: it belongs to the device still open');
+await page.screenshot({ path: outDir + '/shot-19-closed.png' });
+
+// 選択していた部品の装置を閉じたら選択は解除される
+await page.locator('.tree-row.device', { hasText: 'DEVICE_B' }).locator('button.close').click();
+await page.waitForTimeout(300);
+check((await page.textContent('#sel-info')).includes('未選択'), 'selection cleared when its own device is closed');
+check((await page.$$('.tree-row')).length === 0, 'tree is empty after closing every device');
+check(!(await page.$eval('#tree-empty', e => e.hidden)), 'empty hint shown again');
+check(await page.$eval('#btn-store', e => e.disabled), '格納する disabled with nothing loaded');
+check(!(await page.$eval('#drop-hint', e => e.hidden)), 'drop hint shown again');
+
 // ネーミングルール一致のファイル → 格納ダイアログが自動入力される
 await page.evaluate(() => App.clearDevices());
 // 日本語ファイル名は Playwright がパスで渡せないのでバッファで渡す (ブラウザ側は実運用と同じ)
