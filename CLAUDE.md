@@ -56,6 +56,10 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
 - 計測の線・点は `Viewer3D.overlay()` に入れ、`depthTest: false` で常に手前に描く。
   `LineDashedMaterial` は `computeLineDistances()` を呼ばないと破線にならない
 - テストで角をクリックするときはシルエット際でレイが外れる。面の内側へ数 px 寄せる（`clickWorld` の inset）
+- **リサイズ後は同じフレーム内で描き切る**（`Viewer3D.resize()` → `renderNow()`）。
+  `setSize` は描画バッファを空にするので、`requestRender()` で次の rAF に回すとそのフレームが
+  黒く合成される。サイドバーの開閉アニメ中はこれが毎フレーム起きて画面が暗く見えた
+  （`test/panels_test.mjs` が `readPixels` で黒フレーム 0 を確認している）
 
 ## レイアウト（構成は変更しない）
 

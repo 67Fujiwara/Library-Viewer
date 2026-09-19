@@ -43,20 +43,28 @@ var Viewer3D = (function () {
     loop();
   }
 
+  var lastW = 0, lastH = 0;
   function resize() {
     var w = viewport.clientWidth || 1, h = viewport.clientHeight || 1;
+    if (w === lastW && h === lastH) return;
+    lastW = w; lastH = h;
     renderer.setSize(w, h, false);
     camera.aspect = w / h; camera.updateProjectionMatrix();
-    requestRender();
+    // setSize で描画バッファが空になる。次の rAF まで待つとそのフレームが黒く合成され、
+    // サイドバーの開閉アニメ中はフレームごとに黒が挟まって画面が暗く見える。ここで描き切る。
+    renderNow();
   }
   function requestRender() { needsRender = true; }
+  function renderNow() {
+    needsRender = false;
+    renderer.render(scene, camera);
+    for (var i = 0; i < renderHooks.length; i++) renderHooks[i]();
+  }
   function loop() {
     if (!running) { running = true; }
     requestAnimationFrame(loop);
     if (!needsRender) return;
-    needsRender = false;
-    renderer.render(scene, camera);
-    for (var i = 0; i < renderHooks.length; i++) renderHooks[i]();
+    renderNow();
   }
 
   /* ---- テーマ: CSS 変数を読んで 3D 側の色をすべて更新 ---- */

@@ -44,6 +44,39 @@ check(Math.abs(w.canvas - w.view) < 2, 'canvas resized with the viewport');
 check(await page.evaluate(() => document.querySelector('#gl').width > 0), 'renderer still has a drawing buffer');
 await page.screenshot({ path: outDir + '/shot-12-both-collapsed.png' });
 
+// 開閉アニメ中に 3D が黒くちらつかないこと。
+// パネル幅が変わるたび setSize で描画バッファが空になるので、同じフレーム内で描き直していないと
+// そのフレームが黒く合成される (アプリより後に登録した ResizeObserver はアプリの処理の直後に走る)。
+await page.click('label[for="theme-light"]');
+await page.waitForTimeout(300);
+const flicker = await page.evaluate(() => new Promise(res => {
+  const canvas = document.querySelector('#gl');
+  const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+  const samples = [];
+  let prevW = canvas.width, prevH = canvas.height;
+  const ro = new ResizeObserver(() => {
+    const resized = canvas.width !== prevW || canvas.height !== prevH;
+    prevW = canvas.width; prevH = canvas.height;
+    if (!resized) return;
+    const px = new Uint8Array(4);
+    gl.readPixels(5, 5, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    samples.push([px[0], px[1], px[2]]);
+  });
+  ro.observe(document.querySelector('#viewport'));
+  document.querySelector('#btn-toggle-left').click();   // 開く
+  setTimeout(() => {
+    ro.disconnect();
+    res({ resizes: samples.length, black: samples.filter(s => s[0] < 20 && s[1] < 20 && s[2] < 20).length, first: samples[0] });
+  }, 700);
+}));
+console.log('   ', JSON.stringify(flicker));
+check(flicker.resizes >= 3, 'the toggle animation resized the canvas ' + flicker.resizes + ' times');
+check(flicker.black === 0, 'no black frame during the animation (' + flicker.black + ' / ' + flicker.resizes + ')');
+await page.waitForTimeout(300);
+check((await widths()).left > 300, 'left panel open after the flicker check');
+await page.click('#btn-toggle-left');
+await page.waitForTimeout(300);
+
 // 端のハンドルで開く
 await page.click('#edge-left');
 await page.waitForTimeout(400);
