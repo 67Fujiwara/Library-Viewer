@@ -30,13 +30,17 @@ STEP のファイル名を **`案件コード_装置名_対象ワーク_部署_�
 
 ## 開発
 
+**DirectCloud は必要ありません。** ビューアはローカルフォルダを開いているだけなので、
+手元にサンプルのライブラリを作れば全機能をそのまま確認できます。
+
 ```
 npm install
 npm run build            # → dist/library-viewer.html (約 4.7 MB)
-npm run test:step        # STEP 生成と occt 読み込み確認
-npm run test:glb         # GLB / ZIP の検証
-node test/browser_test.mjs
-node test/library_test.mjs
+npm run sample           # → sample-library/ (装置 3 件・受信箱・名簿つき)
+npm test                 # STEP / GLB / ZIP / ブラウザ通しテスト
 ```
+
+`sample-library/library-viewer.html` をダブルクリックし、「ライブラリを開く」で `sample-library` を選べば動きます。
+手順と確認項目は [docs/自宅で開発する.md](docs/自宅で開発する.md)。
 
 構成・制約は [CLAUDE.md](CLAUDE.md)、仕様は [docs/開発プロンプト.md](docs/開発プロンプト.md)。

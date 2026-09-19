@@ -5,11 +5,10 @@
 最小限の B-rep 生成器。外部ライブラリ不要。
 
   python3 tools/gen_test_step.py <出力ディレクトリ>
+      box.step / assembly.step / assembly_b.step を作る (テスト用)
 
-生成物:
-  box.step        直方体 1 個 (MANIFOLD_SOLID_BREP)
-  assembly.step   3 部品 + サブアセンブリの階層 (NEXT_ASSEMBLY_USAGE_OCCURRENCE)
-  assembly_b.step 同じ構成で寸法違い (横断一覧の検証用)
+  python3 tools/gen_test_step.py --assembly <出力パス> <ルート名> [倍率]
+      指定した名前・寸法のアセンブリ STEP を 1 つ作る (サンプルライブラリ生成用)
 """
 import sys, os, datetime
 
@@ -201,7 +200,15 @@ def gen_assembly(scale=1.0, fname="assembly.step", root="DEVICE_A"):
     return w.dump(fname)
 
 
-if __name__ == "__main__":
+def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--assembly":
+        path, root = sys.argv[2], sys.argv[3]
+        scale = float(sys.argv[4]) if len(sys.argv) > 4 else 1.0
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        with open(path, "w") as f:
+            f.write(gen_assembly(scale=scale, fname=os.path.basename(path), root=root))
+        print("wrote", path)
+        return
     out = sys.argv[1] if len(sys.argv) > 1 else "test/out"
     os.makedirs(out, exist_ok=True)
     with open(os.path.join(out, "box.step"), "w") as f:
@@ -211,3 +218,7 @@ if __name__ == "__main__":
     with open(os.path.join(out, "assembly_b.step"), "w") as f:
         f.write(gen_assembly(scale=1.4, fname="assembly_b.step", root="DEVICE_B"))
     print("wrote", os.listdir(out))
+
+
+if __name__ == "__main__":
+    main()

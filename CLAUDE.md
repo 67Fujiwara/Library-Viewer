@@ -6,7 +6,10 @@ CAD は Autodesk Fusion。**管理者レス**（フォルダに置いたもの�
 成果物は `dist/library-viewer.html` **1 ファイルのみ**（ライブラリ・WASM 込み、5MB 以下）。
 これをライブラリ（DirectCloud 同期フォルダ）のルートに置いて配布する。
 
-詳細仕様: `docs/開発プロンプト.md` / 運用設計: `docs/ライブラリ運用.md` / UI 基準: `DESIGN.md`
+詳細仕様: `docs/開発プロンプト.md` / 運用設計: `docs/ライブラリ運用.md` / 開発環境: `docs/自宅で開発する.md` / UI 基準: `DESIGN.md`
+
+**開発に DirectCloud は要らない。** ビューアはローカルフォルダを File System Access API で開いているだけで、
+DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ形のライブラリを手元に作れる。
 
 ## 絶対条件（設計の前提。ここを崩す提案はしない）
 
@@ -71,22 +74,29 @@ src/js/08-library.js     ライブラリ (フォルダ走査 / 受信箱 inbox /
 src/js/09-store.js       格納ダイアログ (FS Access API または ZIP)
 src/js/10-app.js         配線
 fusion/LibraryExport/    Fusion 360 スクリプト (STEP + meta.json をライブラリに直接格納)
-tools/gen_test_step.py   AP214 STEP テストデータ生成
-test/                    node / Playwright テスト
+tools/gen_test_step.py   AP214 STEP テストデータ生成 (--assembly で名前・寸法を指定)
+tools/make_sample_library.mjs  サンプルライブラリ生成 (models / inbox / 名簿まで一式)
+test/read_step.mjs       occt が階層を返すか
+test/test_glb_zip.mjs    GLB を gltf-transform で / ZIP を unzip で
+test/browser_test.mjs    file:// 通しテスト (読み込み→ツリー→横断→格納→再変換→ルール事前入力)
+test/library_test.mjs    FS Access API を偽ハンドルにして 走査→受信箱→格納→ルール→名簿
+test/sample_library_test.mjs  生成したサンプルライブラリをビューアが読めるか
+test/env_check.mjs       file:// / localhost で使える API の確認
 ```
 
 ## 検証のしかた
 
 ```
-npm install                       # occt-import-js, three@0.128, @gltf-transform/core, playwright
-npm run test:step                 # STEP 生成 → occt で階層が取れること
-npm run test:glb                  # GLB を gltf-transform で / ZIP を unzip で検証
-npm run build                     # dist/library-viewer.html (サイズを報告)
-node test/browser_test.mjs        # file:// で開いて 読み込み→ツリー→横断→格納(ZIP)→再変換
-node test/library_test.mjs        # FS Access API を偽ハンドルで置き換え、走査→受信箱の取り込み→自動変換→直接格納→ルール→名簿
+npm install          # occt-import-js, three@0.128, @gltf-transform/core, playwright
+npm run build        # → dist/library-viewer.html (サイズを報告)
+npm run sample       # → sample-library/ (手で確認するとき。--clean で作り直し)
+npm test             # step → glb/zip → ブラウザ 3 本を通しで
+npm run test:env     # file:// と localhost で使える API の確認
 ```
 
 Playwright は `/opt/pw-browsers/chromium` の Chromium を `executablePath` で使う（`playwright install` はしない）。
+`file://` は Chrome / Edge では secure context で、`showDirectoryPicker` も使える（`test:env` で確認済み）。
+開発のために HTTP サーバーを立てる必要はない。
 
 ## 作業の進め方
 

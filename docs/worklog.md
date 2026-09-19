@@ -35,3 +35,18 @@
 - テスト: 受信箱 3 件 (一致 2 / 不一致 1) → 取り込み → 階層・meta.json・members.json・受信箱の削除まで確認。
   ルールダイアログの検証と試し打ちも確認
   - 注意: Playwright の `setInputFiles` は非 ASCII のパスを渡せない。日本語ファイル名は `{name, buffer}` で渡す
+
+## 2026-09-19 自宅（DirectCloud 無し）で開発できるようにする
+
+- **前提の確認**: `file://` は Chrome / Edge で secure context。`showDirectoryPicker` / `showSaveFilePicker` /
+  `DecompressionStream` / `indexedDB` / `localStorage` すべて使える (`npm run test:env`)。
+  → 開発用に HTTP サーバーを立てる必要はない。DirectCloud かどうかもビューアには関係ない (ただのフォルダ)
+- `tools/make_sample_library.mjs`: 実運用と同じ形の `sample-library/` を生成
+  - 変換済み 2 件 (ユニット名を共有 → 横断比較が試せる) + 未変換 1 件 (初回変換の確認)
+  - `inbox/` にルール一致 2 件 + 不一致 1 件、`sample-step/` にドロップ用 2 件、`library.json` / `members.json`
+  - glb 生成には `src/js/02-glb.js` をそのまま require して使う (本番と同じコード)
+- `tools/gen_test_step.py --assembly <path> <ルート名> [倍率]` を追加
+- `test/sample_library_test.mjs`: 生成したサンプルをディスクから読んで偽ハンドルに流し込み、
+  一覧 3 件・未変換フラグ・Fusion リンク・受信箱の判定・未変換エントリの変換と glb 書き戻し・横断一致 を確認
+- `docs/自宅で開発する.md`: セットアップ、確認項目の表、会社でしか確認できないこと (Fusion 実機 / 同期の挙動 / 実物の STEP)
+- npm scripts を整理: `build` / `sample` / `test` / `test:env`
