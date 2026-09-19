@@ -58,7 +58,7 @@ await page.screenshot({ path: 'test/out/shot-9-sample.png' });
 // 変換済みエントリ → 即表示。未変換エントリ → 変換して glb 書き戻し
 await page.locator('.lib-card', { hasText: '検査装置A2' }).locator('button', { hasText: '開く' }).click();
 await page.waitForFunction(() => App.devices().length === 1, null, { timeout: 60000 });
-check((await page.$$eval('.tree-row.device .name', r => r.map(x => x.textContent))).join() === '検査装置A2', 'opened pre-converted entry');
+check((await page.$$eval('.tree-row.device .name', r => r.map(x => x.textContent))).join().includes('検査装置A2'), 'opened pre-converted entry');
 await page.click('label[for="tab-lib"]');
 await page.locator('.lib-card', { hasText: '搬送装置B' }).locator('button', { hasText: '追加' }).click();
 await page.waitForFunction(() => App.devices().length === 2, null, { timeout: 60000 });

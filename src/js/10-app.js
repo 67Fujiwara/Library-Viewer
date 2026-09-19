@@ -10,7 +10,7 @@ var App = (function () {
     Viewer3D.init({ onSelect: function (n) { select(n); }, onHover: function (n) { /* 3D 側ホバーはツリー連動なし */ } });
     Theme.onChange(function () { Viewer3D.applyTheme(); });
     Tree.init({ onSelect: function (n) { select(n); }, onHover: function (n) { Viewer3D.setHover(n); }, onClose: function (d) { removeDevice(d); } });
-    CrossRef.init(); Library.init(); Store.init(); Measure.init();
+    CrossRef.init(); TreeEdit.init(); Library.init(); Store.init(); Measure.init();
     bindUI();
     // 起動直後の空き時間に WASM を展開しておく (初回変換を速くする)
     setTimeout(function () { Occt.load().catch(function (e) { showMessage('初期化エラー', e.message); }); }, 400);
@@ -21,10 +21,12 @@ var App = (function () {
     $('#file-input').addEventListener('change', function (e) { loadFiles(Array.prototype.slice.call(e.target.files)); e.target.value = ''; });
     $('#dir-input').addEventListener('change', function (e) { loadFromDirInput(Array.prototype.slice.call(e.target.files)); e.target.value = ''; });
     var dragDepth = 0;
-    window.addEventListener('dragenter', function (e) { e.preventDefault(); dragDepth++; document.body.classList.add('dragging'); });
-    window.addEventListener('dragover', function (e) { e.preventDefault(); });
-    window.addEventListener('dragleave', function (e) { e.preventDefault(); if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('dragging'); } });
+    function isInternalDrag(e) { return e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types, 'application/x-lv-node') >= 0; }
+    window.addEventListener('dragenter', function (e) { if (isInternalDrag(e)) return; e.preventDefault(); dragDepth++; document.body.classList.add('dragging'); });
+    window.addEventListener('dragover', function (e) { if (isInternalDrag(e)) return; e.preventDefault(); });
+    window.addEventListener('dragleave', function (e) { if (isInternalDrag(e)) return; e.preventDefault(); if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('dragging'); } });
     window.addEventListener('drop', function (e) {
+      if (isInternalDrag(e)) return;   // ツリー内での移動はここでは扱わない
       e.preventDefault(); dragDepth = 0; document.body.classList.remove('dragging');
       // items は同期のうちに取り出す (ハンドラを抜けると無効になる)
       var dirs = [], entries = [], items = e.dataTransfer.items;
@@ -175,7 +177,7 @@ var App = (function () {
       }
     }
     hideOverlay();
-    if (added) Viewer3D.fitAll();
+    if (added) { Tree.registerDeviceFolders(); Tree.rerender(); Viewer3D.fitAll(); }
     return added;
   }
 
@@ -232,10 +234,8 @@ var App = (function () {
 
   function addDevice(d) {
     d.id = 'd' + (++seq); d.precision = currentPrecision;
-    // フォルダから読んだものはファイル名で並べる (エクスプローラで見えている構成をそのまま写すため)
-    d.name = (d.source && d.source.kind === 'folder')
-      ? (baseName(d.fileName) || d.model.name)
-      : (d.model.name || baseName(d.fileName));
+    // 行の名前はファイル名。ユーザーが見て分かるのはこちらで、STEP 内部名はツールチップに出す
+    d.name = baseName(d.fileName) || d.model.name || '(名称なし)';
     d.naming = Naming.parse(d.fileName);   // ファイル名がルールに合えば案件情報を持たせる
     d.groupPath = d.groupPath || [];       // 元フォルダの相対パス (ツリーの階層になる)
     // 同名の装置が既にあればファイル名で区別

@@ -4,6 +4,8 @@ var Tree = (function () {
   var container, counterEl, emptyEl, searchEl;
   var devices = [], nodesById = {}, rows = {}, soloNode = null, selectedNode = null, filter = '';
   var groups = [], groupIds = [], collapsedGroups = {};   // フォルダ階層 (元のフォルダ構成をそのまま出す)
+  var folderPaths = {};      // ユーザーが作ったフォルダ。中身が空でも残す ("装置A/ユニット1" → true)
+  var focusedId = null;      // 最後にクリックした行 (新規フォルダの作成先)。再描画で作り直されるので id で持つ
   var callbacks = {};
 
   function init(opts) {
@@ -15,6 +17,10 @@ var Tree = (function () {
       var n = nodesById[cb.dataset.id]; if (!n) return;
       setVisible(n, cb.checked); soloNode = null; refresh();
     });
+    container.addEventListener('mousedown', function (e) {
+      var row = e.target.closest('.tree-row');
+      setFocused(row ? nodesById[row.dataset.id] : null);
+    });
     container.addEventListener('click', function (e) {
       var b = e.target.closest('button'); if (!b) return;
       var row = b.closest('.tree-row'); var n = row && nodesById[row.dataset.id]; if (!n) return;
@@ -24,7 +30,10 @@ var Tree = (function () {
         row.classList.toggle('collapsed', n.collapsed); applyRowVisibility();
       }
       else if (b.classList.contains('solo')) { toggleSolo(n); }
-      else if (b.classList.contains('close')) { callbacks.onClose(n.isGroup ? devicesUnder(n) : n.device); }
+      else if (b.classList.contains('close')) {
+        if (n.isGroup) { var list = devicesUnder(n); removeFolder(n); callbacks.onClose(list); }   // フォルダごと片づける
+        else callbacks.onClose(n.device);
+      }
       else if (b.classList.contains('name')) { callbacks.onSelect(n); }   // フォルダは上の分岐で開閉になる
     });
     container.addEventListener('mouseover', function (e) {
@@ -93,6 +102,7 @@ var Tree = (function () {
       if (parent) parent.children.push(g); else roots.push(g);
       return g;
     }
+    Object.keys(folderPaths).forEach(function (key) { groupFor(key.split('/')); });   // 空のフォルダも残す
     devices.forEach(function (d) {
       var gp = d.groupPath || [];
       d.depthOffset = gp.length;
@@ -100,6 +110,15 @@ var Tree = (function () {
       d.root.parent = g;
       if (g) g.children.push(d.root); else roots.push(d.root);
     });
+    // VS Code の並び: フォルダが先、その中で名前順
+    function order(list) {
+      list.sort(function (a, b) {
+        if (!!a.isGroup !== !!b.isGroup) return a.isGroup ? -1 : 1;
+        return String(a.name).localeCompare(String(b.name), 'ja', { numeric: true, sensitivity: 'base' });
+      });
+      list.forEach(function (n) { if (n.isGroup) order(n.children); });
+    }
+    order(roots);
     // 子から親の順に leaves を集計する (groups は親→子の順に作られている)
     for (var i = groups.length - 1; i >= 0; i--) {
       var ls = [];
@@ -114,7 +133,8 @@ var Tree = (function () {
     devices = devs;
     container.textContent = '';
     buildForest().forEach(function (n) { renderAny(n, container); });
-    emptyEl.hidden = devices.length > 0;
+    emptyEl.hidden = devices.length > 0 || Object.keys(folderPaths).length > 0;
+    applyFocus();
     refresh();
   }
   function renderAny(n, parentEl) {
@@ -123,7 +143,7 @@ var Tree = (function () {
     n.children.forEach(function (c) { renderAny(c, parentEl); });
   }
   function renderGroupRow(n, parentEl) {
-    var row = el('div.tree-row.group', { role: 'treeitem', dataset: { id: n.id } });
+    var row = el('div.tree-row.group', { role: 'treeitem', draggable: 'true', dataset: { id: n.id } });
     row.style.paddingLeft = (6 + n.depth * 16) + 'px';
     if (n.collapsed) row.classList.add('collapsed');
     var tw = el('button.twisty', { type: 'button', title: '開閉' }, [svgIcon(ICON.chevron)]);
@@ -132,13 +152,13 @@ var Tree = (function () {
     var nameBtn = el('button.name', { type: 'button', title: n.path.join(' / ') }, [svgIcon(ICON.folder), el('label', { text: n.name })]);
     var cnt = el('span.cnt', { text: devicesUnder(n).length + ' 件' });
     var solo = el('button.solo.btn.small.secondary', { type: 'button', text: 'ソロ', title: 'このフォルダだけ表示 / もう一度で全部戻す' });
-    var close = el('button.close.btn.small', { type: 'button', title: 'このフォルダの装置をすべて閉じる（ファイルは消えません）' }, [svgIcon('M6 6l12 12M18 6L6 18')]);
+    var close = el('button.close.btn.small', { type: 'button', title: 'このフォルダを閉じる（中の装置も表示から外します。ファイルは消えません）' }, [svgIcon('M6 6l12 12M18 6L6 18')]);
     [tw, cb, nameBtn, cnt, solo, close].forEach(function (c) { row.appendChild(c); });
     parentEl.appendChild(row);
     rows[n.id] = row; n.row = row; n.cb = cb; n.xbadge = null;
   }
   function renderNode(n, parentEl) {
-    var row = el('div.tree-row', { role: 'treeitem', dataset: { id: n.id } });
+    var row = el('div.tree-row', { role: 'treeitem', draggable: n.depth === 0 ? 'true' : 'false', dataset: { id: n.id } });
     row.style.paddingLeft = (6 + (n.depth + ((n.device && n.device.depthOffset) || 0)) * 16) + 'px';
     if (n.depth === 0) row.classList.add('device');
     if (n.collapsed) row.classList.add('collapsed');
@@ -229,11 +249,144 @@ var Tree = (function () {
       n.xbadge.hidden = !c; n.xbadge.textContent = ''; if (c) n.xbadge.appendChild(el('span.badge', { text: '+' + c, title: '他の装置 ' + c + ' 件にも同名ユニット' }));
     }); });
   }
+  function setFocused(n) {
+    focusedId = n ? n.id : null;
+    $$('.tree-row.focused', container).forEach(function (r) { r.classList.remove('focused'); });
+    if (n && n.row) n.row.classList.add('focused');
+  }
+  function applyFocus() { var n = focusedId && nodesById[focusedId]; if (n && n.row) n.row.classList.add('focused'); else focusedId = focusedId && nodesById[focusedId] ? focusedId : null; }
+
+  /* ---- フォルダの編集 (VS Code 風の操作は 06b-treeedit.js が呼ぶ) ---- */
+  function folderExists(pathArr) { return folderPaths[pathArr.join('/')] === true; }
+  function childNames(pathArr) {
+    var prefix = pathArr.length ? pathArr.join('/') + '/' : '', out = {};
+    Object.keys(folderPaths).forEach(function (k) {
+      if (k.indexOf(prefix) !== 0) return;
+      var rest = k.slice(prefix.length);
+      if (rest && rest.indexOf('/') < 0) out[rest] = 'folder';
+    });
+    devices.forEach(function (d) { if ((d.groupPath || []).join('/') === pathArr.join('/')) out[d.name] = 'device'; });
+    return out;
+  }
+  function uniqueName(pathArr, base) {
+    var taken = childNames(pathArr), name = base, i = 2;
+    while (taken[name]) name = base + ' ' + (i++);
+    return name;
+  }
+  function addFolder(parentPath, name) {
+    var p = (parentPath || []).slice();
+    var n = uniqueName(p, name || '新しいフォルダー');
+    var full = p.concat([n]);
+    folderPaths[full.join('/')] = true;
+    collapsedGroups[full.join('/')] = false;
+    for (var i = 1; i < full.length; i++) {
+      var anc = full.slice(0, i).join('/');
+      folderPaths[anc] = true;
+      collapsedGroups[anc] = false;   // 畳んだフォルダの中に作ったら開いて見せる
+    }
+    render(devices);
+    return full;
+  }
+  /* パスの付け替え。フォルダの登録と装置の groupPath をまとめて書き換える。
+   * フォルダの id はパスから作るので、選択中の行も付け替える */
+  function repath(oldPath, newPath) {
+    var oldKey = oldPath.join('/'), newKey = newPath.join('/');
+    if (focusedId && focusedId.indexOf('g:') === 0) {
+      var fk = focusedId.slice(2);
+      if (fk === oldKey) focusedId = 'g:' + newKey;
+      else if (fk.indexOf(oldKey + '/') === 0) focusedId = 'g:' + newKey + fk.slice(oldKey.length);
+    }
+    var updated = {};
+    Object.keys(folderPaths).forEach(function (k) {
+      if (k === oldKey) updated[newKey] = true;
+      else if (k.indexOf(oldKey + '/') === 0) updated[newKey + k.slice(oldKey.length)] = true;
+      else updated[k] = true;
+    });
+    folderPaths = updated;
+    var col = {};
+    Object.keys(collapsedGroups).forEach(function (k) {
+      if (k === oldKey) col[newKey] = collapsedGroups[k];
+      else if (k.indexOf(oldKey + '/') === 0) col[newKey + k.slice(oldKey.length)] = collapsedGroups[k];
+      else col[k] = collapsedGroups[k];
+    });
+    collapsedGroups = col;
+    devices.forEach(function (d) {
+      var g = (d.groupPath || []).join('/');
+      if (g === oldKey) d.groupPath = newPath.slice();
+      else if (g.indexOf(oldKey + '/') === 0) d.groupPath = newPath.concat(g.slice(oldKey.length + 1).split('/'));
+    });
+  }
+  function renameNode(n, name) {
+    name = String(name || '').replace(/[\\/]/g, '_').trim();
+    if (!name || name === n.name) return false;
+    if (n.isGroup) {
+      var parent = n.path.slice(0, -1);
+      if (childNames(parent)[name]) return false;                 // 同じ階層に同名があるとき
+      repath(n.path, parent.concat([name]));
+    } else {
+      if (childNames(n.device.groupPath || [])[name]) return false;
+      n.device.name = name; n.name = name; n.key = CrossRef.normalize(name);
+    }
+    render(devices);
+    CrossRef.rebuild(devices);
+    return true;
+  }
+  /* 移動先フォルダへ入れる。targetPath = [] でルート */
+  function moveNode(n, targetPath) {
+    targetPath = (targetPath || []).slice();
+    if (n.isGroup) {
+      var oldKey = n.path.join('/'), tgt = targetPath.join('/');
+      if (tgt === oldKey || tgt.indexOf(oldKey + '/') === 0) return false;   // 自分の中へは入れない
+      if (n.path.slice(0, -1).join('/') === tgt) return false;               // すでにそこにある
+      repath(n.path, targetPath.concat([n.name]));
+    } else {
+      if ((n.device.groupPath || []).join('/') === targetPath.join('/')) return false;
+      n.device.groupPath = targetPath;
+    }
+    for (var i = 1; i <= targetPath.length; i++) folderPaths[targetPath.slice(0, i).join('/')] = true;
+    render(devices);
+    return true;
+  }
+  /* フォルダごと片づける (中の装置は呼び出し側が閉じる) */
+  function removeFolder(n) {
+    if (!n || !n.isGroup) return;
+    var key = n.path.join('/');
+    Object.keys(folderPaths).forEach(function (k) { if (k === key || k.indexOf(key + '/') === 0) delete folderPaths[k]; });
+    Object.keys(collapsedGroups).forEach(function (k) { if (k === key || k.indexOf(key + '/') === 0) delete collapsedGroups[k]; });
+    if (focusedId === n.id) focusedId = null;
+  }
+
+  /* フォルダを解除して中身を親へ移す */
+  function dissolveFolder(n) {
+    if (!n.isGroup) return false;
+    var parent = n.path.slice(0, -1), key = n.path.join('/');
+    n.children.slice().forEach(function (c) { moveNode(c, parent); });
+    delete folderPaths[key]; delete collapsedGroups[key];
+    if (focusedId === n.id) focusedId = parent.length ? 'g:' + parent.join('/') : null;   // 消えた行を選んだままにしない
+    render(devices);
+    return true;
+  }
+  /* 装置が使っているフォルダを登録しておく (フォルダ読み込みの直後に呼ぶ) */
+  function registerDeviceFolders() {
+    devices.forEach(function (d) {
+      var gp = d.groupPath || [];
+      for (var i = 1; i <= gp.length; i++) folderPaths[gp.slice(0, i).join('/')] = true;
+    });
+  }
+
   function removeDevice(device) {
     device.nodes.forEach(function (n) { delete nodesById[n.id]; delete rows[n.id]; });
     device.root.parent = null;
     if (soloNode && soloNode.device === device) soloNode = null;
     if (selectedNode && selectedNode.device === device) selectedNode = null;
   }
-  return { init: init, buildDevice: buildDevice, render: render, refresh: refresh, select: select, setBadges: setBadges, removeDevice: removeDevice, nodesById: function () { return nodesById; } };
+  return {
+    init: init, buildDevice: buildDevice, render: render, refresh: refresh, select: select, setBadges: setBadges,
+    removeDevice: removeDevice, nodesById: function () { return nodesById; },
+    addFolder: addFolder, renameNode: renameNode, moveNode: moveNode, dissolveFolder: dissolveFolder, removeFolder: removeFolder,
+    devicesUnder: devicesUnder, registerDeviceFolders: registerDeviceFolders,
+    focused: function () { return focusedId ? nodesById[focusedId] : null; }, setFocused: setFocused,
+    nodeById: function (id) { return nodesById[id]; },
+    rerender: function () { render(devices); }, container: function () { return container; }
+  };
 })();

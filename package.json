@@ -6,7 +6,7 @@
   "scripts": {
     "build": "python3 build.py",
     "sample": "node tools/make_sample_library.mjs",
-    "test": "npm run test:step && npm run test:glb && npm run test:browser && npm run test:folder && npm run test:library && npm run test:panels && npm run test:measure && npm run test:focus && npm run test:sample",
+    "test": "npm run test:step && npm run test:glb && npm run test:browser && npm run test:folder && npm run test:treeedit && npm run test:library && npm run test:panels && npm run test:measure && npm run test:focus && npm run test:sample",
     "test:step": "python3 tools/gen_test_step.py test/out && node test/read_step.mjs",
     "test:glb": "node test/test_glb_zip.mjs",
     "test:browser": "node test/browser_test.mjs",
@@ -16,7 +16,8 @@
     "test:panels": "node test/panels_test.mjs",
     "test:measure": "node test/measure_test.mjs",
     "test:focus": "node test/focus_test.mjs",
-    "test:folder": "node test/folder_test.mjs"
+    "test:folder": "node test/folder_test.mjs",
+    "test:treeedit": "node test/treeedit_test.mjs"
   },
   "dependencies": {
     "occt-import-js": "0.0.23",

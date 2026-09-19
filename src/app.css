@@ -187,6 +187,29 @@ body.left-collapsed #left, body.right-collapsed #right { border: 0; padding-left
 .tree-row .close svg { width: 11px; height: 11px; }
 .tree-row .solo.active { background: var(--surface-strong); }
 
+/* ==== ツリーの編集 (VS Code のエクスプローラに寄せる) ==== */
+.btn.icon-only { width: 28px; padding: 0; justify-content: center; }
+.tree-row.focused { background: var(--surface-strong); box-shadow: inset 0 0 0 1px var(--hairline); }
+.tree:focus-visible { outline: none; }
+.tree-row.dragging-row { opacity: 0.45; }
+.tree-row.drop-into { background: var(--primary-ring); box-shadow: inset 0 0 0 1px var(--primary); }
+.tree.drop-root { box-shadow: inset 0 0 0 1px var(--primary); border-radius: var(--r-sm); }
+.rename-input { flex: 1; min-width: 0; height: 22px; padding: 0 4px; font: inherit; font-size: 13px;
+  border: 1px solid var(--primary); border-radius: var(--r-xs); background: var(--canvas); color: var(--ink); }
+.rename-input:focus { outline: none; box-shadow: 0 0 0 2px var(--primary-ring); }
+
+.ctx-menu { position: fixed; z-index: 100; min-width: 220px; padding: 4px; border-radius: var(--r-md);
+  background: var(--canvas); border: 1px solid var(--hairline); box-shadow: 0 6px 24px rgba(20,20,19,0.18); }
+[data-theme="dark"] .ctx-menu { box-shadow: 0 6px 24px rgba(0,0,0,0.5); }
+.ctx-item { display: flex; align-items: center; gap: var(--sp-md); width: 100%; height: 26px; padding: 0 10px;
+  border: 0; border-radius: var(--r-xs); background: none; color: var(--ink); font: 400 13px/1 var(--font-sans); cursor: pointer; text-align: left; }
+.ctx-item span:first-child { flex: 1; }
+.ctx-item .hint { color: var(--muted-soft); font-family: var(--font-mono); font-size: 11px; }
+.ctx-item:hover { background: var(--primary); color: var(--on-primary); }
+.ctx-item:hover .hint { color: var(--on-primary); opacity: 0.8; }
+.ctx-item.danger:hover { background: var(--error); }
+.ctx-sep { height: 1px; margin: 4px 6px; background: var(--hairline); }
+
 /* ==== ライブラリ一覧 ==== */
 .lib-list { flex: 1; overflow: auto; padding: var(--sp-xs) var(--sp-sm) var(--sp-md); display: flex; flex-direction: column; gap: 4px; }
 .lib-group { margin-top: var(--sp-xs); }

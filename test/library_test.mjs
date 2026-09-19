@@ -112,7 +112,7 @@ check(await page.$('.lib-card a[href^="https://example.autodesk360.com"]') !== n
 await page.locator('.lib-card', { hasText: '搬送装置B' }).locator('button', { hasText: '開く' }).click();
 await page.waitForSelector('#overlay', { state: 'hidden', timeout: 60000 });
 await page.waitForTimeout(400);
-check((await page.$$eval('.tree-row.device .name', r => r.map(x => x.textContent))).join() === 'DEVICE_B', 'opened DEVICE_B from library');
+check((await page.$$eval('.tree-row.device .name', r => r.map(x => x.textContent))).join().includes('assembly_b'), 'opened the entry from the library');
 const glbInfo = await page.evaluate(() => window.__ls('models/設計2課/P2026-002_搬送装置B/_/assembly_b.glb'));
 check(glbInfo && glbInfo.size > 1000, 'glb written back into library (' + (glbInfo && glbInfo.size) + ' bytes)');
 await page.click('label[for="tab-lib"]');

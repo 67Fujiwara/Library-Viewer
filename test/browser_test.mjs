@@ -28,7 +28,7 @@ await page.waitForTimeout(500);
 const rows = await page.$$eval('.tree-row', rs => rs.map(r => r.querySelector('.name').textContent));
 console.log('  tree rows:', rows.join(' | '));
 check(rows.length === 10, 'tree has 10 rows (2 devices × 5 nodes)');
-check(rows.includes('DEVICE_A') && rows.includes('ARM_UNIT') && rows.includes('HEAD_UNIT'), 'hierarchy names present');
+check(rows.includes('assembly') && rows.includes('ARM_UNIT') && rows.includes('HEAD_UNIT'), 'device row uses the file name, inner hierarchy keeps the STEP names');
 check((await page.textContent('#tree-counter')).includes('6 / 6'), 'counter 6 / 6');
 await page.screenshot({ path: outDir + '/shot-1-loaded.png' });
 
@@ -38,7 +38,7 @@ await page.locator('.tree-row', { hasText: 'COLUMN' }).first().locator('input[ty
 await page.waitForTimeout(200);
 check((await page.textContent('#tree-counter')).includes('5 / 6'), 'counter 5 / 6 after hiding COLUMN');
 check(await armRow.locator('input[type=checkbox]').evaluate(c => c.indeterminate), 'ARM_UNIT checkbox indeterminate');
-check(await page.locator('.tree-row', { hasText: 'DEVICE_A' }).first().locator('input[type=checkbox]').evaluate(c => c.indeterminate), 'DEVICE_A indeterminate');
+check(await page.locator('.tree-row.device', { hasText: 'assembly' }).first().locator('input[type=checkbox]').evaluate(c => c.indeterminate), 'device row indeterminate');
 // 開閉
 await armRow.locator('.twisty').click(); await page.waitForTimeout(100);
 check(await page.locator('.tree-row', { hasText: 'COLUMN' }).first().isHidden(), 'collapse hides COLUMN row');
@@ -55,12 +55,12 @@ await page.waitForTimeout(200);
 check((await page.textContent('#sel-info')).includes('HEAD_UNIT'), 'footer shows selected HEAD_UNIT');
 const xrefCards = await page.$$('.xref-card');
 check(xrefCards.length === 1, 'xref panel lists 1 same-name unit in other device');
-check((await page.textContent('.xref-card .dev')) === 'DEVICE_B', 'xref card is DEVICE_B');
+check((await page.textContent('.xref-card .dev')) === 'assembly_b', 'xref card points at the other file');
 const badge = await page.locator('.tree-row', { hasText: 'HEAD_UNIT' }).first().locator('.badge').textContent();
 check(badge === '+1', 'tree badge +1');
 await page.keyboard.press('ArrowRight');
 await page.waitForTimeout(200);
-check((await page.textContent('#sel-info')).includes('DEVICE_B'), '→ key moved selection to DEVICE_B');
+check((await page.textContent('#sel-info')).includes('assembly_b'), '→ key moved selection to the other device');
 await page.screenshot({ path: outDir + '/shot-2-selected.png' });
 
 // 表示モード・エッジ・断面
@@ -119,17 +119,17 @@ check((await page.$$('.tree-row')).length === 10, 'tree rebuilt after remesh');
 
 // ツリーの装置行「閉じる」でその装置だけ表示から外す
 check((await page.$$('.tree-row.device')).length === 2, '2 devices loaded');
-await page.locator('.tree-row.device', { hasText: 'DEVICE_A' }).locator('button.close').click();
+await page.locator('.tree-row.device', { hasText: 'assembly' }).first().locator('button.close').click();
 await page.waitForTimeout(300);
 const left = await page.$$eval('.tree-row.device .name', r => r.map(x => x.textContent));
-check(left.length === 1 && left[0] === 'DEVICE_B', 'closing DEVICE_A leaves only DEVICE_B: ' + left);
+check(left.length === 1 && left[0] === 'assembly_b', 'closing the first device leaves only the other: ' + left);
 check((await page.textContent('#tree-counter')).includes('3 / 3'), 'counter reflects the remaining device');
 check(await page.evaluate(() => App.devices().length) === 1, 'App state has one device');
-check((await page.textContent('#sel-info')).includes('DEVICE_B'), 'selection kept: it belongs to the device still open');
+check((await page.textContent('#sel-info')).includes('assembly_b'), 'selection kept: it belongs to the device still open');
 await page.screenshot({ path: outDir + '/shot-19-closed.png' });
 
 // 選択していた部品の装置を閉じたら選択は解除される
-await page.locator('.tree-row.device', { hasText: 'DEVICE_B' }).locator('button.close').click();
+await page.locator('.tree-row.device', { hasText: 'assembly_b' }).first().locator('button.close').click();
 await page.waitForTimeout(300);
 check((await page.textContent('#sel-info')).includes('未選択'), 'selection cleared when its own device is closed');
 check((await page.$$('.tree-row')).length === 0, 'tree is empty after closing every device');

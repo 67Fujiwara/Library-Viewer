@@ -63,8 +63,13 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
   （フォルダのテストは `webkitRelativePath` を付けた `File` を `DataTransfer` 経由で `#dir-input` に流し込む）
 - ドロップされた `DataTransferItem` は **ハンドラを抜けると無効になる**。`getAsFileSystemHandle()` /
   `webkitGetAsEntry()` は同期のうちに呼び、Promise だけを持ち越す
-- ツリーの装置行 (depth 0) のラベルは `device.name`。フォルダから読んだものはファイル名を使う
-  (同じ STEP 内部名の部品が並ぶと区別できないため)。STEP 内の名称はツールチップに出す
+- ツリーの装置行 (depth 0) のラベルは `device.name` = **ファイル名**。STEP 内部のルート名は
+  同名 (BOX など) が並んで区別できないので使わない。STEP 内の名称はツールチップに出す
+- フォルダの id は `'g:' + パス` なので、**改名・移動でフォルダの id が変わる**。
+  `repath()` が選択中の行 (`focusedId`) と `collapsedGroups` も付け替える。ここを忘れると
+  「フォルダを作った直後にその中へ作れない」といった不具合になる
+- ツリー内のドラッグは `dataTransfer` に `application/x-lv-node` を載せる。
+  window 側のファイル読み込みドロップはこの型があるとき何もしない (二重処理を防ぐ)
 - 計測は B-rep を持たないメッシュから拾うが、**精度は落ちない**。
   OpenCASCADE のメッシュ節点は元の曲面上に厳密に乗っている（粗い設定でも分割数が減るだけ）ため、
   円形の境界ループに円を当てはめれば中心・径は公称値と一致する。
@@ -86,6 +91,15 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
 ## レイアウト（構成は変更しない）
 
 ヘッダー / 左パネル 310px（構成ツリー | ライブラリ の 2 タブ） / 中央 3D ビュー / 右横断パネル 288px / フッター（選択部品の情報バー）
+
+ツリーは編集できる (VS Code のエクスプローラに合わせた操作)。
+ドロップした STEP は最初みな同じ階層に並ぶので、フォルダを作って好きな構成に組み替えられる。
+- 新規フォルダはツールバーのアイコン / 右クリック。**選んでいるフォルダの中**に作り、その場で改名できる
+- `F2` または右クリック → 名前の変更。行がそのまま入力欄になる (Enter 確定 / Esc 取り消し)
+- 行をドラッグしてフォルダへドロップで移動。空白へ落とすと最上位へ。自分の中へは入れられない
+- `Delete` または右クリック → 閉じる。フォルダは「解除」で中身を親へ上げられる
+- 空のフォルダも残す (`folderPaths` に登録されているため)。並びは VS Code と同じくフォルダが先
+- **これはビューア上の整理だけで、ディスク上のファイルは動かさない**
 
 ツリーは 2 段構え: フォルダから読み込んだときは **フォルダのグループ行** → 装置 → 部品 の順に入れ子になる。
 グループ行は `Tree.buildForest()` が `device.groupPath` から毎回組み立て直す（`nodesById` に混ぜるので
@@ -114,7 +128,8 @@ src/js/04-step.js        occt-import-js のロードと STEP → 内部モデル
 src/js/05-viewer.js      three.js シーン・カメラ・表示モード・断面・エッジ・ハイライト
 src/js/05b-circle.js     メッシュからの円検出 (穴・丸軸の中心と径)
 src/js/05c-measure.js    計測モード (距離 / 角度、頂点・円・エッジ・面スナップ)
-src/js/06-tree.js        構成ツリー (フォルダのグループ行を含む)
+src/js/06-tree.js        構成ツリー (フォルダのグループ行・フォルダ登録・移動/改名の実体)
+src/js/06b-treeedit.js   ツリーの編集 UI (新規フォルダ・F2 改名・ドラッグ移動・右クリックメニュー)
 src/js/07-crossref.js    案件横断 (名寄せ)
 src/js/08-library.js     ライブラリ (フォルダ走査 / 受信箱 inbox / ルール / 書き込み / members.json / catalog.json)
 src/js/09-store.js       格納ダイアログ (FS Access API または ZIP)
@@ -131,6 +146,7 @@ test/panels_test.mjs     サイドバー開閉 (953px の窓で: 折りたたみ
 test/measure_test.mjs    計測 (寸法既知の STEP でスナップ位置・距離・ΔXYZ・穴中心・角度を検証)
 test/focus_test.mjs      「この部品に寄る」(隠れている部品へ回り込む / 見えていれば角度を保つ)
 test/folder_test.mjs     フォルダ読み込み (STEP だけ拾う / 階層をツリーに再現 / ドロップ 2 経路)
+test/treeedit_test.mjs   ツリーの編集 (フォルダ作成 / ドラッグ移動 / F2 改名 / 右クリック / 解除)
 test/env_check.mjs       file:// / localhost で使える API の確認
 ```
 
