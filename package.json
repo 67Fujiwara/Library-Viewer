@@ -1,0 +1,20 @@
+{
+  "name": "library-viewer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "STEP files → in-browser 3D library viewer (single HTML, no server)",
+  "scripts": {
+    "build": "python3 build.py",
+    "test:step": "python3 tools/gen_test_step.py test/out && node test/read_step.mjs",
+    "test:glb": "node test/test_glb_zip.mjs",
+    "test:browser": "node test/browser_test.mjs"
+  },
+  "dependencies": {
+    "occt-import-js": "0.0.23",
+    "three": "0.128.0"
+  },
+  "devDependencies": {
+    "@gltf-transform/core": "^4.5.0",
+    "playwright": "^1.50.1"
+  }
+}

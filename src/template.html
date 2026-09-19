@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="ja" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Library Viewer</title>
+<style>
+{{APP_CSS}}
+</style>
+</head>
+<body>
+<header id="header">
+  <div class="brand">
+    <svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v20M2 12h20M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg>
+    <h1>Library Viewer</h1>
+    <span class="ver mono">v{{VERSION}}</span>
+  </div>
+  <div class="header-actions">
+    <button type="button" id="btn-open-lib" class="btn secondary" title="共有ライブラリのフォルダ (DirectCloud 同期フォルダ) を開きます">
+      <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>ライブラリを開く
+    </button>
+    <span id="lib-status" class="status muted"></span>
+    <label class="btn secondary file-btn" for="file-input">
+      <svg viewBox="0 0 24 24"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg>ファイルを開く
+      <input type="file" id="file-input" multiple accept=".step,.stp,.STEP,.STP,.glb">
+    </label>
+    <div class="field-inline">
+      <label for="precision">精度</label>
+      <select id="precision">
+        <option value="coarse">粗い（最軽量）</option>
+        <option value="standard" selected>標準</option>
+        <option value="fine">細かい</option>
+      </select>
+      <button type="button" id="btn-remesh" class="btn secondary" disabled>再変換</button>
+    </div>
+    <button type="button" id="btn-store" class="btn primary" disabled>
+      <svg viewBox="0 0 24 24"><path d="M4 4h12l4 4v12H4z M8 4v5h8V4 M8 20v-6h8v6"/></svg>格納する
+    </button>
+    <div class="seg" role="group" aria-label="テーマ">
+      <input type="radio" name="theme" id="theme-auto" value="auto" checked><label for="theme-auto">自動</label>
+      <input type="radio" name="theme" id="theme-light" value="light"><label for="theme-light">ライト</label>
+      <input type="radio" name="theme" id="theme-dark" value="dark"><label for="theme-dark">ダーク</label>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <aside id="left">
+    <div class="tabs" role="tablist">
+      <input type="radio" name="left-tab" id="tab-tree" value="tree" checked><label for="tab-tree" role="tab">構成</label>
+      <input type="radio" name="left-tab" id="tab-lib" value="lib"><label for="tab-lib" role="tab">ライブラリ <span id="lib-count" class="badge" hidden>0</span></label>
+    </div>
+
+    <section id="tree-panel" class="panel">
+      <div class="panel-tools">
+        <button type="button" id="btn-show-all" class="btn small secondary">すべて表示</button>
+        <button type="button" id="btn-invert" class="btn small secondary">反転</button>
+        <input type="checkbox" id="chk-ghost" class="toggle"><label for="chk-ghost" class="btn small secondary toggle-label">非表示を薄く残す</label>
+      </div>
+      <div class="search-row">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+        <input type="search" id="tree-search" placeholder="部品名で絞り込み" autocomplete="off">
+      </div>
+      <div class="counter mono" id="tree-counter">0 / 0 表示中</div>
+      <div id="tree" class="tree" role="tree"></div>
+      <p id="tree-empty" class="empty">STEP ファイルをウィンドウにドロップするか、<br>「ファイルを開く」「ライブラリを開く」から始めてください。</p>
+    </section>
+
+    <section id="lib-panel" class="panel" hidden>
+      <div class="panel-tools">
+        <button type="button" id="btn-rescan" class="btn small secondary" disabled>再読み込み</button>
+        <button type="button" id="btn-roster" class="btn small secondary">名簿</button>
+        <span id="lib-path" class="muted mono small"></span>
+      </div>
+      <div class="search-row">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+        <input type="search" id="lib-search" placeholder="案件・装置・担当者で絞り込み" autocomplete="off">
+      </div>
+      <div id="lib-list" class="lib-list"></div>
+      <p id="lib-empty" class="empty">「ライブラリを開く」で共有フォルダを選ぶと、<br>格納済みの装置がここに一覧されます。<br><span class="muted small">フォルダに meta.json があるものを自動で拾います。管理者による登録作業は不要です。</span></p>
+    </section>
+  </aside>
+
+  <div id="viewport">
+    <canvas id="gl"></canvas>
+    <div id="hud" class="hud">
+      <div class="seg" role="group" aria-label="表示モード">
+        <input type="radio" name="viewmode" id="vm-normal" value="normal" checked><label for="vm-normal">外観</label>
+        <input type="radio" name="viewmode" id="vm-xray" value="xray"><label for="vm-xray">半透明</label>
+        <input type="radio" name="viewmode" id="vm-section" value="section"><label for="vm-section">断面</label>
+      </div>
+      <input type="checkbox" id="chk-edges" class="toggle"><label for="chk-edges" class="btn small secondary toggle-label">エッジ</label>
+      <button type="button" id="btn-fit" class="btn small secondary">全体表示</button>
+      <button type="button" id="btn-fit-sel" class="btn small secondary" disabled>この部品に寄る</button>
+    </div>
+    <div id="section-ctl" class="hud section-ctl" hidden>
+      <div class="seg" role="group" aria-label="断面軸">
+        <input type="radio" name="secaxis" id="sec-x" value="x"><label for="sec-x">X</label>
+        <input type="radio" name="secaxis" id="sec-y" value="y"><label for="sec-y">Y</label>
+        <input type="radio" name="secaxis" id="sec-z" value="z" checked><label for="sec-z">Z</label>
+      </div>
+      <input type="range" id="sec-pos" min="0" max="1000" value="500">
+      <span id="sec-val" class="mono small"></span>
+      <input type="checkbox" id="chk-sec-flip" class="toggle"><label for="chk-sec-flip" class="btn small secondary toggle-label">反転</label>
+    </div>
+    <div id="drop-hint" class="drop-hint">
+      <svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+      <p>ここに <strong>.step / .stp</strong> をドロップ</p>
+      <p class="muted small">複数同時可・変換はすべてこの PC 内で完結します</p>
+    </div>
+    <div id="hud-hint" class="hud-hint mono small">左ドラッグ 回転 · 右/Shift+ドラッグ 移動 · ホイール 拡大 · クリック 選択 · ← → 同名ユニット</div>
+  </div>
+
+  <aside id="right">
+    <h2 class="panel-title">案件横断</h2>
+    <p id="xref-hint" class="muted small">部品を選ぶと、他の装置にある同名ユニットをここに並べます。</p>
+    <div id="xref-current" class="xref-current" hidden></div>
+    <div id="xref-list" class="xref-list"></div>
+  </aside>
+</main>
+
+<footer id="footer">
+  <div id="sel-info" class="sel-info">
+    <span class="muted">未選択</span>
+  </div>
+</footer>
+
+<div id="overlay" class="overlay" hidden>
+  <div class="overlay-card">
+    <div class="spinner" aria-hidden="true"></div>
+    <div id="overlay-title" class="title">変換中</div>
+    <div id="overlay-msg" class="mono small muted"></div>
+  </div>
+</div>
+
+<dialog id="store-dialog" class="dialog">
+  <form method="dialog" id="store-form">
+    <h2>ライブラリに格納</h2>
+    <p class="muted small">案件情報を付けて共有フォルダに保存します。保存したものは「ライブラリ」タブから誰でも開けます。</p>
+    <div class="grid2">
+      <div class="field"><label for="st-project">案件コード <em>必須</em></label><input type="text" id="st-project" required autocomplete="off" list="dl-projects"><datalist id="dl-projects"></datalist></div>
+      <div class="field"><label for="st-device">装置名 <em>必須</em></label><input type="text" id="st-device" required autocomplete="off"></div>
+      <div class="field"><label for="st-work">対象ワーク</label><input type="text" id="st-work" autocomplete="off" list="dl-works"><datalist id="dl-works"></datalist></div>
+      <div class="field"><label for="st-layout">保存先の階層</label>
+        <select id="st-layout">
+          <option value="0">models / 部署 / 案件コード_装置名 / 対象ワーク</option>
+          <option value="1">models / 案件コード_装置名 / 対象ワーク</option>
+          <option value="2">models / 対象ワーク / 案件コード_装置名</option>
+          <option value="3">models / 部署 / 案件コード_装置名</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <span class="label">部署 / 担当者 <em>必須</em> <button type="button" id="st-edit-roster" class="btn link small">名簿を編集</button></span>
+      <div id="st-roster" class="roster-tree" role="tree"></div>
+      <div id="st-owner-view" class="muted small mono">未選択</div>
+    </div>
+    <div class="field">
+      <span class="label">格納する装置</span>
+      <div id="st-devices" class="device-list"></div>
+    </div>
+    <div class="field">
+      <span class="label">保存先パス</span>
+      <div id="st-preview" class="path-preview mono"></div>
+    </div>
+    <div class="field">
+      <span class="label">書き込み方法</span>
+      <div id="st-method" class="muted small"></div>
+    </div>
+    <div class="dialog-actions">
+      <button type="button" id="st-cancel" class="btn secondary">キャンセル</button>
+      <button type="submit" id="st-save" class="btn primary">格納する</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="roster-dialog" class="dialog">
+  <form method="dialog">
+    <h2>名簿</h2>
+    <p class="muted small">1 行に <span class="mono">部署, 担当者</span> の形式で書きます。ライブラリを開いている場合は <span class="mono">members.json</span> にも保存され、全員で共有されます。</p>
+    <textarea id="roster-text" rows="12" spellcheck="false"></textarea>
+    <div class="dialog-actions">
+      <button type="button" id="roster-export" class="btn secondary">members.json を書き出す</button>
+      <span class="spacer"></span>
+      <button type="button" id="roster-cancel" class="btn secondary">キャンセル</button>
+      <button type="submit" id="roster-save" class="btn primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="msg-dialog" class="dialog small-dialog">
+  <form method="dialog">
+    <h2 id="msg-title"></h2>
+    <div id="msg-body" class="msg-body"></div>
+    <div class="dialog-actions"><button type="submit" class="btn primary">OK</button></div>
+  </form>
+</dialog>
+
+<script>
+{{THREE_JS}}
+</script>
+<script>
+{{OCCT_JS}}
+</script>
+<script>
+var WASM_GZ_B64 = "{{WASM_GZ_B64}}";
+</script>
+<script>
+{{APP_JS}}
+</script>
+</body>
+</html>

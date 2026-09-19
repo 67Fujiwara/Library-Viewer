@@ -1,0 +1,11 @@
+{
+  "autodeskProduct": "Fusion360",
+  "type": "script",
+  "author": "Library Viewer",
+  "description": {
+    "": "Export the active design as STEP into the shared Library Viewer folder with meta.json / index.json.",
+    "ja": "開いている設計を STEP で Library Viewer の共有フォルダに格納します (meta.json / index.json 付き)。"
+  },
+  "supportedOS": "windows|mac",
+  "editEnabled": true
+}
