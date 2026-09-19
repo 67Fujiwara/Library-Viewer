@@ -28,7 +28,9 @@ CAD は Autodesk Fusion。**管理者レス**（フォルダに置いたもの�
 - `<div>` に onclick を付けない。`<button>` `<a>` `<input>`+`<label>` を使う
 - 部品の選択・表示切替のたびに glb を生成しない（生成は「格納」を押したときと、ライブラリの未変換 STEP を開いたときだけ）
 - ツリーのチェック操作でカメラを動かさない
-- Fusion スクリプト (`fusion/LibraryExport/`) とビューアで、フォルダ階層プリセット・`meta.json` のスキーマを別々に変えない。必ず両方を同時に直す
+- Fusion スクリプト (`fusion/LibraryExport/`) とビューアで、フォルダ階層プリセット・`meta.json` のスキーマ・**ネーミングルールの解析規則**を別々に変えない。必ず両方を同時に直す
+  （`src/js/03b-naming.js` の `parse`/`format` と `LibraryExport.py` の `naming_parse`/`naming_format` は同じ規則）
+- 格納するファイル群の組み立ては `Store.buildPackage()` に集約する。格納ダイアログと受信箱で別々に作らない
 
 ## 間違えやすい点
 
@@ -42,6 +44,9 @@ CAD は Autodesk Fusion。**管理者レス**（フォルダに置いたもの�
 - 変換前に 2 フレーム待たないとオーバーレイが描画されない（`nextFrames(2)`）
 - `EdgesGeometry` は重い。初回 ON のときだけ生成する
 - File System Access API のディレクトリハンドルは IndexedDB に保存できるが、次回は `requestPermission` にユーザー操作が要る
+- ネーミングルールで区切り文字を含んでよいのは **装置名だけ**（左右の項目を先に確定し、残りを装置名にする）
+- `inbox/` は装置フォルダの走査対象から外す（`SKIP_DIRS`）。取り込めたファイルだけ `removeEntry` で消す
+- Playwright の `setInputFiles` は **非 ASCII のファイルパスを渡せない**。日本語ファイル名のテストは `{name, buffer}` 形式で渡す
 
 ## レイアウト（変更しない）
 
@@ -57,11 +62,12 @@ src/js/00-util.js        DOM ヘルパ, Storage, nextFrames, cssVar
 src/js/01-theme.js       時刻によるライト/ダーク
 src/js/02-glb.js         GLB ライター/リーダー (node でも require 可)
 src/js/03-zip.js         ZIP ライター (格納方式, UTF-8 フラグ)
+src/js/03b-naming.js     ネーミングルール (ファイル名 ⇔ 案件情報)
 src/js/04-step.js        occt-import-js のロードと STEP → 内部モデル
 src/js/05-viewer.js      three.js シーン・カメラ・表示モード・断面・エッジ・ハイライト
 src/js/06-tree.js        構成ツリー
 src/js/07-crossref.js    案件横断 (名寄せ)
-src/js/08-library.js     ライブラリ (フォルダ走査 / 開く / 書き込み / members.json / catalog.json)
+src/js/08-library.js     ライブラリ (フォルダ走査 / 受信箱 inbox / ルール / 書き込み / members.json / catalog.json)
 src/js/09-store.js       格納ダイアログ (FS Access API または ZIP)
 src/js/10-app.js         配線
 fusion/LibraryExport/    Fusion 360 スクリプト (STEP + meta.json をライブラリに直接格納)
@@ -77,7 +83,7 @@ npm run test:step                 # STEP 生成 → occt で階層が取れる�
 npm run test:glb                  # GLB を gltf-transform で / ZIP を unzip で検証
 npm run build                     # dist/library-viewer.html (サイズを報告)
 node test/browser_test.mjs        # file:// で開いて 読み込み→ツリー→横断→格納(ZIP)→再変換
-node test/library_test.mjs        # FS Access API を偽ハンドルで置き換え、ライブラリ走査→自動変換→直接格納→名簿
+node test/library_test.mjs        # FS Access API を偽ハンドルで置き換え、走査→受信箱の取り込み→自動変換→直接格納→ルール→名簿
 ```
 
 Playwright は `/opt/pw-browsers/chromium` の Chromium を `executablePath` で使う（`playwright install` はしない）。

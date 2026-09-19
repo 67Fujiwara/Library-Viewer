@@ -88,6 +88,65 @@ def library_layout(root):
         return None
 
 
+# ---- ネーミングルール (ビューアの src/js/03b-naming.js と同じ規則) ----
+NAMING_FIELDS = ('projectCode', 'deviceName', 'workpiece', 'department', 'owner')
+NAMING_DEFAULT = {'pattern': '{projectCode}_{deviceName}_{workpiece}_{department}_{owner}', 'separator': '_'}
+NAMING_GREEDY = 'deviceName'
+
+
+def naming_rule(root):
+    cfg = read_json(os.path.join(root, 'library.json')) if root else None
+    rule = (cfg or {}).get('naming') or NAMING_DEFAULT
+    return rule if naming_fields(rule) else NAMING_DEFAULT
+
+
+def naming_fields(rule):
+    out = []
+    for part in str(rule.get('pattern', '')).split(rule.get('separator', '_')):
+        m = re.match(r'^\{(\w+)\}$', part.strip())
+        if not m or m.group(1) not in NAMING_FIELDS:
+            return None
+        out.append(m.group(1))
+    return out or None
+
+
+def naming_parse(name, rule):
+    """ファイル名 / ドキュメント名 → dict | None。装置名だけ区切り文字を含んでよい。"""
+    fields = naming_fields(rule)
+    if not fields:
+        return None
+    sep = rule.get('separator', '_')
+    base = re.sub(r'\.(step|stp)$', '', name, flags=re.I)
+    base = re.sub(r'\s+v\d+$', '', base).strip()
+    if sep == '_':
+        base = base.replace('＿', '_')
+    parts = [p.strip() for p in base.split(sep)]
+    if len(parts) < len(fields):
+        return None
+    gi = fields.index(NAMING_GREEDY) if NAMING_GREEDY in fields else len(fields) - 1
+    out = {}
+    for i in range(gi):
+        out[fields[i]] = parts[i]
+    after = len(fields) - gi - 1
+    for i in range(after):
+        out[fields[len(fields) - 1 - i]] = parts[len(parts) - 1 - i]
+    out[fields[gi]] = sep.join(parts[gi:len(parts) - after])
+    for k, v in out.items():
+        if not v and k != 'workpiece':
+            return None
+    return out
+
+
+def naming_format(values, rule):
+    fields = naming_fields(rule) or naming_fields(NAMING_DEFAULT)
+    sep = rule.get('separator', '_')
+    out = []
+    for f in fields:
+        v = re.sub(r'[\\/:*?"<>|]', '_', (values.get(f) or '').strip())
+        out.append(v if f == NAMING_GREEDY else v.replace(sep, '-'))
+    return sep.join(out)
+
+
 def catalog_codes(root):
     cat = read_json(os.path.join(root, 'catalog.json')) or {}
     codes, works = [], []
@@ -130,18 +189,23 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             design = adsk.fusion.Design.cast(_app.activeProduct)
             doc_name = re.sub(r'\s+v\d+$', '', _app.activeDocument.name)
 
-            inputs.addTextBoxCommandInput('info', '', '共有フォルダ (Library Viewer のライブラリ) に STEP と案件情報を格納します。', 2, True)
+            rule = naming_rule(root)
+            parsed = naming_parse(doc_name, rule) or {}
+            info = '共有フォルダ (Library Viewer のライブラリ) に STEP と案件情報を格納します。'
+            if parsed:
+                info += '\nドキュメント名がネーミングルールに一致したので案件情報を自動入力しました。'
+            inputs.addTextBoxCommandInput('info', '', info, 3, True)
             inputs.addStringValueInput('libraryRoot', 'ライブラリのフォルダ', root)
             inputs.addBoolValueInput('browse', 'フォルダを選ぶ…', False, '', False)
 
-            inputs.addStringValueInput('projectCode', '案件コード *', st.get('lastProjectCode', ''))
+            inputs.addStringValueInput('projectCode', '案件コード *', parsed.get('projectCode') or st.get('lastProjectCode', ''))
             codes, works = catalog_codes(root) if root else ([], [])
             dd = inputs.addDropDownCommandInput('codePick', '既存の案件から', adsk.core.DropDownStyles.TextListDropDownStyle)
             dd.listItems.add('（選択）', True)
             for c in codes[:50]:
                 dd.listItems.add(c, False)
-            inputs.addStringValueInput('deviceName', '装置名 *', design.rootComponent.name if design else doc_name)
-            inputs.addStringValueInput('workpiece', '対象ワーク', st.get('lastWorkpiece', ''))
+            inputs.addStringValueInput('deviceName', '装置名 *', parsed.get('deviceName') or (design.rootComponent.name if design else doc_name))
+            inputs.addStringValueInput('workpiece', '対象ワーク', parsed.get('workpiece') if parsed else st.get('lastWorkpiece', ''))
 
             members = library_members(root) if root else []
             depts = []
@@ -149,13 +213,13 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
                 if d not in depts:
                     depts.append(d)
             dd2 = inputs.addDropDownCommandInput('dept', '部署 *', adsk.core.DropDownStyles.TextListDropDownStyle)
-            last_dept = st.get('lastDept', '')
+            last_dept = parsed.get('department') or st.get('lastDept', '')
             for d in depts:
                 dd2.listItems.add(d, d == last_dept)
             dd2.listItems.add('（名簿にない部署を入力）', not depts or last_dept not in depts)
             inputs.addStringValueInput('deptText', '部署 (手入力)', last_dept if last_dept not in depts else '')
             dd3 = inputs.addDropDownCommandInput('owner', '担当者 *', adsk.core.DropDownStyles.TextListDropDownStyle)
-            last_owner = st.get('lastOwner', '')
+            last_owner = parsed.get('owner') or st.get('lastOwner', '')
             for d, n in members:
                 if d == (last_dept or (depts[0] if depts else '')):
                     dd3.listItems.add(n, n == last_owner)
@@ -253,14 +317,16 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
             if layout is None:
                 layout = p['layout']
                 with open(os.path.join(p['root'], 'library.json'), 'w', encoding='utf-8') as f:
-                    json.dump({'schema': 'library-viewer/library/1', 'layout': layout, 'createdAt': now_iso(),
-                               'note': 'このファイルはライブラリの保存階層を固定します。手で編集しないでください。'}, f, ensure_ascii=False, indent=2)
+                    json.dump({'schema': 'library-viewer/library/1', 'layout': layout, 'naming': NAMING_DEFAULT, 'inboxAuto': False, 'createdAt': now_iso(),
+                               'note': 'このファイルはライブラリの保存階層とネーミングルールを固定します。編集はビューアの「ルール」から。'}, f, ensure_ascii=False, indent=2)
             segs = LAYOUTS[layout](p)
             target = os.path.join(p['root'], *segs)
             os.makedirs(os.path.join(target, 'step'), exist_ok=True)
 
             doc = _app.activeDocument
-            base = sanitize(re.sub(r'\s+v\d+$', '', doc.name))
+            # STEP のファイル名はネーミングルールに従わせる (ビューアに直接ドロップしても案件情報が復元できる)
+            base = naming_format({'projectCode': p['codeRaw'], 'deviceName': p['devRaw'], 'workpiece': p['workRaw'],
+                                  'department': p['deptRaw'], 'owner': p['ownerRaw']}, naming_rule(p['root']))
             step_path = os.path.join(target, 'step', base + '.step')
             em = design.exportManager
             opts = em.createSTEPExportOptions(step_path, design.rootComponent)

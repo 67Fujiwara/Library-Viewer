@@ -117,6 +117,21 @@ await page.click('#btn-remesh');
 await page.waitForSelector('#overlay', { state: 'hidden', timeout: 60000 });
 check((await page.$$('.tree-row')).length === 10, 'tree rebuilt after remesh');
 
+// ネーミングルール一致のファイル → 格納ダイアログが自動入力される
+await page.evaluate(() => App.clearDevices());
+// 日本語ファイル名は Playwright がパスで渡せないのでバッファで渡す (ブラウザ側は実運用と同じ)
+await page.setInputFiles('#file-input', [{ name: 'P2026-009_試験機F_ワークZ_生産技術_高橋.step', mimeType: 'application/step', buffer: fs.readFileSync('test/out/box.step') }]);
+await page.waitForFunction(() => App.devices().length === 1, null, { timeout: 60000 });
+await page.waitForSelector('#overlay', { state: 'hidden', timeout: 60000 });
+await page.click('#btn-store');
+await page.waitForSelector('#store-dialog[open]');
+check(await page.inputValue('#st-project') === 'P2026-009' && await page.inputValue('#st-device') === '試験機F' && await page.inputValue('#st-work') === 'ワークZ', 'store dialog prefilled from file name');
+check((await page.textContent('#st-owner-view')) === '生産技術 / 高橋', 'owner prefilled from file name');
+check((await page.textContent('#st-preview')) === 'models/生産技術/P2026-009_試験機F/ワークZ/', 'path derived from naming rule');
+check((await page.textContent('#st-naming')).includes('自動入力'), 'naming note shown');
+await page.screenshot({ path: outDir + '/shot-8-prefill.png' });
+await page.click('#st-cancel');
+
 const realErrors = errors.filter(e => !/GPU|swiftshader|WebGL|GroupMarkerNotSet|Automatic fallback/i.test(e));
 console.log('console errors:', realErrors.length ? realErrors : 'none');
 await browser.close();

@@ -4,7 +4,8 @@
 var Library = (function () {
   var handle = null, entries = [], config = null, members = null, listEl, emptyEl, statusEl, searchEl, countEl, pathEl;
   var IDB_NAME = 'library-viewer', IDB_STORE = 'handles';
-  var SKIP_DIRS = { step: 1, node_modules: 1 };
+  var SKIP_DIRS = { step: 1, node_modules: 1, inbox: 1 };
+  var INBOX = 'inbox', inbox = [];   // [{name, handle, dir, fields|null}]
 
   function supported() { return typeof window.showDirectoryPicker === 'function'; }
 
@@ -12,6 +13,11 @@ var Library = (function () {
     listEl = $('#lib-list'); emptyEl = $('#lib-empty'); statusEl = $('#lib-status'); searchEl = $('#lib-search'); countEl = $('#lib-count'); pathEl = $('#lib-path');
     $('#btn-open-lib').addEventListener('click', open);
     $('#btn-rescan').addEventListener('click', function () { scan(); });
+    $('#btn-inbox').addEventListener('click', function () { processInbox(); });
+    $('#btn-rules').addEventListener('click', openRules);
+    $('#rule-cancel').addEventListener('click', function () { $('#rules-dialog').close(); });
+    $('#rules-dialog form').addEventListener('submit', function (e) { e.preventDefault(); saveRules(); });
+    ['#rule-pattern', '#rule-sep', '#rule-try'].forEach(function (id) { $(id).addEventListener('input', updateRulePreview); });
     searchEl.addEventListener('input', debounce(renderList, 120));
     if (!supported()) { $('#btn-open-lib').disabled = true; statusEl.textContent = 'このブラウザではフォルダを開けません'; return; }
     restoreHandle().then(function (h) {
@@ -91,6 +97,95 @@ var Library = (function () {
     renderList();
     App.onLibraryChanged();
     writeCatalog();
+    await scanInbox();
+    if (config && config.inboxAuto && inbox.some(function (f) { return f.fields; })) await processInbox();
+  }
+
+  /* ---- 受信箱: inbox/ に置かれた STEP を、ファイル名のルールで決まる階層へ格納する ---- */
+  async function scanInbox() {
+    inbox = [];
+    var dir = null;
+    try { dir = await handle.getDirectoryHandle(INBOX); } catch (e) { dir = null; }
+    if (dir) await collectInbox(dir, [], 0);
+    renderInbox();
+  }
+  async function collectInbox(dir, rel, depth) {
+    if (depth > 3) return;
+    for await (var [name, h] of dir.entries()) {
+      if (h.kind === 'directory') { if (name[0] !== '.') await collectInbox(h, rel.concat([name]), depth + 1); continue; }
+      if (!/\.(step|stp)$/i.test(name)) continue;
+      inbox.push({ name: name, handle: h, dir: dir, rel: rel, fields: Naming.parse(name) });
+    }
+  }
+  function renderInbox() {
+    var box = $('#inbox'), list = $('#inbox-list');
+    box.hidden = inbox.length === 0;
+    $('#inbox-count').textContent = String(inbox.length);
+    $('#btn-inbox').disabled = !inbox.some(function (f) { return f.fields; });
+    list.textContent = '';
+    inbox.forEach(function (f) {
+      var li = el('li' + (f.fields ? '' : '.bad'), { title: f.name });
+      li.appendChild(el('span.nm', { text: f.name }));
+      li.appendChild(el('span.to', { text: f.fields ? '→ ' + Store.segmentsFor(f.fields, config ? config.layout : 0).join('/') : '（ルールに合いません: ' + Naming.describe() + '）' }));
+      list.appendChild(li);
+    });
+  }
+  async function processInbox() {
+    var targets = inbox.filter(function (f) { return f.fields; });
+    if (!targets.length) return;
+    var done = [], failed = [];
+    for (var i = 0; i < targets.length; i++) {
+      var f = targets[i];
+      App.showOverlay('受信箱を取り込み中  ' + (i + 1) + ' / ' + targets.length, f.name);
+      await nextFrames(2);
+      try {
+        var bytes = new Uint8Array(await (await f.handle.getFile()).arrayBuffer());
+        var model = await Occt.convert(bytes, App.precision(), baseName(f.name));
+        await ensureConfig(0);
+        var pkg = Store.buildPackage([{ fileName: f.name, model: model, stepBytes: bytes }], f.fields, config.layout, App.precision(), { cad: 'step', app: 'library-viewer', via: 'inbox' });
+        await writeFiles(pkg.segs, pkg.files);
+        await Store.ensureMember(f.fields.department, f.fields.owner);
+        await f.dir.removeEntry(f.name);   // 格納できたものだけ受信箱から消す
+        done.push(pkg.segs.join('/'));
+      } catch (e) { failed.push(f.name + ': ' + (e && e.message || e)); }
+    }
+    App.hideOverlay();
+    showMessage('受信箱を取り込みました', (done.length ? done.length + ' 件を格納:\n' + done.map(function (d) { return '  ' + d + '/'; }).join('\n') : '格納できたものはありません') + (failed.length ? '\n\n失敗:\n' + failed.join('\n') : ''));
+    await scan();
+  }
+
+  /* ---- ルール (library.json の naming / inboxAuto) ---- */
+  function openRules() {
+    var r = Naming.current();
+    $('#rule-pattern').value = r.pattern; $('#rule-sep').value = r.separator || '_';
+    $('#rule-inbox-auto').checked = !!(config && config.inboxAuto);
+    $('#rule-inbox-auto').disabled = !handle;
+    $('#rule-try').value = '';
+    updateRulePreview();
+    $('#rules-dialog').showModal();
+  }
+  function ruleFromForm() { return { pattern: $('#rule-pattern').value.trim(), separator: $('#rule-sep').value || '_' }; }
+  function updateRulePreview() {
+    var r = ruleFromForm(), err = Naming.validate(r), errEl = $('#rule-error');
+    errEl.hidden = !err; errEl.textContent = err || '';
+    $('#rule-save').disabled = !!err;
+    $('#rule-example').textContent = err ? '' : Naming.example(r);
+    var t = $('#rule-try').value.trim(), out = $('#rule-try-out');
+    if (!t || err) { out.textContent = ''; return; }
+    var f = Naming.parse(t, r);
+    out.textContent = f ? Object.keys(f).map(function (k) { return Naming.FIELDS[k] + '=' + (f[k] || '(空)'); }).join('  ') + '  →  ' + Store.segmentsFor(f, config ? config.layout : 0).join('/') + '/' : '解析できません';
+  }
+  async function saveRules() {
+    var r = ruleFromForm();
+    if (Naming.validate(r)) return;
+    Naming.saveLocal(r);
+    if (handle) {
+      await ensureConfig(0);
+      config.naming = r; config.inboxAuto = $('#rule-inbox-auto').checked; config.updatedAt = isoNowLocal();
+      try { await writeFile(handle, 'library.json', JSON.stringify(config, null, 2)); } catch (e) { showMessage('ルール', 'library.json に書き込めませんでした。この PC にだけ保存しました。'); }
+      renderInbox(); inbox.forEach(function (f) { f.fields = Naming.parse(f.name); }); renderInbox();
+    }
+    $('#rules-dialog').close();
   }
   async function walk(dir, rel, depth) {
     if (depth > 6) return;
@@ -210,7 +305,7 @@ var Library = (function () {
   }
   async function ensureConfig(layout) {
     if (config) return config;
-    config = { schema: 'library-viewer/library/1', layout: layout, createdAt: isoNowLocal(), note: 'このファイルはライブラリの保存階層を固定します。手で編集しないでください。' };
+    config = { schema: 'library-viewer/library/1', layout: layout, naming: Naming.current(), inboxAuto: false, createdAt: isoNowLocal(), note: 'このファイルはライブラリの保存階層とネーミングルールを固定します。編集はビューアの「ルール」から。' };
     try { await writeFile(handle, 'library.json', JSON.stringify(config, null, 2)); } catch (e) { }
     return config;
   }
@@ -222,7 +317,7 @@ var Library = (function () {
 
   return {
     init: init, supported: supported, open: open, scan: scan, writeFiles: writeFiles, ensureConfig: ensureConfig, saveMembers: saveMembers,
-    connected: function () { return !!handle; }, name: function () { return handle ? handle.name : ''; },
+    connected: function () { return !!handle; }, name: function () { return handle ? handle.name : ''; }, processInbox: processInbox,
     entries: function () { return entries; }, config: function () { return config; }, members: function () { return members; }
   };
 })();

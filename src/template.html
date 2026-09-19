@@ -70,8 +70,17 @@
       <div class="panel-tools">
         <button type="button" id="btn-rescan" class="btn small secondary" disabled>再読み込み</button>
         <button type="button" id="btn-roster" class="btn small secondary">名簿</button>
+        <button type="button" id="btn-rules" class="btn small secondary">ルール</button>
         <span id="lib-path" class="muted mono small"></span>
       </div>
+      <section id="inbox" class="inbox" hidden>
+        <div class="inbox-head">
+          <span><strong>受信箱</strong> <span id="inbox-count" class="badge coral">0</span></span>
+          <button type="button" id="btn-inbox" class="btn small primary">取り込む</button>
+        </div>
+        <p class="muted small">inbox/ に置かれた STEP を、ファイル名のルールから決まる階層へ格納します。</p>
+        <ul id="inbox-list" class="inbox-list mono small"></ul>
+      </section>
       <div class="search-row">
         <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
         <input type="search" id="lib-search" placeholder="案件・装置・担当者で絞り込み" autocomplete="off">
@@ -137,6 +146,7 @@
   <form method="dialog" id="store-form">
     <h2>ライブラリに格納</h2>
     <p class="muted small">案件情報を付けて共有フォルダに保存します。保存したものは「ライブラリ」タブから誰でも開けます。</p>
+    <p id="st-naming" class="naming-note small" hidden></p>
     <div class="grid2">
       <div class="field"><label for="st-project">案件コード <em>必須</em></label><input type="text" id="st-project" required autocomplete="off" list="dl-projects"><datalist id="dl-projects"></datalist></div>
       <div class="field"><label for="st-device">装置名 <em>必須</em></label><input type="text" id="st-device" required autocomplete="off"></div>
@@ -184,6 +194,26 @@
       <span class="spacer"></span>
       <button type="button" id="roster-cancel" class="btn secondary">キャンセル</button>
       <button type="submit" id="roster-save" class="btn primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="rules-dialog" class="dialog">
+  <form method="dialog">
+    <h2>ネーミングルール</h2>
+    <p class="muted small">STEP のファイル名をこの形にしておくと、ドロップしただけで案件情報が入り、<span class="mono">inbox/</span> に置いただけで正しい階層に格納されます。ルールはライブラリの <span class="mono">library.json</span> に保存され、全員で共有されます。</p>
+    <div class="grid2">
+      <div class="field"><label for="rule-pattern">パターン</label><input type="text" id="rule-pattern" autocomplete="off" spellcheck="false"></div>
+      <div class="field"><label for="rule-sep">区切り文字</label><input type="text" id="rule-sep" maxlength="3" autocomplete="off"></div>
+    </div>
+    <div class="field"><span class="label">使える項目</span><div class="muted small mono">{projectCode} 案件コード · {deviceName} 装置名 · {workpiece} 対象ワーク · {department} 部署 · {owner} 担当者<br>装置名だけは区切り文字を含められます。対象ワークは空でも可 (区切りを続けて書く)。</div></div>
+    <div class="field"><span class="label">例</span><div id="rule-example" class="path-preview mono"></div></div>
+    <div class="field"><span class="label">試す</span><input type="text" id="rule-try" placeholder="ファイル名を入れると解析結果を表示" autocomplete="off"><div id="rule-try-out" class="muted small mono"></div></div>
+    <div class="field"><label class="device-list"><input type="checkbox" id="rule-inbox-auto"> ライブラリを開いたとき、受信箱を自動で取り込む</label></div>
+    <div id="rule-error" class="small" hidden></div>
+    <div class="dialog-actions">
+      <button type="button" id="rule-cancel" class="btn secondary">キャンセル</button>
+      <button type="submit" id="rule-save" class="btn primary">保存</button>
     </div>
   </form>
 </dialog>

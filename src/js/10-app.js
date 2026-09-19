@@ -92,6 +92,7 @@ var App = (function () {
 
   function addDevice(d) {
     d.id = 'd' + (++seq); d.name = d.model.name || baseName(d.fileName); d.precision = currentPrecision;
+    d.naming = Naming.parse(d.fileName);   // ファイル名がルールに合えば案件情報を持たせる
     // 同名の装置が既にあればファイル名で区別
     if (devices.some(function (x) { return x.name === d.name; })) d.name = d.name + ' (' + d.fileName + ')';
     Tree.buildDevice(d);
