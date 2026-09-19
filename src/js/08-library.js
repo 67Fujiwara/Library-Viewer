@@ -3,7 +3,7 @@
  * 登録作業は不要。設計者が「格納する」か Fusion のスクリプトで置いたものが即一覧に出る。 */
 var Library = (function () {
   var handle = null, entries = [], config = null, members = null, listEl, emptyEl, statusEl, searchEl, countEl, pathEl;
-  var IDB_STORE = 'handles';
+  var IDB_STORE = 'handles', AUTO_KEY = 'lv.libraryAuto';
   var SKIP_DIRS = { step: 1, node_modules: 1, inbox: 1 };
   var INBOX = 'inbox', inbox = [];   // [{name, handle, dir, fields|null}]
 
@@ -19,39 +19,86 @@ var Library = (function () {
     $('#rules-dialog form').addEventListener('submit', function (e) { e.preventDefault(); saveRules(); });
     ['#rule-pattern', '#rule-sep', '#rule-try'].forEach(function (id) { $(id).addEventListener('input', updateRulePreview); });
     searchEl.addEventListener('input', debounce(renderList, 120));
+    $('#lh-connect').addEventListener('click', reconnect);
+    $('#lh-change').addEventListener('click', function () { pick(); });
+    $('#lh-forget').addEventListener('click', forget);
+    $('#lh-auto').addEventListener('change', function (e) { Storage.set(AUTO_KEY, e.target.checked); renderHome(); });
+    $('#lh-auto').checked = autoOpen();
     if (!supported()) { $('#btn-open-lib').disabled = true; statusEl.textContent = 'このブラウザではフォルダを開けません'; return; }
-    restoreHandle().then(function (h) {
-      if (!h) return;
+    restoreHandle().then(async function (h) {
+      if (!h) { renderHome(); return; }
       handle = h;
-      return h.queryPermission({ mode: 'readwrite' }).then(function (p) {
-        if (p === 'granted') return scan();
-        statusEl.textContent = '前回: ' + h.name + '（クリックで再接続）';
-      });
-    }).catch(function () { });
+      var p = 'prompt';
+      try { p = await h.queryPermission({ mode: 'readwrite' }); } catch (e) { p = 'prompt'; }
+      // 「毎回このサイトで許可」を選んでいれば granted のまま残るので、その場で読み込める
+      if (p === 'granted' && autoOpen()) { await scan(); App.showLeftTab('lib'); return; }
+      renderHome(p);
+      // 再接続が要るときも案内が見えるようにタブを開く (隠れていると気づけない)
+      if (autoOpen()) App.showLeftTab('lib');
+    }).catch(function () { renderHome(); });
+  }
+
+  function autoOpen() { return Storage.get(AUTO_KEY, true) !== false; }
+
+  /* 既定のライブラリの案内。権限が切れているときは「接続する」の 1 クリックで戻す */
+  function renderHome(permission) {
+    var box = $('#lib-home'), btn = $('#lh-connect');
+    if (!handle) { box.hidden = true; return; }
+    box.hidden = false;
+    $('#lh-name').textContent = handle.name;
+    var connected = entries.length > 0 || permission === 'granted';
+    box.classList.toggle('needs-connect', !connected);
+    btn.hidden = connected;
+    $('#lh-note').textContent = connected
+      ? (autoOpen() ? 'このフォルダを開いたときに自動で読み込みます。' : '自動で読み込まない設定です。「再読み込み」で読み込みます。')
+      : 'ブラウザの決まりで、開き直したときは 1 回だけ許可が必要です。許可の画面で「毎回このサイトで許可」を選ぶと、次からは自動で読み込みます。';
+  }
+
+  /* 覚えているフォルダへ、フォルダ選択を出さずに接続し直す */
+  async function reconnect() {
+    if (!handle) return pick();
+    try {
+      var p = await handle.queryPermission({ mode: 'readwrite' });
+      if (p !== 'granted') p = await handle.requestPermission({ mode: 'readwrite' });
+      if (p !== 'granted') { renderHome(p); showMessage('接続できませんでした', 'フォルダへのアクセスが許可されませんでした。'); return; }
+      await scan();
+      App.showLeftTab('lib');
+    } catch (e) {
+      showMessage('接続できませんでした', String(e && e.message || e));
+    }
+  }
+  /* フォルダを選び直す */
+  async function pick() {
+    try {
+      handle = await window.showDirectoryPicker({ mode: 'readwrite', id: 'library' });
+      await saveHandle(handle);
+      await scan();
+      App.showLeftTab('lib');
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
+      showMessage('ライブラリを開けませんでした', String(e && e.message || e));
+    }
+  }
+  /* 既定のライブラリを忘れる (別の共有フォルダに移るとき) */
+  async function forget() {
+    if (!handle) return;
+    if (!await showConfirm('既定のライブラリを解除しますか？', '「' + handle.name + '」を覚えるのをやめます。\n共有フォルダのファイルは消えません。', '解除する')) return;
+    handle = null; entries = []; inbox = []; config = null;
+    await IDB.del(IDB_STORE, 'library').catch(function () { });
+    statusEl.textContent = ''; pathEl.textContent = '';
+    $('#btn-rescan').disabled = true; countEl.hidden = true;
+    renderList(); renderInbox(); renderHome();
   }
 
   /* ---- ハンドルの保存 (IndexedDB は file:// でも使えるが失敗しうるので握りつぶす) ---- */
   function saveHandle(h) { return IDB.put(IDB_STORE, 'library', h).catch(function () { }); }
   function restoreHandle() { return IDB.get(IDB_STORE, 'library').then(function (v) { return v || null; }).catch(function () { return null; }); }
 
+  /* ヘッダーの「ライブラリを開く」。覚えているフォルダがあればそれに接続し、無ければ選ばせる */
   async function open() {
-    try {
-      if (handle) {
-        var p = await handle.queryPermission({ mode: 'readwrite' });
-        if (p !== 'granted') p = await handle.requestPermission({ mode: 'readwrite' });
-        if (p === 'granted' && !(await confirmSwitch())) { await scan(); return; }
-      }
-      handle = await window.showDirectoryPicker({ mode: 'readwrite', id: 'library' });
-      await saveHandle(handle);
-      await scan();
-    } catch (e) {
-      if (e && e.name === 'AbortError') return;
-      showMessage('ライブラリを開けませんでした', String(e && e.message || e));
-    }
-  }
-  /* 既に接続済みなら、そのまま再読み込みするか別フォルダを選ぶか */
-  function confirmSwitch() {
-    return Promise.resolve(entries.length > 0 && window.confirm('別のライブラリフォルダを選びますか？\n（キャンセルで現在のフォルダを再読み込み）'));
+    if (handle && !entries.length) return reconnect();
+    if (!handle) return pick();
+    return pick();
   }
 
   async function readJson(dir, name) {
@@ -83,6 +130,7 @@ var Library = (function () {
     pathEl.textContent = handle.name + '/';
     $('#btn-rescan').disabled = false;
     countEl.hidden = false; countEl.textContent = String(entries.length);
+    renderHome('granted');
     renderList();
     App.onLibraryChanged();
     writeCatalog();

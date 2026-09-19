@@ -228,6 +228,15 @@ body.left-collapsed #left, body.right-collapsed #right { border: 0; padding-left
 .lib-card .acts a { color: var(--primary); font-size: 12px; }
 .lib-card .warn { color: var(--warning); font-size: 11px; }
 
+/* ==== 既定のライブラリ ==== */
+.lib-home { margin: var(--sp-xs) var(--sp-sm) 0; border: 1px solid var(--hairline); border-radius: var(--r-lg); padding: 10px 12px; background: var(--canvas); display: flex; flex-direction: column; gap: 6px; }
+.lib-home.needs-connect { border-color: var(--primary); background: var(--surface-card); }
+.lib-home p { margin: 0; }
+.lh-row { display: flex; align-items: center; gap: 8px; }
+.lh-title { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; color: var(--ink); white-space: nowrap; }
+.lh-name { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lh-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
 /* ==== 受信箱 / ルール ==== */
 .inbox { margin: var(--sp-xs) var(--sp-sm) 0; border: 1px solid var(--hairline); border-radius: var(--r-lg); padding: 10px 12px; background: var(--surface-card); display: flex; flex-direction: column; gap: 4px; }
 .inbox-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--ink); }

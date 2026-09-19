@@ -44,6 +44,9 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
 - Fusion スクリプト (`fusion/LibraryExport/`) とビューアで、フォルダ階層プリセット・`meta.json` のスキーマ・**ネーミングルールの解析規則**を別々に変えない。必ず両方を同時に直す
   （`src/js/03b-naming.js` の `parse`/`format` と `LibraryExport.py` の `naming_parse`/`naming_format` は同じ規則）
 - 格納するファイル群の組み立ては `Store.buildPackage()` に集約する。格納ダイアログと受信箱で別々に作らない
+- **起動時の自動読み込みでフォルダ選択ダイアログを出さない。** `showDirectoryPicker` は
+  ユーザー操作がないと必ず失敗する。覚えたハンドルの `queryPermission` が `granted` の
+  ときだけ黙って走査し、そうでなければ「接続する」ボタンを出して待つ
 - **共有フォルダを消す操作は必ず `showConfirm()` で確認を取る。** 何が消えるか（パス・ファイル一覧・格納者）を
   本文に出す。ツリーの × は表示から外すだけでファイルは消さない（この 2 つを混同しない）
 
@@ -73,7 +76,13 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
 - `addDevices()` の中で `Tree.registerDeviceFolders()` → `Tree.render()` → `CrossRef.rebuild()` の順に呼ぶ。
   あとから `Tree.rerender()` すると行を作り直して**横断バッジが消える**
 - `EdgesGeometry` は重い。初回 ON のときだけ生成する
-- File System Access API のディレクトリハンドルは IndexedDB に保存できるが、次回は `requestPermission` にユーザー操作が要る
+- File System Access API のディレクトリハンドルは IndexedDB に保存できるが、次回は `requestPermission` にユーザー操作が要る。
+  ただし Chrome / Edge 122 以降は権限ダイアログの「毎回このサイトで許可」で権限が**永続**し、
+  次回は `queryPermission` が `granted` を返す = 無操作で自動読み込みできる。
+  そうでないときの再接続は **`requestPermission` だけ**で、`showDirectoryPicker` を出し直さない
+  （覚えているフォルダを選び直させない）
+- 自動読み込みで再接続が要るときは、案内 (`#lib-home`) が見えるようにライブラリタブを開く。
+  隠れたままだとユーザーは「自動で読み込まれない」としか分からない
 - 中身のあるディレクトリは `removeEntry(name, { recursive: true })` でないと消せない。
   削除後は空になった親フォルダも `models/` の 1 つ下まで遡って片づける（空フォルダを残さない）
 - ネーミングルールで区切り文字を含んでよいのは **装置名だけ**（左右の項目を先に確定し、残りを装置名にする）
@@ -161,7 +170,7 @@ src/js/05c-measure.js    計測モード (距離 / 角度、頂点・円・エ�
 src/js/06-tree.js        構成ツリー (フォルダのグループ行・フォルダ登録・移動/改名の実体)
 src/js/06b-treeedit.js   ツリーの編集 UI (新規フォルダ・F2 改名・ドラッグ移動・右クリックメニュー)
 src/js/07-crossref.js    案件横断 (名寄せ)
-src/js/08-library.js     ライブラリ (フォルダ走査 / 受信箱 inbox / ルール / 書き込み / members.json / catalog.json)
+src/js/08-library.js     ライブラリ (既定の場所の記憶と自動読み込み / フォルダ走査 / 受信箱 inbox / ルール / 書き込み / members.json / catalog.json)
 src/js/09-store.js       格納ダイアログ (FS Access API または ZIP)
 src/js/10-app.js         配線
 fusion/LibraryExport/    Fusion 360 スクリプト (STEP + meta.json をライブラリに直接格納)
@@ -171,6 +180,7 @@ test/read_step.mjs       occt が階層を返すか
 test/test_glb_zip.mjs    GLB を gltf-transform で / ZIP を unzip で
 test/browser_test.mjs    file:// 通しテスト (読み込み→ツリー→横断→格納→再変換→ルール事前入力)
 test/library_test.mjs    FS Access API を偽ハンドルにして 走査→受信箱→格納→ルール→名簿
+test/autolib_test.mjs    既定ライブラリの自動読み込み (権限あり / 設定オフ / 再接続 1 クリック / 未設定 / 解除)
 test/sample_library_test.mjs  生成したサンプルライブラリをビューアが読めるか
 test/panels_test.mjs     サイドバー開閉 (953px の窓で: 折りたたみ / 復元 / キー / 3D の追従)
 test/measure_test.mjs    計測 (寸法既知の STEP でスナップ位置・距離・ΔXYZ・穴中心・角度を検証)

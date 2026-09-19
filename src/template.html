@@ -87,6 +87,23 @@
         <button type="button" id="btn-rules" class="btn small secondary">ルール</button>
         <span id="lib-path" class="muted mono small"></span>
       </div>
+      <section id="lib-home" class="lib-home" hidden>
+        <div class="lh-row">
+          <span class="lh-title">
+            <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>
+            既定のライブラリ
+          </span>
+          <span id="lh-name" class="lh-name mono"></span>
+        </div>
+        <p id="lh-note" class="muted small"></p>
+        <div class="lh-actions">
+          <button type="button" id="lh-connect" class="btn small primary" hidden>接続する</button>
+          <input type="checkbox" id="lh-auto" class="toggle"><label for="lh-auto" class="btn small secondary toggle-label">開いたときに自動で読み込む</label>
+          <span class="spacer"></span>
+          <button type="button" id="lh-change" class="btn small secondary">変更…</button>
+          <button type="button" id="lh-forget" class="btn small ghost-danger">解除</button>
+        </div>
+      </section>
       <section id="inbox" class="inbox" hidden>
         <div class="inbox-head">
           <span><strong>受信箱</strong> <span id="inbox-count" class="badge coral">0</span></span>
