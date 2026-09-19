@@ -317,6 +317,24 @@ def gen_occluded():
     return w.dump("occluded.step")
 
 
+def gen_backside():
+    """大きな板の「裏」に小さな部品が付いた配置。
+
+    既定のカメラは上から見下ろす (phi=60°) ので、板の下にある部品は完全に隠れる。
+    見えるのは下から覗き込む角度だけ。「見やすい角度へ回り込む」の検証用。
+    """
+    w = Writer()
+    ctx = Ctx(w)
+    plate = part(ctx, "TOP_PLATE", 400, 400, 5, color=(0.55, 0.55, 0.6))
+    small = part(ctx, "BACK_PART", 40, 40, 10, color=(0.8, 0.5, 0.3))
+    assembly(ctx, "BACKSIDE", [
+        ("TOP_PLATE", plate, (0, 0, 0)),
+        ("BACK_PART", small, (180, 180, -12)),
+    ])
+    ctx.finish()
+    return w.dump("backside.step")
+
+
 def gen_holes():
     """穴の中心・径が厳密に分かっている板。計測精度の検証用。
 
@@ -379,6 +397,8 @@ def main():
         f.write(gen_holes())
     with open(os.path.join(out, "occluded.step"), "w") as f:
         f.write(gen_occluded())
+    with open(os.path.join(out, "backside.step"), "w") as f:
+        f.write(gen_backside())
     print("wrote", sorted(f for f in os.listdir(out) if f.endswith(".step")))
 
 

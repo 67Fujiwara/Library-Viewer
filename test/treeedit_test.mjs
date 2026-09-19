@@ -140,6 +140,80 @@ await page.keyboard.press('Delete');
 await page.waitForTimeout(300);
 check(await page.evaluate(() => App.devices().length) === 2, 'Delete closes the focused device');
 
+// ---- まとめて移動 (100 件を整理する想定) ----
+await page.goto('file://' + html);
+await page.waitForTimeout(1200);
+const many = [];
+for (let i = 1; i <= 8; i++) many.push({ name: `部品${String(i).padStart(2, '0')}.step`, mimeType: 'application/step', buffer: fs.readFileSync('test/out/box.step') });
+await page.setInputFiles('#file-input', many);
+await page.waitForFunction(() => App.devices().length === 8, null, { timeout: 120000 });
+await page.waitForSelector('#overlay', { state: 'hidden', timeout: 60000 });
+await page.waitForTimeout(300);
+check((await page.$$('.tree-row.device')).length === 8, '8 devices sit at the same level');
+
+const row = (t) => page.locator('.tree-row.device', { hasText: t }).first();
+const pickedCount = () => page.textContent('#tree-picked');
+
+// Shift+クリックで範囲選択
+await row('部品02').click();
+await row('部品05').click({ modifiers: ['Shift'] });
+check((await pickedCount()) === '4 件選択中', 'Shift+click selects a range: ' + await pickedCount());
+check((await page.$$('.tree-row.picked')).length === 4, '4 rows highlighted');
+
+// Ctrl+クリックで足し引き
+await row('部品07').click({ modifiers: ['Control'] });
+check((await pickedCount()) === '5 件選択中', 'Ctrl+click adds one');
+await row('部品07').click({ modifiers: ['Control'] });
+check((await pickedCount()) === '4 件選択中', 'Ctrl+click on a picked row removes it');
+await page.screenshot({ path: outDir + '/shot-29-multiselect.png' });
+
+// 右クリック →「選択した N 件を新しいフォルダーへ」
+await row('部品03').click({ button: 'right' });
+await page.waitForSelector('.ctx-menu');
+const labels = await page.$$eval('.ctx-item span:first-child', ss => ss.map(s => s.textContent));
+console.log('    メニュー:', labels.join(' / '));
+check(labels.some(l => l.includes('選択した 4 件を新しいフォルダーへ')), 'bulk action offered in the context menu');
+await page.click('.ctx-item:has-text("選択した 4 件を新しいフォルダーへ")');
+await page.waitForSelector('.rename-input');
+await page.fill('.rename-input', 'ユニットA');
+await page.keyboard.press('Enter');
+await page.waitForTimeout(300);
+await show('まとめて移動したあと');
+check((await shape()) === ['[ユニットA]', '  部品02', '  部品03', '  部品04', '  部品05', '部品01', '部品06', '部品07', '部品08'].join('\n'),
+  '4 devices moved into the new folder in one go: \n' + await shape());
+await page.screenshot({ path: outDir + '/shot-30-bulk-moved.png' });
+
+// 選択してドラッグで、まとめて別フォルダへ
+await page.locator('#tree').click({ position: { x: 150, y: 420 } });   // 行の無い空白をクリックして選択を外す (最上位に作る)
+await page.click('#btn-new-folder');
+await page.fill('.rename-input', 'ユニットB');
+await page.keyboard.press('Enter');
+await page.waitForTimeout(200);
+await row('部品06').click();
+await row('部品08').click({ modifiers: ['Shift'] });
+check((await pickedCount()) === '3 件選択中', '3 devices picked for the drag');
+{
+  const from = row('部品07');
+  const to = page.locator('.tree-row.group', { hasText: 'ユニットB' }).first();
+  await from.hover(); await page.mouse.down();
+  await to.hover(); await to.hover();
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+}
+await show('ドラッグでまとめて移動');
+check((await shape()).includes('[ユニットB]\n  部品06\n  部品07\n  部品08'), 'dragging one of the picked rows moves them all: \n' + await shape());
+
+// Ctrl+A で全部選び、Delete でまとめて閉じる
+await page.locator('#tree').click({ position: { x: 150, y: 5 } });
+await page.keyboard.press('Control+a');
+const all = await pickedCount();
+console.log('    Ctrl+A:', all);
+check(all.includes('件選択中'), 'Ctrl+A selects every row');
+await page.keyboard.press('Delete');
+await page.waitForTimeout(400);
+check(await page.evaluate(() => App.devices().length) === 0, 'Delete closes the whole selection');
+check((await page.$$('.tree-row')).length === 0, 'the tree is empty afterwards');
+
 console.log('errors:', errors.length ? errors : 'none');
 await browser.close();
 if (errors.length) process.exit(1);

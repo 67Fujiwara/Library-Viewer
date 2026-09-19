@@ -9,7 +9,7 @@
  * ドロップした STEP は最初みな同じ階層に並ぶので、ここで好きな構成に組み替えられる。
  */
 var TreeEdit = (function () {
-  var container, menuEl = null, dragId = null, dropTarget = null, editing = null;
+  var container, menuEl = null, dragging = null, dropTarget = null, editing = null, draggedSinceDown = false;
   var MIME = 'application/x-lv-node';   // 外から来たファイルのドロップと区別するため
 
   function init() {
@@ -22,15 +22,41 @@ var TreeEdit = (function () {
     container.addEventListener('drop', onDrop);
     container.addEventListener('dragend', clearDrop);
     container.addEventListener('keydown', onKeyDown);
+    container.addEventListener('mousedown', function () { draggedSinceDown = false; }, true);
+    container.addEventListener('click', function (e) {
+      if (draggedSinceDown || e.shiftKey || e.ctrlKey || e.metaKey) return;
+      if (e.target.closest('button')) return;
+      var row = e.target.closest('.tree-row');
+      var n = row && Tree.nodeById(row.dataset.id);
+      if (n && Tree.selectable(n)) Tree.setPicked([n.id]);
+    });
     container.setAttribute('tabindex', '0');
     window.addEventListener('keydown', function (e) {
       if (editing || e.target.closest('input, textarea, dialog')) return;
       var n = Tree.focused(); if (!n) return;
       if (e.key === 'F2') { e.preventDefault(); startRename(n); }
-      else if (e.key === 'Delete') { e.preventDefault(); closeNode(n); }
+      else if (e.key === 'Delete') { e.preventDefault(); closeNodes(targetsFor(n)); }
+      else if (e.key === 'a' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); selectAll(); }
+      else if (e.key === 'Escape') Tree.setPicked([]);
     });
     document.addEventListener('click', hideMenu, true);
     window.addEventListener('blur', hideMenu);
+  }
+
+  /* 右クリックやキー操作の対象: その行が選択に入っていれば選択全体、そうでなければその行だけ */
+  function targetsFor(n) {
+    var picked = Tree.picked();
+    if (n && picked.length > 1 && Tree.isPicked(n.id)) return picked;
+    return n ? [n] : [];
+  }
+  function selectAll() {
+    var ids = [];
+    $$('.tree-row', container).forEach(function (r) {
+      if (r.hidden) return;
+      var n = Tree.nodeById(r.dataset.id);
+      if (n && Tree.selectable(n)) ids.push(n.id);
+    });
+    Tree.setPicked(ids);
   }
 
   /* 新規フォルダの作成先: フォルダを選んでいればその中、装置ならその親、無ければ最上位 */
@@ -84,12 +110,14 @@ var TreeEdit = (function () {
   function onDragStart(e) {
     var row = e.target.closest('.tree-row');
     var n = row && Tree.nodeById(row.dataset.id);
-    if (!n || (!n.isGroup && n.depth !== 0)) { e.preventDefault(); return; }   // 部品の行は動かさない
-    dragId = n.id;
+    if (!n || !Tree.selectable(n)) { e.preventDefault(); return; }   // 部品の行は動かさない
+    draggedSinceDown = true;
+    if (!Tree.isPicked(n.id)) Tree.setPicked([n.id]);
+    dragging = Tree.picked();
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData(MIME, n.id);
-    e.dataTransfer.setData('text/plain', n.name);
-    row.classList.add('dragging-row');
+    e.dataTransfer.setData(MIME, dragging.map(function (x) { return x.id; }).join(','));
+    e.dataTransfer.setData('text/plain', dragging.length > 1 ? dragging.length + ' 件' : n.name);
+    dragging.forEach(function (x) { if (x.row) x.row.classList.add('dragging-row'); });
   }
   function targetPathFor(e) {
     var row = e.target.closest('.tree-row');
@@ -101,7 +129,7 @@ var TreeEdit = (function () {
     return { path: [], row: null };
   }
   function onDragOver(e) {
-    if (!dragId || Array.prototype.indexOf.call(e.dataTransfer.types, MIME) < 0) return;
+    if (!dragging || Array.prototype.indexOf.call(e.dataTransfer.types, MIME) < 0) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     var t = targetPathFor(e);
@@ -119,17 +147,19 @@ var TreeEdit = (function () {
     setDropTarget(null);
     container.classList.remove('drop-root');
     $$('.dragging-row', container).forEach(function (r) { r.classList.remove('dragging-row'); });
-    dragId = null;
+    dragging = null;
   }
   function onDrop(e) {
-    if (!dragId || Array.prototype.indexOf.call(e.dataTransfer.types, MIME) < 0) return;
+    if (!dragging || Array.prototype.indexOf.call(e.dataTransfer.types, MIME) < 0) return;
     e.preventDefault(); e.stopPropagation();
-    var n = Tree.nodeById(dragId), t = targetPathFor(e);
+    var nodes = dragging, t = targetPathFor(e);
     clearDrop();
-    if (!n) return;
-    if (!Tree.moveNode(n, t.path) && n.isGroup) {
-      var tgt = t.path.join('/'), me = n.path.join('/');
-      if (tgt === me || tgt.indexOf(me + '/') === 0) showMessage('移動できません', 'フォルダを自分自身の中へは移動できません。');
+    if (!nodes.length) return;
+    var r = Tree.moveNodes(nodes, t.path);
+    if (!r.moved && r.refused) {
+      var tgt = t.path.join('/');
+      var intoSelf = nodes.some(function (n) { return n.isGroup && (tgt === n.path.join('/') || tgt.indexOf(n.path.join('/') + '/') === 0); });
+      if (intoSelf) showMessage('移動できません', 'フォルダを自分自身の中へは移動できません。');
     }
   }
 
@@ -143,25 +173,37 @@ var TreeEdit = (function () {
   }
   function buildItems(n) {
     var items = [];
+    var targets = targetsFor(n), many = targets.length > 1;
+    var suffix = many ? '（' + targets.length + ' 件）' : '';
     var parent = n ? (n.isGroup ? n.path.slice() : (n.device ? (n.device.groupPath || []).slice() : [])) : [];
     items.push({ label: '新しいフォルダー', run: function () { newFolder(parent); } });
-    if (n && (n.isGroup || n.depth === 0)) {
+    if (many) items.push({ label: '選択した ' + targets.length + ' 件を新しいフォルダーへ', run: function () { moveToNewFolder(targets, parent); } });
+    if (n && Tree.selectable(n)) {
       items.push({ sep: true });
-      items.push({ label: '名前の変更', hint: 'F2', run: function () { startRename(n); } });
-      if (n.isGroup) items.push({ label: 'フォルダを解除（中身を上へ）', run: function () { Tree.dissolveFolder(n); } });
-      if (parent.length) items.push({ label: '最上位へ移動', run: function () { Tree.moveNode(n, []); } });
+      if (!many) items.push({ label: '名前の変更', hint: 'F2', run: function () { startRename(n); } });
+      if (!many && n.isGroup) items.push({ label: 'フォルダを解除（中身を上へ）', run: function () { Tree.dissolveFolder(n); } });
+      items.push({ label: '最上位へ移動' + suffix, run: function () { Tree.moveNodes(targets, []); } });
       items.push({ sep: true });
-      items.push({ label: n.isGroup ? 'このフォルダを閉じる（中の装置も）' : '閉じる', hint: 'Delete', danger: true, run: function () { closeNode(n); } });
+      items.push({ label: (many ? '閉じる' : (n.isGroup ? 'このフォルダを閉じる（中の装置も）' : '閉じる')) + suffix, hint: 'Delete', danger: true, run: function () { closeNodes(targets); } });
     }
     return items;
   }
-  function closeNode(n) {
-    if (!n) return;
-    if (n.isGroup) {
-      var list = Tree.devicesUnder(n);
-      Tree.removeFolder(n);          // フォルダごと片づける (中身を残したいときは「フォルダを解除」)
-      if (list.length) App.removeDevice(list); else Tree.rerender();
-    } else if (n.depth === 0 && n.device) App.removeDevice(n.device);
+  /* まとめて新しいフォルダーへ入れる (100 件を整理するときの主役) */
+  function moveToNewFolder(targets, parent) {
+    var path = Tree.addFolder(parent, '新しいフォルダー');
+    Tree.moveNodes(targets, path);
+    var node = Tree.nodeById('g:' + path.join('/'));
+    if (node) { Tree.setFocused(node); Tree.setPicked([node.id]); scrollTo(node); startRename(node); }
+  }
+  function closeNodes(targets) {
+    var devs = [], anyFolder = false;
+    targets.forEach(function (n) {
+      if (n.isGroup) { anyFolder = true; devs = devs.concat(Tree.devicesUnder(n)); Tree.removeFolder(n); }
+      else if (n.depth === 0 && n.device) devs.push(n.device);
+    });
+    Tree.setPicked([]);
+    if (devs.length) App.removeDevice(devs);
+    else if (anyFolder) Tree.rerender();
   }
   function showMenu(x, y, items) {
     hideMenu();

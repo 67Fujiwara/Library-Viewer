@@ -189,7 +189,10 @@ body.left-collapsed #left, body.right-collapsed #right { border: 0; padding-left
 
 /* ==== ツリーの編集 (VS Code のエクスプローラに寄せる) ==== */
 .btn.icon-only { width: 28px; padding: 0; justify-content: center; }
-.tree-row.focused { background: var(--surface-strong); box-shadow: inset 0 0 0 1px var(--hairline); }
+.tree-row.focused { box-shadow: inset 0 0 0 1px var(--hairline); }
+.tree-row.picked { background: var(--surface-strong); }
+.tree-row.picked.focused { box-shadow: inset 0 0 0 1px var(--primary); }
+.picked-count { float: right; color: var(--primary); font-weight: 500; }
 .tree:focus-visible { outline: none; }
 .tree-row.dragging-row { opacity: 0.45; }
 .tree-row.drop-into { background: var(--primary-ring); box-shadow: inset 0 0 0 1px var(--primary); }

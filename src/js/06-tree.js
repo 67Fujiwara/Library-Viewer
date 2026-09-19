@@ -6,6 +6,7 @@ var Tree = (function () {
   var groups = [], groupIds = [], collapsedGroups = {};   // フォルダ階層 (元のフォルダ構成をそのまま出す)
   var folderPaths = {};      // ユーザーが作ったフォルダ。中身が空でも残す ("装置A/ユニット1" → true)
   var focusedId = null;      // 最後にクリックした行 (新規フォルダの作成先)。再描画で作り直されるので id で持つ
+  var picked = [], anchorId = null;   // まとめて動かすための複数選択 (フォルダ行と装置行だけ)
   var callbacks = {};
 
   function init(opts) {
@@ -19,7 +20,17 @@ var Tree = (function () {
     });
     container.addEventListener('mousedown', function (e) {
       var row = e.target.closest('.tree-row');
-      setFocused(row ? nodesById[row.dataset.id] : null);
+      var n = row ? nodesById[row.dataset.id] : null;
+      setFocused(n);
+      if (!n || !selectable(n)) { setPicked([]); anchorId = null; return; }
+      if (e.shiftKey && anchorId && nodesById[anchorId]) setPicked(rangeIds(anchorId, n.id));
+      else if (e.ctrlKey || e.metaKey) { togglePicked(n.id); anchorId = n.id; }
+      else {
+        // すでに選択に入っている行はここでは崩さない (そのままドラッグで全部動かせるように)。
+        // ドラッグせずにクリックだけで終わったら click 側で 1 件に絞る
+        if (!isPicked(n.id)) setPicked([n.id]);
+        anchorId = n.id;
+      }
     });
     container.addEventListener('click', function (e) {
       var b = e.target.closest('button'); if (!b) return;
@@ -249,12 +260,46 @@ var Tree = (function () {
       n.xbadge.hidden = !c; n.xbadge.textContent = ''; if (c) n.xbadge.appendChild(el('span.badge', { text: '+' + c, title: '他の装置 ' + c + ' 件にも同名ユニット' }));
     }); });
   }
+  /* ---- 複数選択 ---- */
+  function selectable(n) { return !!n && (n.isGroup || n.depth === 0); }
+  function isPicked(id) { return picked.indexOf(id) >= 0; }
+  function setPicked(ids) { picked = (ids || []).filter(function (id) { return nodesById[id]; }); applyPicked(); }
+  function togglePicked(id) {
+    var i = picked.indexOf(id);
+    if (i >= 0) picked.splice(i, 1); else picked.push(id);
+    applyPicked();
+  }
+  function applyPicked() {
+    $$('.tree-row.picked', container).forEach(function (r) { r.classList.remove('picked'); });
+    picked.forEach(function (id) { var n = nodesById[id]; if (n && n.row) n.row.classList.add('picked'); });
+    if (countEl2()) countEl2().textContent = picked.length > 1 ? picked.length + ' 件選択中' : '';
+  }
+  function countEl2() { return document.getElementById('tree-picked'); }
+  /* 画面に出ている選択可能な行の並びで、2 点間をまとめて選ぶ */
+  function rangeIds(fromId, toId) {
+    var rows = $$('.tree-row', container).filter(function (r) {
+      return !r.hidden && selectable(nodesById[r.dataset.id]);
+    });
+    var a = -1, b = -1;
+    rows.forEach(function (r, i) { if (r.dataset.id === fromId) a = i; if (r.dataset.id === toId) b = i; });
+    if (a < 0 || b < 0) return [toId];
+    if (a > b) { var t = a; a = b; b = t; }
+    return rows.slice(a, b + 1).map(function (r) { return r.dataset.id; });
+  }
+  function pickedNodes() {
+    return picked.map(function (id) { return nodesById[id]; }).filter(Boolean);
+  }
+
   function setFocused(n) {
     focusedId = n ? n.id : null;
     $$('.tree-row.focused', container).forEach(function (r) { r.classList.remove('focused'); });
     if (n && n.row) n.row.classList.add('focused');
   }
-  function applyFocus() { var n = focusedId && nodesById[focusedId]; if (n && n.row) n.row.classList.add('focused'); else focusedId = focusedId && nodesById[focusedId] ? focusedId : null; }
+  function applyFocus() {
+    var n = focusedId && nodesById[focusedId];
+    if (n && n.row) n.row.classList.add('focused');
+    setPicked(picked);   // 再描画で行が作り直されるので付け直す (消えた行は落ちる)
+  }
 
   /* ---- フォルダの編集 (VS Code 風の操作は 06b-treeedit.js が呼ぶ) ---- */
   function folderExists(pathArr) { return folderPaths[pathArr.join('/')] === true; }
@@ -333,6 +378,24 @@ var Tree = (function () {
   }
   /* 移動先フォルダへ入れる。targetPath = [] でルート */
   function moveNode(n, targetPath) {
+    var ok = moveOne(n, targetPath);
+    if (ok) render(devices);
+    return ok;
+  }
+  /* まとめて移動。選択の中に親子が混ざっていたら親だけ動かす (子は付いてくる) */
+  function moveNodes(nodes, targetPath) {
+    var groupKeys = nodes.filter(function (n) { return n.isGroup; }).map(function (n) { return n.path.join('/'); });
+    var list = nodes.filter(function (n) {
+      var own = n.isGroup ? n.path.join('/') : null;
+      var parentKey = n.isGroup ? n.path.slice(0, -1).join('/') : (n.device.groupPath || []).join('/');
+      return !groupKeys.some(function (g) { return g !== own && (parentKey === g || parentKey.indexOf(g + '/') === 0); });
+    });
+    var moved = 0, refused = 0;
+    list.forEach(function (n) { if (moveOne(n, targetPath)) moved++; else refused++; });
+    if (moved) render(devices);
+    return { moved: moved, refused: refused };
+  }
+  function moveOne(n, targetPath) {
     targetPath = (targetPath || []).slice();
     if (n.isGroup) {
       var oldKey = n.path.join('/'), tgt = targetPath.join('/');
@@ -344,7 +407,6 @@ var Tree = (function () {
       n.device.groupPath = targetPath;
     }
     for (var i = 1; i <= targetPath.length; i++) folderPaths[targetPath.slice(0, i).join('/')] = true;
-    render(devices);
     return true;
   }
   /* フォルダごと片づける (中の装置は呼び出し側が閉じる) */
@@ -360,7 +422,7 @@ var Tree = (function () {
   function dissolveFolder(n) {
     if (!n.isGroup) return false;
     var parent = n.path.slice(0, -1), key = n.path.join('/');
-    n.children.slice().forEach(function (c) { moveNode(c, parent); });
+    n.children.slice().forEach(function (c) { moveOne(c, parent); });
     delete folderPaths[key]; delete collapsedGroups[key];
     if (focusedId === n.id) focusedId = parent.length ? 'g:' + parent.join('/') : null;   // 消えた行を選んだままにしない
     render(devices);
@@ -386,6 +448,7 @@ var Tree = (function () {
     addFolder: addFolder, renameNode: renameNode, moveNode: moveNode, dissolveFolder: dissolveFolder, removeFolder: removeFolder,
     devicesUnder: devicesUnder, registerDeviceFolders: registerDeviceFolders,
     focused: function () { return focusedId ? nodesById[focusedId] : null; }, setFocused: setFocused,
+    picked: pickedNodes, setPicked: setPicked, isPicked: isPicked, moveNodes: moveNodes, selectable: selectable,
     nodeById: function (id) { return nodesById[id]; },
     rerender: function () { render(devices); }, container: function () { return container; }
   };

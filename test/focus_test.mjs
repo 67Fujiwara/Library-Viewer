@@ -49,8 +49,8 @@ const after = await cam();
 check(await hitName() === 'SMALL_PART', 'after 寄る, SMALL_PART is the first thing the camera sees');
 const moved = Math.hypot(after.x - before.x, after.y - before.y, after.z - before.z);
 check(moved > 1, 'the camera actually moved (' + moved.toFixed(1) + ' mm)');
-const score = await page.evaluate(() => Viewer3D.focusNode(App.selected()));
-check(score > 0.9, 'visibility score at the chosen angle: ' + score.toFixed(2));
+const info0 = await page.evaluate(() => Viewer3D.focusNode(App.selected()));
+check(info0.score > 0.9, 'the chosen angle is (near) the best available: ' + info0.score.toFixed(2));
 await page.waitForTimeout(900);
 await page.screenshot({ path: outDir + '/shot-21-focus-after.png' });
 
@@ -81,6 +81,33 @@ await page.waitForTimeout(700);
 const end = await cam();
 const drift = Math.hypot(end.x - mid.x, end.y - mid.y, end.z - mid.z);
 check(drift < 1e-6, 'dragging cancels the camera animation (drift ' + drift.toExponential(1) + ')');
+
+// ---- 板の裏に付いた部品: 下から覗き込む角度へ回り込む ----
+// 直前のテストでカメラを回しているので、既定の角度から始めるために開き直す
+await page.goto('file://' + html);
+await page.waitForTimeout(1200);
+await page.setInputFiles('#file-input', [{ name: 'backside.step', mimeType: 'application/step', buffer: fs.readFileSync('test/out/backside.step') }]);
+await page.waitForFunction(() => App.devices().length === 1, null, { timeout: 60000 });
+await page.waitForSelector('#overlay', { state: 'hidden', timeout: 60000 });
+await page.waitForTimeout(400);
+await page.locator('.tree-row', { hasText: 'BACK_PART' }).first().locator('button.name').click();
+await page.waitForTimeout(300);
+check(await hitName() === 'TOP_PLATE', 'BACK_PART is hidden under TOP_PLATE from the default angle');
+const camBefore = await cam();
+check(camBefore.z > 5, 'camera starts above the plate (z=' + camBefore.z.toFixed(0) + ')');
+await page.screenshot({ path: outDir + '/shot-27-backside-before.png' });
+await page.click('#btn-fit-sel');
+await page.waitForTimeout(900);
+const camAfter = await cam();
+console.log('    カメラ z:', camBefore.z.toFixed(0), '→', camAfter.z.toFixed(0));
+check(await hitName() === 'BACK_PART', 'after 寄る, BACK_PART is what the camera sees');
+check(camAfter.z < -2, 'the camera moved under the plate to look up at it (z=' + camAfter.z.toFixed(0) + ')');
+await page.screenshot({ path: outDir + '/shot-28-backside-after.png' });
+
+// 見える角度が複数あるときは「いちばんよく見える」角度を選ぶ (薄く見えるだけの角度で妥協しない)
+const info = await page.evaluate(() => Viewer3D.focusNode(App.selected()));
+console.log('    寄った後にもう一度:', JSON.stringify(info));
+check(info.rotated === false, 'once at a good angle it does not rotate again');
 
 // 計測にかかる時間 (ボタンを押してから角度が決まるまで)
 const ms = await page.evaluate(() => { const t = performance.now(); Viewer3D.focusNode(App.selected()); return performance.now() - t; });
