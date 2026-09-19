@@ -108,6 +108,7 @@ var App = (function () {
     return d;
   }
   function removeDevice(d) {
+    Measure.clear();   // 消える形状を指したままの計測が残らないように
     Viewer3D.removeDevice(d); Tree.removeDevice(d);
     devices.splice(devices.indexOf(d), 1);
     if (selectedNode && selectedNode.device === d) select(null);
@@ -126,6 +127,7 @@ var App = (function () {
     var targets = devices.filter(function (d) { return d.stepBytes; });
     if (!targets.length) return;
     var selPath = selectedNode ? selectedNode.path.join('/') : null;
+    Measure.clear();   // 再メッシュで頂点が変わるため
     for (var i = 0; i < targets.length; i++) {
       var d = targets[i];
       showOverlay('再変換中  ' + (i + 1) + ' / ' + targets.length, d.fileName + '  (' + Occt.PRESETS[currentPrecision].label + ')');

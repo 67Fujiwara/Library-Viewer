@@ -31,6 +31,7 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
 - `<div>` に onclick を付けない。`<button>` `<a>` `<input>`+`<label>` を使う
 - 部品の選択・表示切替のたびに glb を生成しない（生成は「格納」を押したときと、ライブラリの未変換 STEP を開いたときだけ）
 - 計測中に部品を選択しない。3D のクリックは `Viewer3D.setPickHandler()` で計測へ横取りする（二重に扱わない）
+- 装置を消す・再メッシュするときは `Measure.clear()` を呼ぶ（無くなった形状を指した計測を残さない）
 - ツリーのチェック操作でカメラを動かさない
 - Fusion スクリプト (`fusion/LibraryExport/`) とビューアで、フォルダ階層プリセット・`meta.json` のスキーマ・**ネーミングルールの解析規則**を別々に変えない。必ず両方を同時に直す
   （`src/js/03b-naming.js` の `parse`/`format` と `LibraryExport.py` の `naming_parse`/`naming_format` は同じ規則）
@@ -51,8 +52,13 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
 - ネーミングルールで区切り文字を含んでよいのは **装置名だけ**（左右の項目を先に確定し、残りを装置名にする）
 - `inbox/` は装置フォルダの走査対象から外す（`SKIP_DIRS`）。取り込めたファイルだけ `removeEntry` で消す
 - Playwright の `setInputFiles` は **非 ASCII のファイルパスを渡せない**。日本語ファイル名のテストは `{name, buffer}` 形式で渡す
-- 計測は B-rep を持たないメッシュから拾う。当たった三角形の頂点・辺にスナップするので、
-  **円の中心や円筒軸は取れない**（必要になったら円弧の当てはめが要る）
+- 計測は B-rep を持たないメッシュから拾うが、**精度は落ちない**。
+  OpenCASCADE のメッシュ節点は元の曲面上に厳密に乗っている（粗い設定でも分割数が減るだけ）ため、
+  円形の境界ループに円を当てはめれば中心・径は公称値と一致する。
+  実測: 穴中心間距離の誤差は 粗い 2.5e-6 mm / 標準 0 mm / 細かい 1.2e-6 mm（`test/measure_test.mjs`）
+  - **STEP を直接読む方式は採らない。** 理由は精度ではなく (1) アセンブリの座標変換チェーンを
+    自前で再現する必要があり間違えやすい (2) ライブラリから glb を開いたときに STEP が手元に無い
+  - 唯一の誤差源は座標を float32 で持っていること（約 3e-6 mm）。これで十分なので倍精度は持たない
 - 計測の線・点は `Viewer3D.overlay()` に入れ、`depthTest: false` で常に手前に描く。
   `LineDashedMaterial` は `computeLineDistances()` を呼ばないと破線にならない
 - テストで角をクリックするときはシルエット際でレイが外れる。面の内側へ数 px 寄せる（`clickWorld` の inset）
@@ -85,14 +91,15 @@ src/js/03-zip.js         ZIP ライター (格納方式, UTF-8 フラグ)
 src/js/03b-naming.js     ネーミングルール (ファイル名 ⇔ 案件情報)
 src/js/04-step.js        occt-import-js のロードと STEP → 内部モデル
 src/js/05-viewer.js      three.js シーン・カメラ・表示モード・断面・エッジ・ハイライト
-src/js/05c-measure.js    計測モード (頂点/エッジ/面スナップ・距離・ΔXYZ)
+src/js/05b-circle.js     メッシュからの円検出 (穴・丸軸の中心と径)
+src/js/05c-measure.js    計測モード (距離 / 角度、頂点・円・エッジ・面スナップ)
 src/js/06-tree.js        構成ツリー
 src/js/07-crossref.js    案件横断 (名寄せ)
 src/js/08-library.js     ライブラリ (フォルダ走査 / 受信箱 inbox / ルール / 書き込み / members.json / catalog.json)
 src/js/09-store.js       格納ダイアログ (FS Access API または ZIP)
 src/js/10-app.js         配線
 fusion/LibraryExport/    Fusion 360 スクリプト (STEP + meta.json をライブラリに直接格納)
-tools/gen_test_step.py   AP214 STEP テストデータ生成 (--assembly で名前・寸法を指定)
+tools/gen_test_step.py   AP214 STEP テストデータ生成 (箱 / 階層アセンブリ / 穴あき板)
 tools/make_sample_library.mjs  サンプルライブラリ生成 (models / inbox / 名簿まで一式)
 test/read_step.mjs       occt が階層を返すか
 test/test_glb_zip.mjs    GLB を gltf-transform で / ZIP を unzip で
@@ -100,7 +107,7 @@ test/browser_test.mjs    file:// 通しテスト (読み込み→ツリー→横
 test/library_test.mjs    FS Access API を偽ハンドルにして 走査→受信箱→格納→ルール→名簿
 test/sample_library_test.mjs  生成したサンプルライブラリをビューアが読めるか
 test/panels_test.mjs     サイドバー開閉 (953px の窓で: 折りたたみ / 復元 / キー / 3D の追従)
-test/measure_test.mjs    計測 (寸法既知の STEP でスナップ位置・距離・ΔXYZ を検証)
+test/measure_test.mjs    計測 (寸法既知の STEP でスナップ位置・距離・ΔXYZ・穴中心・角度を検証)
 test/env_check.mjs       file:// / localhost で使える API の確認
 ```
 

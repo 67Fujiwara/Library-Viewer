@@ -117,6 +117,67 @@ await clickWorld(0, 0, 20);
 check((await page.textContent('#sel-info')) === selBefore, 'clicking in measure mode does not change the selection');
 await page.screenshot({ path: outDir + '/shot-15-measure-bar.png' });
 
+// ---- 円スナップ: 穴の中心と径 (公称が分かっている holes.step で検証) ----
+await page.evaluate(() => App.clearDevices());
+await page.setInputFiles('#file-input', [{ name: 'holes.step', mimeType: 'application/step', buffer: fs.readFileSync('test/out/holes.step') }]);
+await page.waitForFunction(() => App.devices().length === 1, null, { timeout: 60000 });
+await page.waitForTimeout(500);
+check((await page.evaluate(() => Measure.points())).length === 0, 'loading another model clears the measurement');
+await page.evaluate(() => { Measure.setActive(true); });
+await page.click('label[for="snap-circle"]');
+
+// 板は 200x120x10、φ16 の穴が (50,60) と (150,60)、φ25 が (100,30)。上面 z=10 をクリックする
+async function clickAt(x, y, z) {
+  const p = await page.evaluate(([x, y, z]) => {
+    const s = Viewer3D.toScreen(new THREE.Vector3(x, y, z));
+    const r = document.querySelector('#gl').getBoundingClientRect();
+    return { x: r.left + s.x, y: r.top + s.y };
+  }, [x, y, z]);
+  await page.mouse.move(p.x, p.y); await page.waitForTimeout(80);
+  await page.mouse.click(p.x, p.y); await page.waitForTimeout(150);
+}
+// 穴のまわりの上面をクリックする (いちばん自然な操作。近い方の穴の円が拾われる)
+await clickAt(50, 74, 10);
+await clickAt(150, 74, 10);
+let cp = await page.evaluate(() => Measure.points());
+console.log('   ', JSON.stringify(cp));
+check(cp.length === 2 && cp.every(p => p.kind === 'circle'), 'both picks snapped to circles');
+check(near(cp[0].radius, 8, 1e-4) && near(cp[1].radius, 8, 1e-4), 'radius = 8.0000 for both holes');
+check(near(cp[0].x, 50, 1e-4) && near(cp[0].y, 60, 1e-4) && near(cp[0].z, 10, 1e-4), 'hole 1 centre = (50, 60, 10)');
+check(near(cp[1].x, 150, 1e-4) && near(cp[1].y, 60, 1e-4) && near(cp[1].z, 10, 1e-4), 'hole 2 centre = (150, 60, 10)');
+r = await readout();
+check(r.dist === '100.00' && r.dx === '100.00' && r.dy === '0.00' && r.dz === '0.00', 'hole centre distance = 100.00 (ΔX 100, ΔY 0, ΔZ 0): ' + JSON.stringify(r));
+check(r.p1.includes('円 φ16.00'), 'readout shows the diameter: ' + r.p1);
+const exact = await page.evaluate(() => { const p = Measure.points(); return Math.hypot(p[1].x - p[0].x, p[1].y - p[0].y, p[1].z - p[0].z); });
+console.log('    穴中心間距離 (生値):', exact.toFixed(9), 'mm  誤差', Math.abs(exact - 100).toExponential(2), 'mm');
+check(Math.abs(exact - 100) < 1e-4, 'centre-to-centre error below 0.0001 mm');
+await page.screenshot({ path: outDir + '/shot-16-circle.png' });
+
+// φ25 の穴
+await clickAt(100, 46, 10);
+cp = await page.evaluate(() => Measure.points());
+check(cp.length === 1 && near(cp[0].radius, 12.5, 1e-4) && near(cp[0].x, 100, 1e-4) && near(cp[0].y, 30, 1e-4), 'φ25 hole centre and radius: ' + JSON.stringify(cp[0]));
+
+// ---- 角度計測: 板の角 (0,0,10) を頂点に、X 方向と Y 方向で 90 度 ----
+await page.click('label[for="mm-angle"]');
+check(!(await page.$eval('#readout-angle', e => e.hidden)) && await page.$eval('#readout-dist', e => e.hidden), 'angle readout row shown');
+check((await page.evaluate(() => Measure.points())).length === 0, 'switching mode clears the points');
+await page.click('label[for="snap-vertex"]');
+await clickAt(195, 5, 10);      // X 軸側の角へ向かう点
+await clickAt(5, 5, 10);        // 角 (頂点)
+await clickAt(5, 115, 10);      // Y 軸側
+const ap = await page.evaluate(() => Measure.points());
+console.log('   ', JSON.stringify(ap));
+check(ap.length === 3 && ap.every(p => p.kind === 'vertex'), 'three vertices picked for the angle');
+const ang = await page.textContent('#m-ang');
+check(ang === '90.00', 'angle between the plate edges = ' + ang + '°');
+check((await page.textContent('#measure-label')) === '90.00°', '3D label shows the angle');
+await page.screenshot({ path: outDir + '/shot-17-angle.png' });
+
+// 角度モードは 3 点目のあとリセットされる
+await clickAt(195, 5, 10);
+check((await page.evaluate(() => Measure.points())).length === 1, 'a fourth click starts a new angle');
+
 console.log('errors:', errors.length ? errors : 'none');
 await browser.close();
 if (errors.length) process.exit(1);

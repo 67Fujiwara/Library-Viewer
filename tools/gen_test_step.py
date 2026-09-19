@@ -129,6 +129,105 @@ def box_solid(w, name, L, W, H, origin=(0, 0, 0)):
     return w.add(f"MANIFOLD_SOLID_BREP('{name}',#{shell})")
 
 
+def circle_geom(w, cx, cy, z, r, axis_z=(0, 0, 1)):
+    """CIRCLE と、角度 0 の位置 (cx+r, cy, z) にある頂点を作る。"""
+    ax = axis(w, (cx, cy, z), axis_z, (1, 0, 0))
+    circ = w.add(f"CIRCLE('',#{ax},{fmt(r)})")
+    cp = w.add(f"CARTESIAN_POINT('',({fmt(cx + r)},{fmt(cy)},{fmt(z)}))")
+    vp = w.add(f"VERTEX_POINT('',#{cp})")
+    return circ, vp
+
+
+def plate_with_holes(ctx, name, L, W, H, holes, color=None):
+    """直方体の板に貫通穴をあけた B-rep。holes = [(cx, cy, r), ...]
+
+    穴の中心と半径を厳密に指定できるので、計測精度の検証に使う。
+    """
+    w = ctx.w
+    P = [(0, 0, 0), (L, 0, 0), (L, W, 0), (0, W, 0),
+         (0, 0, H), (L, 0, H), (L, W, H), (0, W, H)]
+    cp = [w.add(f"CARTESIAN_POINT('',({fmt(x)},{fmt(y)},{fmt(z)}))") for x, y, z in P]
+    vp = [w.add(f"VERTEX_POINT('',#{c})") for c in cp]
+    edges = {}
+
+    def edge(a, b):
+        key = (min(a, b), max(a, b))
+        if key not in edges:
+            i, j = key
+            d = [P[j][k] - P[i][k] for k in range(3)]
+            ln = sum(v * v for v in d) ** 0.5
+            d = [v / ln for v in d]
+            dr = w.add(f"DIRECTION('',({fmt(d[0])},{fmt(d[1])},{fmt(d[2])}))")
+            vec = w.add(f"VECTOR('',#{dr},1.)")
+            line = w.add(f"LINE('',#{cp[i]},#{vec})")
+            edges[key] = w.add(f"EDGE_CURVE('',#{vp[i]},#{vp[j]},#{line},.T.)")
+        return edges[key], (a < b)
+
+    def loop_of(seq):
+        oes = []
+        for k in range(len(seq)):
+            a, b = seq[k], seq[(k + 1) % len(seq)]
+            ec, fwd = edge(a, b)
+            oes.append(w.add(f"ORIENTED_EDGE('',*,*,#{ec},{'.T.' if fwd else '.F.'})"))
+        return w.add("EDGE_LOOP('',(" + ",".join(f"#{o}" for o in oes) + "))")
+
+    # 穴ごとに 上下の円エッジ + 継ぎ目 (シーム) を用意する
+    hole_edges = []
+    for cx, cy, r in holes:
+        c_bot, v_bot = circle_geom(w, cx, cy, 0, r)
+        c_top, v_top = circle_geom(w, cx, cy, H, r)
+        e_bot = w.add(f"EDGE_CURVE('',#{v_bot},#{v_bot},#{c_bot},.T.)")
+        e_top = w.add(f"EDGE_CURVE('',#{v_top},#{v_top},#{c_top},.T.)")
+        sp = w.add(f"CARTESIAN_POINT('',({fmt(cx + r)},{fmt(cy)},{fmt(0)}))")
+        sd = w.add("DIRECTION('',(0.,0.,1.))")
+        sv = w.add(f"VECTOR('',#{sd},1.)")
+        sl = w.add(f"LINE('',#{sp},#{sv})")
+        e_seam = w.add(f"EDGE_CURVE('',#{v_bot},#{v_top},#{sl},.T.)")
+        hole_edges.append((cx, cy, r, e_bot, e_top, e_seam))
+
+    faces = []
+    # 下面 (法線 -Z) / 上面 (法線 +Z): 外周の矩形 + 穴の円 (内周)
+    for z, seq, nrm, reverse_inner in ((0, [0, 3, 2, 1], (0, 0, -1), False), (H, [4, 5, 6, 7], (0, 0, 1), True)):
+        outer = w.add(f"FACE_OUTER_BOUND('',#{loop_of(seq)},.T.)")
+        bounds = [outer]
+        for cx, cy, r, e_bot, e_top, e_seam in hole_edges:
+            ec = e_bot if z == 0 else e_top
+            oe = w.add(f"ORIENTED_EDGE('',*,*,#{ec},{'.F.' if reverse_inner else '.T.'})")
+            el = w.add(f"EDGE_LOOP('',(#{oe}))")
+            bounds.append(w.add(f"FACE_BOUND('',#{el},.T.)"))
+        ax = axis(w, (0, 0, z), nrm, (1, 0, 0))
+        pl = w.add(f"PLANE('',#{ax})")
+        faces.append(w.add("ADVANCED_FACE('',(" + ",".join(f"#{b}" for b in bounds) + f"),#{pl},.T.)"))
+    # 側面 4 枚
+    for seq, nrm, ref in (([0, 1, 5, 4], (0, -1, 0), (1, 0, 0)), ([3, 7, 6, 2], (0, 1, 0), (1, 0, 0)),
+                          ([0, 4, 7, 3], (-1, 0, 0), (0, 1, 0)), ([1, 2, 6, 5], (1, 0, 0), (0, 1, 0))):
+        fb = w.add(f"FACE_OUTER_BOUND('',#{loop_of(seq)},.T.)")
+        ax = axis(w, P[seq[0]], nrm, ref)
+        pl = w.add(f"PLANE('',#{ax})")
+        faces.append(w.add(f"ADVANCED_FACE('',(#{fb}),#{pl},.T.)"))
+    # 穴の内壁 (円筒面)。材料は外側にあるので same_sense を .F. にする
+    for cx, cy, r, e_bot, e_top, e_seam in hole_edges:
+        ax = axis(w, (cx, cy, 0), (0, 0, 1), (1, 0, 0))
+        cyl = w.add(f"CYLINDRICAL_SURFACE('',#{ax},{fmt(r)})")
+        o1 = w.add(f"ORIENTED_EDGE('',*,*,#{e_bot},.T.)")
+        o2 = w.add(f"ORIENTED_EDGE('',*,*,#{e_seam},.T.)")
+        o3 = w.add(f"ORIENTED_EDGE('',*,*,#{e_top},.F.)")
+        o4 = w.add(f"ORIENTED_EDGE('',*,*,#{e_seam},.F.)")
+        el = w.add(f"EDGE_LOOP('',(#{o1},#{o2},#{o3},#{o4}))")
+        fb = w.add(f"FACE_OUTER_BOUND('',#{el},.T.)")
+        faces.append(w.add(f"ADVANCED_FACE('',(#{fb}),#{cyl},.F.)"))
+
+    shell = w.add("CLOSED_SHELL('',(" + ",".join(f"#{f}" for f in faces) + "))")
+    solid = w.add(f"MANIFOLD_SOLID_BREP('{name}',#{shell})")
+
+    p, pd = ctx.product(name)
+    pds = w.add(f"PRODUCT_DEFINITION_SHAPE('','',#{pd})")
+    ax0 = axis(w)
+    rep = w.add(f"ADVANCED_BREP_SHAPE_REPRESENTATION('{name}',(#{ax0},#{solid}),#{ctx.geom})")
+    w.add(f"SHAPE_DEFINITION_REPRESENTATION(#{pds},#{rep})")
+    return pd, rep
+
+
 def part(ctx, name, L, W, H, color=None):
     """単品 (製品定義 + ADVANCED_BREP_SHAPE_REPRESENTATION)。(pd, shape_rep) を返す。"""
     w = ctx.w
@@ -200,6 +299,19 @@ def gen_assembly(scale=1.0, fname="assembly.step", root="DEVICE_A"):
     return w.dump(fname)
 
 
+def gen_holes():
+    """穴の中心・径が厳密に分かっている板。計測精度の検証用。
+
+    板 200 x 120 x 10、貫通穴 φ16 (r=8) の中心が (50,60) と (150,60) → 中心間距離ちょうど 100。
+    もう 1 つ φ25 (r=12.5) の穴を (100,30) に。
+    """
+    w = Writer()
+    ctx = Ctx(w)
+    plate_with_holes(ctx, "HOLE_PLATE", 200, 120, 10, [(50, 60, 8), (150, 60, 8), (100, 30, 12.5)])
+    ctx.finish()
+    return w.dump("holes.step")
+
+
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "--assembly":
         path, root = sys.argv[2], sys.argv[3]
@@ -217,7 +329,9 @@ def main():
         f.write(gen_assembly())
     with open(os.path.join(out, "assembly_b.step"), "w") as f:
         f.write(gen_assembly(scale=1.4, fname="assembly_b.step", root="DEVICE_B"))
-    print("wrote", os.listdir(out))
+    with open(os.path.join(out, "holes.step"), "w") as f:
+        f.write(gen_holes())
+    print("wrote", sorted(f for f in os.listdir(out) if f.endswith(".step")))
 
 
 if __name__ == "__main__":

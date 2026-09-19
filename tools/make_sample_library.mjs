@@ -137,6 +137,9 @@ for (const f of INBOX) {
 // ---- ドラッグ&ドロップ用 ----
 write(path.join(OUT, 'sample-step', 'P2026-009_試験機F_ワークZ_生産技術_高橋.step'), genStep(path.join(TMP, 'drop-1.step'), '試験機F', 1.15));
 write(path.join(OUT, 'sample-step', '名前にルールのないファイル.step'), genStep(path.join(TMP, 'drop-2.step'), 'PLAIN_DEVICE', 0.9));
+// 計測を試す用: 穴の中心・径が分かっている板 (200x120x10、φ16 の穴が (50,60) と (150,60) → 中心間 100mm)
+execFileSync('python3', [path.join(ROOT, 'tools', 'gen_test_step.py'), path.join(TMP, 'std')], { stdio: 'pipe' });
+fs.copyFileSync(path.join(TMP, 'std', 'holes.step'), path.join(OUT, 'sample-step', '計測練習_穴あき板_中心間100mm.step'));
 
 json(path.join(OUT, 'library.json'), {
   schema: 'library-viewer/library/1', layout: 0,
@@ -151,7 +154,7 @@ console.log(`サンプルライブラリを作りました: ${OUT}`);
 console.log('  models/');
 made.forEach(m => console.log('    ' + m));
 console.log('  inbox/          ' + INBOX.length + ' 件 (うち 1 件はルールに合わない名前)');
-console.log('  sample-step/    ドラッグ&ドロップ用 2 件');
+console.log('  sample-step/    ドラッグ&ドロップ用 3 件 (計測練習用の穴あき板を含む)');
 console.log('\n次の手順:');
 console.log(`  1. ${path.join(OUT, 'library-viewer.html')} をダブルクリック (Chrome / Edge)`);
 console.log(`  2. 「ライブラリを開く」で ${OUT} を選ぶ`);

@@ -138,9 +138,14 @@
         <span class="mb-title">
           <svg viewBox="0 0 24 24"><path d="M2 14l12-12 8 8-12 12z M6 10l2 2M9 7l2 2M12 4l2 2"/></svg>計測
         </span>
+        <div class="seg" role="group" aria-label="計測の種類">
+          <input type="radio" name="measmode" id="mm-dist" value="distance" checked><label for="mm-dist">距離</label>
+          <input type="radio" name="measmode" id="mm-angle" value="angle"><label for="mm-angle">角度</label>
+        </div>
         <div class="seg" role="group" aria-label="スナップ">
           <input type="radio" name="snapmode" id="snap-auto" value="auto" checked><label for="snap-auto" title="頂点 → エッジ → 面 の順に吸着">自動</label>
           <input type="radio" name="snapmode" id="snap-vertex" value="vertex"><label for="snap-vertex">頂点</label>
+          <input type="radio" name="snapmode" id="snap-circle" value="circle"><label for="snap-circle" title="穴や丸軸の中心。円を当てはめて中心と径を求めます">円</label>
           <input type="radio" name="snapmode" id="snap-edge" value="edge"><label for="snap-edge">エッジ</label>
           <input type="radio" name="snapmode" id="snap-face" value="face"><label for="snap-face">面</label>
         </div>
@@ -149,13 +154,21 @@
         <button type="button" id="measure-clear" class="btn small secondary">クリア</button>
         <button type="button" id="measure-close" class="btn small secondary">終了</button>
       </div>
-      <div class="mb-row readout">
+      <div class="mb-row readout" id="readout-dist">
         <span class="mb-val strong"><span class="k">距離</span><span class="v mono" id="m-dist">–</span><span class="u">mm</span></span>
         <span class="mb-val"><span class="k">ΔX</span><span class="v mono" id="m-dx">–</span></span>
         <span class="mb-val"><span class="k">ΔY</span><span class="v mono" id="m-dy">–</span></span>
         <span class="mb-val"><span class="k">ΔZ</span><span class="v mono" id="m-dz">–</span></span>
         <span class="mb-pt"><span class="k">1</span><span class="v mono" id="m-p1">–</span></span>
         <span class="mb-pt"><span class="k">2</span><span class="v mono" id="m-p2">–</span></span>
+      </div>
+      <div class="mb-row readout" id="readout-angle" hidden>
+        <span class="mb-val strong"><span class="k">角度</span><span class="v mono" id="m-ang">–</span><span class="u">°</span></span>
+        <span class="mb-val"><span class="k">辺1</span><span class="v mono" id="m-l1">–</span></span>
+        <span class="mb-val"><span class="k">辺2</span><span class="v mono" id="m-l2">–</span></span>
+        <span class="mb-pt"><span class="k">1</span><span class="v mono" id="a-p1">–</span></span>
+        <span class="mb-pt"><span class="k">角</span><span class="v mono" id="a-p2">–</span></span>
+        <span class="mb-pt"><span class="k">3</span><span class="v mono" id="a-p3">–</span></span>
       </div>
     </div>
     <div id="hud-hint" class="hud-hint mono small">左ドラッグ 回転 · 右/Shift+ドラッグ 移動 · ホイール 拡大 · クリック 選択 · ← → 同名ユニット · [ ] サイドバー · M 計測</div>
