@@ -158,27 +158,90 @@ var App = (function () {
     return list;
   }
 
-  /* 変換して装置として並べる。entries = [{file, rel, name}] */
+  /* 変換して装置として並べる。entries = [{file, rel, name}]
+   * ワーカープールが並列にさばくので、まとめて投げて終わった順に数える。
+   * 一度変換したファイルはキャッシュから戻すので、2 回目以降は一瞬で開く。 */
   async function loadEntries(entries) {
     sortEntries(entries);
-    var added = 0;
-    for (var i = 0; i < entries.length; i++) {
-      var e = entries[i];
-      showOverlay('変換中  ' + (i + 1) + ' / ' + entries.length, e.rel.concat([e.name]).join(' / '));
-      await nextFrames(2);
-      try {
-        var bytes = new Uint8Array(await e.file.arrayBuffer());
-        var model = await Occt.convert(bytes, currentPrecision, baseName(e.name));
-        addDevice({ model: model, fileName: e.name, stepBytes: bytes, source: { kind: 'folder' }, groupPath: e.rel });
-        added++;
-      } catch (err) {
-        hideOverlay();
-        showMessage('変換に失敗しました', e.rel.concat([e.name]).join('/') + '\n' + (err && err.message || err));
-      }
+    var total = entries.length, preset = currentPrecision, failed = [];
+
+    // 1) まずキャッシュを当たる。全部当たればオーバーレイも待ちフレームも要らない
+    var hits = await Promise.all(entries.map(function (e) {
+      return ConvCache.get(e.file, preset).catch(function () { return null; });
+    }));
+    var misses = [], cachedCount = 0, shown = 0;
+    var cached = [];
+    for (var i = 0; i < total; i++) {
+      if (hits[i]) { cached.push({ e: entries[i], model: hits[i] }); cachedCount++; }
+      else misses.push(entries[i]);
     }
-    hideOverlay();
-    if (added) { Tree.registerDeviceFolders(); Tree.rerender(); Viewer3D.fitAll(); }
-    return added;
+    if (cached.length) {
+      var built = [];
+      for (var k = 0; k < cached.length; k++) built.push(await toDevice(cached[k].e, cached[k].model));
+      addDevices(built); shown += built.length;
+      Viewer3D.fitAll();
+    }
+
+    // 2) 残りを変換する。できた端から画面に出す (全部終わるまで真っ白にしない)
+    if (misses.length) {
+      var done = 0, pending = [], timer = null;
+      function flush() {
+        timer = null;
+        if (!pending.length) return;
+        addDevices(pending.splice(0));
+        Viewer3D.fitAll();
+      }
+      showOverlay('変換中  0 / ' + misses.length,
+        misses.length > 1 ? '並列 ' + Math.min(Occt.maxWorkers, misses.length) + ' 本で処理します' : misses[0].rel.concat([misses[0].name]).join(' / '));
+      await Occt.load().catch(function () { });
+      await nextFrames(2);   // メインスレッドを止める前にオーバーレイを描画させる
+      await Promise.all(misses.map(async function (e) {
+        var label = e.rel.concat([e.name]).join(' / ');
+        try {
+          var bytes = new Uint8Array(await e.file.arrayBuffer());
+          var model = await Occt.convert(bytes, preset, baseName(e.name));
+          ConvCache.put(e.file, preset, model);          // 書き込みは待たない
+          pending.push(await toDevice(e, model, bytes));
+          if (!timer) timer = setTimeout(flush, 250);     // 連続で来ても描き直しは間引く
+        } catch (err) {
+          failed.push(label + ': ' + (err && err.message || err));
+        }
+        done++;
+        $('#overlay-title').textContent = '変換中  ' + done + ' / ' + misses.length;
+        $('#overlay-msg').textContent = label;
+      }));
+      if (timer) clearTimeout(timer);
+      shown += pending.length;
+      flush();
+      hideOverlay();
+    }
+
+    if (failed.length) showMessage('変換できなかったファイルがあります', failed.join('\n'));
+    if (cachedCount) reportCache(cachedCount, total);
+    return total - failed.length;
+  }
+  /* 格納や再変換のために STEP の原本は持っておく */
+  async function toDevice(e, model, bytes) {
+    return { model: model, fileName: e.name, stepBytes: bytes || new Uint8Array(await e.file.arrayBuffer()),
+             source: { kind: 'folder' }, groupPath: e.rel };
+  }
+  function reportCache(cached, total) {
+    var el2 = $('#load-note');
+    el2.hidden = false; el2.textContent = '';
+    el2.appendChild(document.createTextNode(cached + ' / ' + total + ' 件は前回の変換結果を再利用しました（同じファイル・同じ精度のとき）'));
+    el2.appendChild(document.createTextNode(' '));
+    el2.appendChild(el('button.btn.link.small', {
+      type: 'button', text: 'キャッシュを消す',
+      onclick: async function () {
+        var st = await ConvCache.stats();
+        if (!await showConfirm('変換キャッシュを消しますか？', '保存済み ' + st.count + ' 件 (' + fmtBytes(st.bytes) + ') を消します。\n次に同じファイルを開くときは変換からやり直します。', '消す')) return;
+        var n = await ConvCache.clear();
+        el2.hidden = true;
+        showMessage('変換キャッシュ', n + ' 件を消しました。');
+      }
+    }));
+    clearTimeout(reportCache.t);
+    reportCache.t = setTimeout(function () { el2.hidden = true; }, 12000);
   }
 
   /* <input webkitdirectory> から: webkitRelativePath が "ルート/下層/部品.step" になる */
@@ -211,28 +274,28 @@ var App = (function () {
   async function loadFiles(files) {
     var stepFiles = files.filter(function (f) { return /\.(step|stp)$/i.test(f.name); });
     var glbFiles = files.filter(function (f) { return /\.glb$/i.test(f.name); });
+    var glbDevices = [];
     for (var g = 0; g < glbFiles.length; g++) {
-      try { var gb = new Uint8Array(await glbFiles[g].arrayBuffer()); addDevice({ model: GLB.read(gb), fileName: glbFiles[g].name, stepBytes: null, source: { kind: 'file' } }); }
+      try { var gb = new Uint8Array(await glbFiles[g].arrayBuffer()); glbDevices.push({ model: GLB.read(gb), fileName: glbFiles[g].name, stepBytes: null, source: { kind: 'file' } }); }
       catch (e) { showMessage('読み込みに失敗しました', glbFiles[g].name + '\n' + e.message); }
     }
-    for (var i = 0; i < stepFiles.length; i++) {
-      var f = stepFiles[i];
-      showOverlay('変換中  ' + (i + 1) + ' / ' + stepFiles.length, f.name);
-      await nextFrames(2);   // メインスレッドが止まる前にオーバーレイを描画させる
-      try {
-        var bytes = new Uint8Array(await f.arrayBuffer());
-        var model = await Occt.convert(bytes, currentPrecision, baseName(f.name));
-        addDevice({ model: model, fileName: f.name, stepBytes: bytes, source: { kind: 'file' } });
-      } catch (e) {
-        hideOverlay();
-        showMessage('変換に失敗しました', f.name + '\n' + (e && e.message || e));
-      }
-    }
-    hideOverlay();
-    if (devices.length && (stepFiles.length || glbFiles.length)) Viewer3D.fitAll();
+    if (glbDevices.length) addDevices(glbDevices);
+    if (stepFiles.length) await loadEntries(stepFiles.map(function (f) { return { file: f, name: f.name, rel: [] }; }));
+    if (devices.length && glbDevices.length && !stepFiles.length) Viewer3D.fitAll();
   }
 
-  function addDevice(d) {
+  /* まとめて追加する。1 件ずつ addDevice すると、ツリーと横断の作り直しが件数分走って遅い */
+  function addDevices(list) {
+    if (!list || !list.length) return [];
+    var out = list.map(function (d) { return prepareDevice(d); });
+    out.forEach(function (d) { devices.push(d); Viewer3D.addDevice(d); });
+    Tree.registerDeviceFolders();   // 先にフォルダを登録してから描く (描き直すと横断バッジが消える)
+    Tree.render(devices);
+    CrossRef.rebuild(devices);
+    afterDevicesChanged();
+    return out;
+  }
+  function prepareDevice(d) {
     d.id = 'd' + (++seq); d.precision = currentPrecision;
     // 行の名前はファイル名。ユーザーが見て分かるのはこちらで、STEP 内部名はツールチップに出す
     d.name = baseName(d.fileName) || d.model.name || '(名称なし)';
@@ -241,13 +304,9 @@ var App = (function () {
     // 同名の装置が既にあればファイル名で区別
     if (devices.some(function (x) { return x.name === d.name; })) d.name = d.name + ' (' + d.fileName + ')';
     Tree.buildDevice(d);
-    devices.push(d);
-    Viewer3D.addDevice(d);
-    Tree.render(devices);
-    CrossRef.rebuild(devices);
-    afterDevicesChanged();
     return d;
   }
+  function addDevice(d) { return addDevices([d])[0]; }
   function removeDevice(d) {
     var list = Array.isArray(d) ? d.slice() : [d];
     Measure.clear();   // 消える形状を指したままの計測が残らないように
@@ -275,20 +334,26 @@ var App = (function () {
     if (!targets.length) return;
     var selPath = selectedNode ? selectedNode.path.join('/') : null;
     Measure.clear();   // 再メッシュで頂点が変わるため
-    for (var i = 0; i < targets.length; i++) {
-      var d = targets[i];
-      showOverlay('再変換中  ' + (i + 1) + ' / ' + targets.length, d.fileName + '  (' + Occt.PRESETS[currentPrecision].label + ')');
-      await nextFrames(2);
+    var done = 0, preset = currentPrecision;
+    showOverlay('再変換中  0 / ' + targets.length, Occt.PRESETS[preset].label);
+    await Occt.load().catch(function () { });
+    await nextFrames(2);
+    var models = await Promise.all(targets.map(async function (d) {
       try {
-        var model = await Occt.convert(d.stepBytes, currentPrecision, baseName(d.fileName));
-        var hidden = {}; d.leaves.forEach(function (l) { if (!l.visible) hidden[l.path.join('/')] = 1; });
-        Viewer3D.removeDevice(d); Tree.removeDevice(d);
-        d.model = model; d.precision = currentPrecision;
-        Tree.buildDevice(d);
-        d.leaves.forEach(function (l) { if (hidden[l.path.join('/')]) l.visible = false; });
-        Viewer3D.addDevice(d);
-      } catch (e) { showMessage('再変換に失敗しました', d.fileName + '\n' + e.message); }
-    }
+        var m = await Occt.convert(d.stepBytes, preset, baseName(d.fileName));
+        done++; $('#overlay-title').textContent = '再変換中  ' + done + ' / ' + targets.length;
+        return m;
+      } catch (e) { showMessage('再変換に失敗しました', d.fileName + '\n' + e.message); return null; }
+    }));
+    targets.forEach(function (d, i) {
+      if (!models[i]) return;
+      var hidden = {}; d.leaves.forEach(function (l) { if (!l.visible) hidden[l.path.join('/')] = 1; });
+      Viewer3D.removeDevice(d); Tree.removeDevice(d);
+      d.model = models[i]; d.precision = preset;
+      Tree.buildDevice(d);
+      d.leaves.forEach(function (l) { if (hidden[l.path.join('/')]) l.visible = false; });
+      Viewer3D.addDevice(d);
+    });
     hideOverlay();
     Tree.render(devices); CrossRef.rebuild(devices);
     if (selPath) { var n = null; devices.forEach(function (d) { d.nodes.forEach(function (x) { if (x.path.join('/') === selPath) n = x; }); }); select(n); }
@@ -323,6 +388,7 @@ var App = (function () {
   return {
     init: init, addDevice: addDevice, removeDevice: removeDevice, clearDevices: clearDevices, select: select,
     devices: function () { return devices; }, selected: function () { return selectedNode; }, precision: function () { return currentPrecision; },
+    addDevices: addDevices, loadEntries: loadEntries,
     showOverlay: showOverlay, hideOverlay: hideOverlay, showLeftTab: showLeftTab,
     onLibraryChanged: function () { }, stepSource: function (e) { lastLibraryEntry = e; }, loadFolders: loadFolders
   };

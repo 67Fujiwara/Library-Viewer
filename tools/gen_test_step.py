@@ -330,7 +330,35 @@ def gen_holes():
     return w.dump("holes.step")
 
 
+def gen_heavy(count=150):
+    """重い STEP (性能計測用)。穴あき板を count 個ぶら下げたアセンブリ。
+
+    形状を少しずつ変えて、OCC がメッシュを使い回せないようにしてある。
+    """
+    w = Writer()
+    ctx = Ctx(w)
+    children = []
+    for i in range(count):
+        L = 120 + (i % 7) * 13
+        W = 80 + (i % 5) * 11
+        holes = [(30 + (i % 3) * 5, 40, 6 + (i % 4)), (L - 30, W - 30, 5 + (i % 3))]
+        name = f"PART_{i:03d}"
+        pd = plate_with_holes(ctx, name, L, W, 8 + (i % 3), holes)
+        children.append((name, pd, ((i % 12) * 200, (i // 12) * 150, 0)))
+    assembly(ctx, "HEAVY_ASSY", children)
+    ctx.finish()
+    return w.dump("heavy.step")
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--heavy":
+        n = int(sys.argv[2]) if len(sys.argv) > 2 else 150
+        out = sys.argv[3] if len(sys.argv) > 3 else "test/out/heavy.step"
+        os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+        with open(out, "w") as f:
+            f.write(gen_heavy(n))
+        print("wrote", out, os.path.getsize(out), "bytes")
+        return
     if len(sys.argv) > 1 and sys.argv[1] == "--assembly":
         path, root = sys.argv[2], sys.argv[3]
         scale = float(sys.argv[4]) if len(sys.argv) > 4 else 1.0

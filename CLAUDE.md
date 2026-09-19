@@ -29,7 +29,11 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
 - `prefers-color-scheme` をテーマ分岐の条件に使わない（**判定基準は OS 設定ではなく時刻**）
 - 色の値を JS 内に持たない。CSS カスタムプロパティを `getComputedStyle` で読む（`cssVar()`）
 - `<div>` に onclick を付けない。`<button>` `<a>` `<input>`+`<label>` を使う
-- 部品の選択・表示切替のたびに glb を生成しない（生成は「格納」を押したときと、ライブラリの未変換 STEP を開いたときだけ）
+- 部品の選択・表示切替のたびに glb を生成しない（生成は「格納」を押したときと、ライブラリの未変換 STEP を開いたとき、
+  変換キャッシュへ書くときだけ）
+- **STEP の変換をメインスレッドでやらない。** `Occt.convert()` は必ずワーカー経由（UI が固まる）
+- 複数ファイルを 1 件ずつ `addDevice` しない。`addDevices()` でまとめる
+  （1 件ごとにツリーと横断を作り直すと件数分の再描画が走る）
 - 計測中に部品を選択しない。3D のクリックは `Viewer3D.setPickHandler()` で計測へ横取りする（二重に扱わない）
 - 装置を消す・再メッシュするときは `Measure.clear()` を呼ぶ（無くなった形状を指した計測を残さない）
 - ツリーのチェック操作でカメラを動かさない
@@ -52,7 +56,22 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
 - ZIP のファイル名は日本語。汎用フラグ **bit 11 (0x0800)** を立てないと文字化けする
 - テーマを切り替えても 3D シーンの色は自動で変わらない。`Viewer3D.applyTheme()` でクリアカラー / グリッド 2 色 / エッジ色 / 既定色 / 選択・ホバー色を更新する
 - `localStorage` / IndexedDB は `file://` で失敗しうる。読み書きは必ず try/catch（`Storage`, `Library.saveHandle`）
-- 変換前に 2 フレーム待たないとオーバーレイが描画されない（`nextFrames(2)`）
+- 変換前に 2 フレーム待たないとオーバーレイが描画されない（`nextFrames(2)`）。
+  **全件キャッシュに当たったときはオーバーレイも待ちフレームも出さない**（40ms の処理に 200ms 待たせない）
+- **STEP の変換が遅いのは解析と B-rep 構築で、メッシュ精度を落としても速くならない。**
+  実測 (1.4MB / 150 部品): 極粗 4.2 秒 / 粗い 3.4 秒 / 標準 3.7 秒 / 細かい 4.4 秒。
+  効くのは (1) 変換キャッシュ 3.9 秒 → 38ms (103 倍) (2) ワーカーで UI を止めないこと (54 fps)
+  (3) できた端から表示すること。**「粗い精度で速く読む」という案は効かないので採らない**
+- ワーカーは **2 本まで**。実測で OCC は並列に伸びない (3 本 1.05 倍 / 2 本 1.42 倍。
+  素の JS の busy loop は 3 本で 2.96 倍出るので CPU ではなくメモリ帯域・アロケータ律速)。
+  増やすと「最初の 1 件が出るまで」が遅くなるだけ
+- WASM は `WebAssembly.compile` で 1 回だけコンパイルし、`WebAssembly.Module` を各ワーカーへ
+  postMessage して `instantiateWasm` で使う (file:// でも通ることを確認済み)。
+  この wasm は memory を import せず自前で持つので、ヒープの事前確保はできない
+- 変換キャッシュの鍵は **名前・サイズ・更新日時・精度**。Playwright が作る File は毎回
+  `lastModified` が変わるので、キャッシュのテストでは `new File(..., {lastModified: 固定})` を使う
+- `addDevices()` の中で `Tree.registerDeviceFolders()` → `Tree.render()` → `CrossRef.rebuild()` の順に呼ぶ。
+  あとから `Tree.rerender()` すると行を作り直して**横断バッジが消える**
 - `EdgesGeometry` は重い。初回 ON のときだけ生成する
 - File System Access API のディレクトリハンドルは IndexedDB に保存できるが、次回は `requestPermission` にユーザー操作が要る
 - 中身のあるディレクトリは `removeEntry(name, { recursive: true })` でないと消せない。
@@ -124,7 +143,9 @@ src/js/01b-panels.js     左右サイドバーの開閉
 src/js/02-glb.js         GLB ライター/リーダー (node でも require 可)
 src/js/03-zip.js         ZIP ライター (格納方式, UTF-8 フラグ)
 src/js/03b-naming.js     ネーミングルール (ファイル名 ⇔ 案件情報)
-src/js/04-step.js        occt-import-js のロードと STEP → 内部モデル
+src/js/00b-idb.js        IndexedDB の口 (フォルダハンドルと変換キャッシュで共用。版とストアはここだけ)
+src/js/04-step.js        STEP 変換のワーカープール (WASM は 1 回コンパイルして共有)
+src/js/04b-cache.js      変換キャッシュ (同じファイル・同じ精度なら GLB を読み直す)
 src/js/05-viewer.js      three.js シーン・カメラ・表示モード・断面・エッジ・ハイライト
 src/js/05b-circle.js     メッシュからの円検出 (穴・丸軸の中心と径)
 src/js/05c-measure.js    計測モード (距離 / 角度、頂点・円・エッジ・面スナップ)
@@ -147,6 +168,7 @@ test/measure_test.mjs    計測 (寸法既知の STEP でスナップ位置・�
 test/focus_test.mjs      「この部品に寄る」(隠れている部品へ回り込む / 見えていれば角度を保つ)
 test/folder_test.mjs     フォルダ読み込み (STEP だけ拾う / 階層をツリーに再現 / ドロップ 2 経路)
 test/treeedit_test.mjs   ツリーの編集 (フォルダ作成 / ドラッグ移動 / F2 改名 / 右クリック / 解除)
+test/perf_test.mjs       重い STEP の性能 (キャッシュ / 並列 / 変換中の描画 / 逐次表示)
 test/env_check.mjs       file:// / localhost で使える API の確認
 ```
 

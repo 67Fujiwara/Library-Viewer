@@ -3,7 +3,7 @@
  * 登録作業は不要。設計者が「格納する」か Fusion のスクリプトで置いたものが即一覧に出る。 */
 var Library = (function () {
   var handle = null, entries = [], config = null, members = null, listEl, emptyEl, statusEl, searchEl, countEl, pathEl;
-  var IDB_NAME = 'library-viewer', IDB_STORE = 'handles';
+  var IDB_STORE = 'handles';
   var SKIP_DIRS = { step: 1, node_modules: 1, inbox: 1 };
   var INBOX = 'inbox', inbox = [];   // [{name, handle, dir, fields|null}]
 
@@ -31,19 +31,8 @@ var Library = (function () {
   }
 
   /* ---- ハンドルの保存 (IndexedDB は file:// でも使えるが失敗しうるので握りつぶす) ---- */
-  function idb() {
-    return new Promise(function (res, rej) {
-      var r = indexedDB.open(IDB_NAME, 1);
-      r.onupgradeneeded = function () { r.result.createObjectStore(IDB_STORE); };
-      r.onsuccess = function () { res(r.result); }; r.onerror = function () { rej(r.error); };
-    });
-  }
-  function saveHandle(h) {
-    return idb().then(function (db) { return new Promise(function (res) { var tx = db.transaction(IDB_STORE, 'readwrite'); tx.objectStore(IDB_STORE).put(h, 'library'); tx.oncomplete = res; tx.onerror = res; }); }).catch(function () { });
-  }
-  function restoreHandle() {
-    return idb().then(function (db) { return new Promise(function (res) { var tx = db.transaction(IDB_STORE, 'readonly'); var g = tx.objectStore(IDB_STORE).get('library'); g.onsuccess = function () { res(g.result || null); }; g.onerror = function () { res(null); }; }); }).catch(function () { return null; });
-  }
+  function saveHandle(h) { return IDB.put(IDB_STORE, 'library', h).catch(function () { }); }
+  function restoreHandle() { return IDB.get(IDB_STORE, 'library').then(function (v) { return v || null; }).catch(function () { return null; }); }
 
   async function open() {
     try {
