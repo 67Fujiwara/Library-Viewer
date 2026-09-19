@@ -10,7 +10,7 @@ var App = (function () {
     Viewer3D.init({ onSelect: function (n) { select(n); }, onHover: function (n) { /* 3D 側ホバーはツリー連動なし */ } });
     Theme.onChange(function () { Viewer3D.applyTheme(); });
     Tree.init({ onSelect: function (n) { select(n); }, onHover: function (n) { Viewer3D.setHover(n); } });
-    CrossRef.init(); Library.init(); Store.init();
+    CrossRef.init(); Library.init(); Store.init(); Measure.init();
     bindUI();
     // 起動直後の空き時間に WASM を展開しておく (初回変換を速くする)
     setTimeout(function () { Occt.load().catch(function (e) { showMessage('初期化エラー', e.message); }); }, 400);
@@ -47,11 +47,12 @@ var App = (function () {
     // キーボード
     window.addEventListener('keydown', function (e) {
       var t = e.target; if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.closest('dialog'))) return;
-      if (e.key === '[') { Panels.toggle('left'); e.preventDefault(); }
+      if (e.key === 'm' || e.key === 'M') { Measure.toggle(); e.preventDefault(); }
+      else if (e.key === '[') { Panels.toggle('left'); e.preventDefault(); }
       else if (e.key === ']') { Panels.toggle('right'); e.preventDefault(); }
       else if (e.key === 'ArrowLeft') { CrossRef.step(-1); e.preventDefault(); }
       else if (e.key === 'ArrowRight') { CrossRef.step(1); e.preventDefault(); }
-      else if (e.key === 'Escape') select(null);
+      else if (e.key === 'Escape') { if (Measure.isActive()) { if (Measure.points().length) Measure.clear(); else Measure.setActive(false); } else select(null); }
       else if (e.key === 'f' || e.key === 'F') Viewer3D.fitAll();
     });
   }

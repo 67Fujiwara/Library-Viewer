@@ -13,6 +13,7 @@ var Viewer3D = (function () {
   var edgeMat = null, ghostOpacity = 0.07;
   var raycaster, pointer = { down: false, button: 0, x: 0, y: 0, sx: 0, sy: 0, moved: 0, shift: false };
   var callbacks = { onSelect: null, onHover: null };
+  var pickHandler = null, overlayGroup = null, renderHooks = [];
 
   function init(opts) {
     canvas = $('#gl'); viewport = $('#viewport');
@@ -31,6 +32,7 @@ var Viewer3D = (function () {
     dirLight.position.set(0.6, 0.8, 1.6);
     camera.add(dirLight); scene.add(camera);   // ライトはカメラに追随させ、回転しても陰影が安定するように
     worldGroup = new THREE.Group(); scene.add(worldGroup);
+    overlayGroup = new THREE.Group(); overlayGroup.renderOrder = 999; scene.add(overlayGroup);   // 計測の線・点 (クリッピングの影響を受けない)
     edgeMat = new THREE.LineBasicMaterial({ color: 0x000000 });
     section.plane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0);
     raycaster = new THREE.Raycaster();
@@ -54,6 +56,7 @@ var Viewer3D = (function () {
     if (!needsRender) return;
     needsRender = false;
     renderer.render(scene, camera);
+    for (var i = 0; i < renderHooks.length; i++) renderHooks[i]();
   }
 
   /* ---- テーマ: CSS 変数を読んで 3D 側の色をすべて更新 ---- */
@@ -293,7 +296,8 @@ var Viewer3D = (function () {
       updateCamera();
     }, { passive: false });
   }
-  function pick(e) {
+  /* レイキャストして最前面の交点を返す (計測はここから頂点・エッジを取る) */
+  function rayHit(e) {
     var r = canvas.getBoundingClientRect();
     var v = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     raycaster.setFromCamera(v, camera);
@@ -304,17 +308,36 @@ var Viewer3D = (function () {
       // 断面で切り取られた側は無視する
       hits = hits.filter(function (h) { return section.plane.distanceToPoint(h.point) >= -1e-6; });
     }
-    return hits.length ? hits[0].object.userData.node : null;
+    return hits.length ? hits[0] : null;
   }
+  function pick(e) { var h = rayHit(e); return h ? h.object.userData.node : null; }
   var hoverPick = (function () {
     var last = 0;
     return function (e) {
       var now = performance.now(); if (now - last < 40) return; last = now;
+      if (pickHandler) { pickHandler('hover', rayHit(e), e); return; }
       var n = pick(e);
       if (n !== (hoverLeaves.length === 1 ? hoverLeaves[0] : null)) { setHover(n); if (callbacks.onHover) callbacks.onHover(n); }
     };
   })();
-  function clickPick(e) { var n = pick(e); if (callbacks.onSelect) callbacks.onSelect(n); }
+  function clickPick(e) {
+    if (pickHandler) { pickHandler('click', rayHit(e), e); return; }
+    var n = pick(e); if (callbacks.onSelect) callbacks.onSelect(n);
+  }
+
+  /* ---- 計測など、別ツールに拾わせるための差し込み口 ---- */
+  function setPickHandler(fn) {
+    pickHandler = fn;
+    if (!fn && hoverLeaves.length) { setHover(null); if (callbacks.onHover) callbacks.onHover(null); }
+  }
+  /* ワールド座標 → ビューポート内の CSS ピクセル */
+  function toScreen(v) {
+    var p = v.clone().project(camera), r = canvas.getBoundingClientRect();
+    return { x: (p.x * 0.5 + 0.5) * r.width, y: (-p.y * 0.5 + 0.5) * r.height, behind: p.z > 1 };
+  }
+  function overlay() { return overlayGroup; }
+  function onRender(fn) { renderHooks.push(fn); }
+  function cameraRef() { return camera; }
 
   function estimateGlbBytes(node) {
     var b = 0; leavesOf(node).forEach(function (n) { b += n.verts * 24 + n.tris * 12 + 200; });
@@ -332,6 +355,7 @@ var Viewer3D = (function () {
     setHover: setHover, setSelected: setSelected, setMode: setMode, setGhost: setGhost, setEdges: setEdges,
     setSection: setSection, sectionValue: sectionValue, updateAllStates: updateAllStates, updateStates: updateStates,
     fitAll: fitAll, fitNode: fitNode, moveToNode: fitNode, leavesOf: leavesOf, stats: stats, requestRender: requestRender,
-    sceneBox: function () { return sceneBox; }
+    sceneBox: function () { return sceneBox; }, sceneRadius: function () { return sceneRadius; },
+    setPickHandler: setPickHandler, toScreen: toScreen, overlay: overlay, onRender: onRender, camera: cameraRef
   };
 })();

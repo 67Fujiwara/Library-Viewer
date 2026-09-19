@@ -11,6 +11,7 @@
   /* 3D ビューポート (DESIGN.md 範囲外: 地より 2〜3 段暗いニュートラル) */
   --viewport-bg: #e3ddd3; --grid-major: #c4bdb1; --grid-minor: #d6cfc3;
   --edge-color: #3d3d3a; --solid-default: #a8a297; --select-color: #cc785c; --hover-color: #e8a55a;
+  --measure-line: #cc785c; --measure-axis: #6c6a64; --measure-point: #a9583e; --measure-preview: #5db8a6;
   --ghost-opacity: 0.07;
   --font-sans: "StyreneB", "Inter", "Segoe UI", "Yu Gothic UI", "Meiryo", -apple-system, BlinkMacSystemFont, sans-serif;
   --font-display: "Copernicus", "Tiempos Headline", "Georgia", "Yu Mincho", "Times New Roman", serif;
@@ -29,6 +30,7 @@
   --shadow: 0 1px 3px rgba(0,0,0,0.4);
   --viewport-bg: #121110; --grid-major: #3a3834; --grid-minor: #26241f;
   --edge-color: #b5b1a8; --solid-default: #8f8a82; --select-color: #e08a6c; --hover-color: #f0b46b;
+  --measure-line: #e08a6c; --measure-axis: #a09d96; --measure-point: #f0b46b; --measure-preview: #6cc9b7;
 }
 
 /* ==== ベース ==== */
@@ -213,6 +215,24 @@ body.left-collapsed #left, body.right-collapsed #right { border: 0; padding-left
 .drop-hint p { margin: 0; font-size: 15px; }
 .drop-hint strong { color: var(--ink); font-weight: 500; }
 body.dragging #viewport { outline: 2px dashed var(--primary); outline-offset: -8px; }
+
+/* ==== 計測 ==== */
+body.measuring #gl { cursor: crosshair; }
+.measure-bar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 4; background: var(--canvas); border-top: 1px solid var(--hairline);
+  padding: 8px var(--sp-sm); display: flex; flex-direction: column; gap: 6px; box-shadow: 0 -2px 12px rgba(20,20,19,0.06); }
+.measure-bar .mb-row { display: flex; align-items: center; gap: var(--sp-xs); flex-wrap: wrap; }
+.measure-bar .mb-title { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; color: var(--ink); }
+.measure-bar .readout { gap: var(--sp-md); border-top: 1px solid var(--hairline-soft); padding-top: 6px; }
+.mb-val, .mb-pt { display: inline-flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.mb-val .k, .mb-pt .k { font-size: 11px; color: var(--muted); font-weight: 500; }
+.mb-val .v { font-size: 15px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.mb-val .u { font-size: 11px; color: var(--muted-soft); }
+.mb-val.strong .v { font-size: 20px; color: var(--primary); font-weight: 500; }
+.mb-pt .v { font-size: 12px; color: var(--muted); }
+.measure-bar.live .mb-val .v { opacity: 0.75; }   /* 2 点目が未確定 (カーソル追従中) */
+.measure-label { position: absolute; z-index: 5; transform: translate(-50%, -140%); pointer-events: none;
+  background: var(--primary); color: var(--on-primary); border-radius: var(--r-pill); padding: 3px 10px; font-size: 12px; font-weight: 500;
+  box-shadow: var(--shadow); white-space: nowrap; }
 
 /* ==== 横断パネル ==== */
 .xref-current { border: 1px solid var(--hairline); border-radius: var(--r-lg); padding: 10px 12px; background: var(--surface-card); font-size: 12px; }

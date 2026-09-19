@@ -30,6 +30,7 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
 - 色の値を JS 内に持たない。CSS カスタムプロパティを `getComputedStyle` で読む（`cssVar()`）
 - `<div>` に onclick を付けない。`<button>` `<a>` `<input>`+`<label>` を使う
 - 部品の選択・表示切替のたびに glb を生成しない（生成は「格納」を押したときと、ライブラリの未変換 STEP を開いたときだけ）
+- 計測中に部品を選択しない。3D のクリックは `Viewer3D.setPickHandler()` で計測へ横取りする（二重に扱わない）
 - ツリーのチェック操作でカメラを動かさない
 - Fusion スクリプト (`fusion/LibraryExport/`) とビューアで、フォルダ階層プリセット・`meta.json` のスキーマ・**ネーミングルールの解析規則**を別々に変えない。必ず両方を同時に直す
   （`src/js/03b-naming.js` の `parse`/`format` と `LibraryExport.py` の `naming_parse`/`naming_format` は同じ規則）
@@ -50,6 +51,11 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
 - ネーミングルールで区切り文字を含んでよいのは **装置名だけ**（左右の項目を先に確定し、残りを装置名にする）
 - `inbox/` は装置フォルダの走査対象から外す（`SKIP_DIRS`）。取り込めたファイルだけ `removeEntry` で消す
 - Playwright の `setInputFiles` は **非 ASCII のファイルパスを渡せない**。日本語ファイル名のテストは `{name, buffer}` 形式で渡す
+- 計測は B-rep を持たないメッシュから拾う。当たった三角形の頂点・辺にスナップするので、
+  **円の中心や円筒軸は取れない**（必要になったら円弧の当てはめが要る）
+- 計測の線・点は `Viewer3D.overlay()` に入れ、`depthTest: false` で常に手前に描く。
+  `LineDashedMaterial` は `computeLineDistances()` を呼ばないと破線にならない
+- テストで角をクリックするときはシルエット際でレイが外れる。面の内側へ数 px 寄せる（`clickWorld` の inset）
 
 ## レイアウト（構成は変更しない）
 
@@ -75,6 +81,7 @@ src/js/03-zip.js         ZIP ライター (格納方式, UTF-8 フラグ)
 src/js/03b-naming.js     ネーミングルール (ファイル名 ⇔ 案件情報)
 src/js/04-step.js        occt-import-js のロードと STEP → 内部モデル
 src/js/05-viewer.js      three.js シーン・カメラ・表示モード・断面・エッジ・ハイライト
+src/js/05c-measure.js    計測モード (頂点/エッジ/面スナップ・距離・ΔXYZ)
 src/js/06-tree.js        構成ツリー
 src/js/07-crossref.js    案件横断 (名寄せ)
 src/js/08-library.js     ライブラリ (フォルダ走査 / 受信箱 inbox / ルール / 書き込み / members.json / catalog.json)
@@ -89,6 +96,7 @@ test/browser_test.mjs    file:// 通しテスト (読み込み→ツリー→横
 test/library_test.mjs    FS Access API を偽ハンドルにして 走査→受信箱→格納→ルール→名簿
 test/sample_library_test.mjs  生成したサンプルライブラリをビューアが読めるか
 test/panels_test.mjs     サイドバー開閉 (953px の窓で: 折りたたみ / 復元 / キー / 3D の追従)
+test/measure_test.mjs    計測 (寸法既知の STEP でスナップ位置・距離・ΔXYZ を検証)
 test/env_check.mjs       file:// / localhost で使える API の確認
 ```
 

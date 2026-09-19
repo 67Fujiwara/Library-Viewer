@@ -111,6 +111,9 @@
         <input type="radio" name="viewmode" id="vm-section" value="section"><label for="vm-section">断面</label>
       </div>
       <input type="checkbox" id="chk-edges" class="toggle"><label for="chk-edges" class="btn small secondary toggle-label">エッジ</label>
+      <input type="checkbox" id="chk-measure" class="toggle"><label for="chk-measure" class="btn small secondary toggle-label" title="2 点間の距離を測ります  M">
+        <svg viewBox="0 0 24 24"><path d="M2 14l12-12 8 8-12 12z M6 10l2 2M9 7l2 2M12 4l2 2"/></svg>計測
+      </label>
       <button type="button" id="btn-fit" class="btn small secondary">全体表示</button>
       <button type="button" id="btn-fit-sel" class="btn small secondary" disabled>この部品に寄る</button>
     </div>
@@ -129,7 +132,33 @@
       <p>ここに <strong>.step / .stp</strong> をドロップ</p>
       <p class="muted small">複数同時可・変換はすべてこの PC 内で完結します</p>
     </div>
-    <div id="hud-hint" class="hud-hint mono small">左ドラッグ 回転 · 右/Shift+ドラッグ 移動 · ホイール 拡大 · クリック 選択 · ← → 同名ユニット · [ ] サイドバー</div>
+    <div id="measure-label" class="measure-label mono" hidden></div>
+    <div id="measure-bar" class="measure-bar" hidden>
+      <div class="mb-row">
+        <span class="mb-title">
+          <svg viewBox="0 0 24 24"><path d="M2 14l12-12 8 8-12 12z M6 10l2 2M9 7l2 2M12 4l2 2"/></svg>計測
+        </span>
+        <div class="seg" role="group" aria-label="スナップ">
+          <input type="radio" name="snapmode" id="snap-auto" value="auto" checked><label for="snap-auto" title="頂点 → エッジ → 面 の順に吸着">自動</label>
+          <input type="radio" name="snapmode" id="snap-vertex" value="vertex"><label for="snap-vertex">頂点</label>
+          <input type="radio" name="snapmode" id="snap-edge" value="edge"><label for="snap-edge">エッジ</label>
+          <input type="radio" name="snapmode" id="snap-face" value="face"><label for="snap-face">面</label>
+        </div>
+        <span id="measure-hint" class="muted small">1 点目をクリック</span>
+        <span class="spacer"></span>
+        <button type="button" id="measure-clear" class="btn small secondary">クリア</button>
+        <button type="button" id="measure-close" class="btn small secondary">終了</button>
+      </div>
+      <div class="mb-row readout">
+        <span class="mb-val strong"><span class="k">距離</span><span class="v mono" id="m-dist">–</span><span class="u">mm</span></span>
+        <span class="mb-val"><span class="k">ΔX</span><span class="v mono" id="m-dx">–</span></span>
+        <span class="mb-val"><span class="k">ΔY</span><span class="v mono" id="m-dy">–</span></span>
+        <span class="mb-val"><span class="k">ΔZ</span><span class="v mono" id="m-dz">–</span></span>
+        <span class="mb-pt"><span class="k">1</span><span class="v mono" id="m-p1">–</span></span>
+        <span class="mb-pt"><span class="k">2</span><span class="v mono" id="m-p2">–</span></span>
+      </div>
+    </div>
+    <div id="hud-hint" class="hud-hint mono small">左ドラッグ 回転 · 右/Shift+ドラッグ 移動 · ホイール 拡大 · クリック 選択 · ← → 同名ユニット · [ ] サイドバー · M 計測</div>
   </div>
 
   <aside id="right">
