@@ -71,6 +71,20 @@ await dragRow('ベース板', '装置A');
 await show('整理後');
 check((await shape()) === '[装置A]\n  [ユニット1]\n    アーム\n    ブラケット\n  ベース板', 'devices moved into the folders: \n' + await shape());
 check(await folderFilled('ユニット1'), 'once devices are moved in, the folder is filled in');
+
+// インデントガイド: 上の階層の数だけ縦線が引かれる (VS Code と同じ)
+const guide = (name) => page.locator('.tree-row', { hasText: name }).first()
+  .evaluate(r => ({
+    guides: Number(r.style.getPropertyValue('--guides')),
+    width: getComputedStyle(r, '::before').width,
+    indent: r.style.paddingLeft,
+  }));
+const g0 = await guide('装置A'), g1 = await guide('ユニット1'), g2 = await guide('アーム');
+console.log('    インデントガイド:', JSON.stringify([g0, g1, g2]));
+check(g0.guides === 0 && g0.width === '0px', 'a top level row has no guide line');
+check(g1.guides === 1 && g1.width === '16px', 'one level in draws 1 guide line');
+check(g2.guides === 2 && g2.width === '32px', 'two levels in draws 2 guide lines');
+check(g2.indent === '38px', 'the guides line up with the indent (' + g2.indent + ')');
 await page.screenshot({ path: outDir + '/shot-25-organised.png' });
 
 // F2 で装置の名前を変える

@@ -7,6 +7,7 @@
   --on-primary: #ffffff;
   --accent-teal: #5db8a6; --accent-amber: #e8a55a; --success: #5db872; --warning: #d4a017; --error: #c64545;
   --primary-ring: rgba(204,120,92,0.15);
+  --tree-guide: #ddd5c9;
   --shadow: 0 1px 3px rgba(20,20,19,0.08);
   /* 3D ビューポート (DESIGN.md 範囲外: 地より 2〜3 段暗いニュートラル) */
   --viewport-bg: #e3ddd3; --grid-major: #c4bdb1; --grid-minor: #d6cfc3;
@@ -27,6 +28,7 @@
   --on-primary: #181715;
   --accent-teal: #6cc9b7; --accent-amber: #f0b46b; --success: #6fcc84; --warning: #e0b23a; --error: #d95c5c;
   --primary-ring: rgba(224,138,108,0.22);
+  --tree-guide: #3a3834;
   --shadow: 0 1px 3px rgba(0,0,0,0.4);
   --viewport-bg: #121110; --grid-major: #3a3834; --grid-minor: #26241f;
   --edge-color: #b5b1a8; --solid-default: #8f8a82; --select-color: #e08a6c; --hover-color: #f0b46b;
@@ -164,6 +166,14 @@ body.left-collapsed #left, body.right-collapsed #right { border: 0; padding-left
 /* ==== 構成ツリー ==== */
 .tree { flex: 1; overflow: auto; padding: 4px 0 var(--sp-md); font-size: 13px; }
 .tree-row { display: flex; align-items: center; height: 26px; padding-right: 6px; gap: 2px; position: relative; cursor: default; }
+/* インデントガイド (VS Code と同じ): 上の階層の数だけ縦線を引く。
+ * 行は入れ子の DOM ではなく平らに並んでいるので、線は ::before に 16px 周期の
+ * 繰り返しグラデーションで描く。`--guides` が本数 (06-tree.js の indent() が入れる) */
+.tree-row::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; pointer-events: none;
+  width: calc(var(--guides, 0) * 16px);
+  background-image: repeating-linear-gradient(to right, transparent 0 15px, var(--tree-guide) 15px 16px);
+}
 .tree-row:hover { background: var(--surface-soft); }
 .tree-row.selected { background: var(--surface-strong); }
 .tree-row.match { }

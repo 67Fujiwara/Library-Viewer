@@ -155,7 +155,7 @@ var Tree = (function () {
   }
   function renderGroupRow(n, parentEl) {
     var row = el('div.tree-row.group', { role: 'treeitem', draggable: 'true', dataset: { id: n.id } });
-    row.style.paddingLeft = (6 + n.depth * 16) + 'px';
+    indent(row, n.depth);
     if (n.collapsed) row.classList.add('collapsed');
     var tw = el('button.twisty', { type: 'button', title: '開閉' }, [svgIcon(ICON.chevron)]);
     var cb = el('input', { type: 'checkbox', id: 'cb-' + n.id, dataset: { id: n.id }, title: 'このフォルダをまとめて表示 / 非表示' });
@@ -172,6 +172,13 @@ var Tree = (function () {
     parentEl.appendChild(row);
     rows[n.id] = row; n.row = row; n.cb = cb; n.xbadge = null;
   }
+  /* 行の字下げ。`--guides` は上の階層の数 = 引く縦線の本数 (VS Code のインデントガイド)。
+   * 線は CSS の ::before で親の開閉マークの真下に来る位置に引く (app.css) */
+  function indent(row, level) {
+    row.style.paddingLeft = (6 + level * 16) + 'px';
+    row.style.setProperty('--guides', String(level));
+  }
+
   /* 行の右端のボタン。VS Code と同じくホバーのときだけ名前の上に重ねる
    * (常に場所を取ると、狭い左パネルで名前とタグが入りきらない) */
   function actions(solo, close) {
@@ -192,7 +199,7 @@ var Tree = (function () {
 
   function renderNode(n, parentEl) {
     var row = el('div.tree-row', { role: 'treeitem', draggable: n.depth === 0 ? 'true' : 'false', dataset: { id: n.id } });
-    row.style.paddingLeft = (6 + (n.depth + ((n.device && n.device.depthOffset) || 0)) * 16) + 'px';
+    indent(row, n.depth + ((n.device && n.device.depthOffset) || 0));
     if (n.depth === 0) row.classList.add('device');
     if (n.collapsed) row.classList.add('collapsed');
     var tw = el('button.twisty', { type: 'button', title: n.children.length ? '開閉' : '' }, [svgIcon(ICON.chevron)]);
