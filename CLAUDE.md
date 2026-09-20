@@ -123,11 +123,19 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
 - 計測の線・点は `Viewer3D.overlay()` に入れ、`depthTest: false` で常に手前に描く。
   `LineDashedMaterial` は `computeLineDistances()` を呼ばないと破線にならない
 - テストで角をクリックするときはシルエット際でレイが外れる。面の内側へ数 px 寄せる（`clickWorld` の inset）
-- 「この部品に寄る」は **「見える投影面積」が最大の角度**を選ぶ（`visibleArea`）。
-  遮られているかどうかだけで判定すると、真横から薄く見えているだけの角度で妥協してしまう。
-  面積 × cos で測れば、板状の部品は板の面が正面に来る角度が選ばれる = 見やすい角度になる
+- 「この部品に寄る」は **「見える投影面積」が最大の角度**を選ぶ。2 段構え:
+  1. まず遮蔽を無視して面積だけで広く探す（`faceArea`。ただの内積なので安い）
+  2. 上位 10 個だけレイを飛ばして遮蔽を確かめる（`visibleArea`。レイは高い）
+  - **候補は角度の格子だけにしない。** 面積の大きい法線の向き (`dominantDirs`) を必ず候補に入れる。
+    格子の phi を 0.22π〜0.78π しか振らないと、**水平な板を真上から見る角度に永久に届かない**
+    （実測: 水平な薄板が最大面積の 55% までしか見えなかった → 100% に）
+  - 格子の 30° 刻みのままだと面が斜めを向くので、勝った向きの周りを山登りで詰める（`focusNode` の 2)）
+  - **三角形を間引いたら、その分だけ面積を割り増す**（`faceList` の `a * step`）。
+    大きい面が数枚 + 穴まわりの小さい面が大量、という板で面積を大きく見誤る
   - 今の角度が最良の 85% 以上ならそのまま（むやみに視点を変えない）
   - 板の裏に付いた部品なら、カメラが板の下へ回り込む（`test/focus_test.mjs` が z の符号で確認）
+  - 遮蔽の計算に時間制限を置いて打ち切らない。打ち切ると「動きの小さい候補」しか見ずに終わる。
+    候補の数を絞って必ず全部見る（実測 0.4ms）
 - **リサイズ後は同じフレーム内で描き切る**（`Viewer3D.resize()` → `renderNow()`）。
   `setSize` は描画バッファを空にするので、`requestRender()` で次の rAF に回すとそのフレームが
   黒く合成される。サイドバーの開閉アニメ中はこれが毎フレーム起きて画面が暗く見えた
@@ -215,7 +223,7 @@ src/js/08-library.js     ライブラリ (既定の場所の記憶と自動読�
 src/js/09-store.js       格納ダイアログ (FS Access API または ZIP)
 src/js/10-app.js         配線
 fusion/LibraryExport/    Fusion 360 スクリプト (STEP + meta.json をライブラリに直接格納)
-tools/gen_test_step.py   AP214 STEP テストデータ生成 (箱 / 階層アセンブリ / 穴あき板 / 遮蔽 / 裏面 / 重い)
+tools/gen_test_step.py   AP214 STEP テストデータ生成 (箱 / 階層アセンブリ / 穴あき板 / 遮蔽 / 裏面 / 面の向き / 重い)
 tools/make_sample_library.mjs  サンプルライブラリ生成 (models / inbox / 名簿まで一式)
 test/read_step.mjs       occt が階層を返すか
 test/test_glb_zip.mjs    GLB を gltf-transform で / ZIP を unzip で
@@ -225,7 +233,7 @@ test/autolib_test.mjs    既定ライブラリの自動読み込み (権限あ�
 test/sample_library_test.mjs  生成したサンプルライブラリをビューアが読めるか
 test/panels_test.mjs     サイドバー開閉 (953px の窓で: 折りたたみ / 復元 / キー / 3D の追従)
 test/measure_test.mjs    計測 (寸法既知の STEP でスナップ位置・距離・ΔXYZ・穴中心・角度を検証)
-test/focus_test.mjs      「この部品に寄る」(隠れている部品へ回り込む / 見えていれば角度を保つ)
+test/focus_test.mjs      「この部品に寄る」(隠れている部品へ回り込む / 見えていれば角度を保つ / 面積が最大の角度を選ぶ)
 test/folder_test.mjs     フォルダ読み込み (STEP だけ拾う / 階層をツリーに再現 / ドロップ 2 経路)
 test/treeedit_test.mjs   ツリーの編集 (フォルダ作成 / ドラッグ移動 / F2 改名 / 右クリック / 解除)
 test/tags_test.mjs       タグと検索 (タグ付け / 名称・タグでヒット / 選ぶと絞られる / 改名・移動・再読込)

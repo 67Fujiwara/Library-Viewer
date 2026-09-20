@@ -335,6 +335,28 @@ def gen_backside():
     return w.dump("backside.step")
 
 
+def gen_faces():
+    """「いちばん面積が大きく見える角度」の検証用。
+
+    FLAT_PLATE  水平な薄板 (大きい面は ±Z)。既定のカメラ (phi=60°) からは cos60 = 0.5 しか見えず、
+                まっすぐ上/下から見たときが最大。phi を 0 近くまで振れないと最適角にたどり着けない。
+    WALL_PLATE  立った薄板 (大きい面は ±X)。真横 (phi=90°, theta=0) が最大。
+    穴を開けてあるので、三角形の大きさがばらばら = 間引いた標本の重み付けを間違えると面積を見誤る。
+    """
+    w = Writer()
+    ctx = Ctx(w)
+    flat = plate_with_holes(ctx, "FLAT_PLATE", 300, 200, 6, [(60, 60, 10), (240, 140, 10), (150, 100, 16)])
+    wall = plate_with_holes(ctx, "WALL_PLATE", 6, 200, 150, [])
+    post = part(ctx, "POST", 30, 30, 120, color=(0.55, 0.55, 0.6))
+    assembly(ctx, "FACES", [
+        ("FLAT_PLATE", flat, (0, 0, 0)),
+        ("WALL_PLATE", wall, (600, 0, 0)),
+        ("POST", post, (300, 300, 0)),
+    ])
+    ctx.finish()
+    return w.dump("faces.step")
+
+
 def gen_holes():
     """穴の中心・径が厳密に分かっている板。計測精度の検証用。
 
@@ -399,6 +421,8 @@ def main():
         f.write(gen_occluded())
     with open(os.path.join(out, "backside.step"), "w") as f:
         f.write(gen_backside())
+    with open(os.path.join(out, "faces.step"), "w") as f:
+        f.write(gen_faces())
     print("wrote", sorted(f for f in os.listdir(out) if f.endswith(".step")))
 
 

@@ -287,42 +287,79 @@ var Viewer3D = (function () {
   function fitAll() { moveToBox(boxOf(null)); }
   function fitNode(node) { moveToBox(boxOf(node)); }
 
-  /* ---- 「この部品に寄る」: 隠れていたら見える角度へ回り込んでから寄る ---- */
+  /* ---- 「この部品に寄る」: いちばん面積が大きく見える角度へ回り込んでから寄る ---- */
   var occRay = new THREE.Raycaster();
 
-  /* 部品の表面から、遮蔽を調べる標本点を拾う (三角形の重心・面法線・面積) */
-  function samplePoints(node, maxN) {
+  /* 部品の三角形を (重心・法線・面積) の一覧にする。
+   * 多いときは間引くが、**間引いた分だけ面積を割り増す**。ここを忘れると、
+   * 大きな面が数枚 + 穴まわりの小さな面が大量、という板で面積を大きく見誤る。 */
+  function faceList(node, maxN) {
     var ls = leavesOf(node).filter(function (n) { return n.mesh && n.visible !== false; });
     var total = 0;
     ls.forEach(function (n) { total += n.tris || 0; });
-    var pts = [];
-    if (!total) return pts;
+    var out = [];
+    if (!total) return out;
     var va = new THREE.Vector3(), vb = new THREE.Vector3(), vc = new THREE.Vector3(), u = new THREE.Vector3(), v = new THREE.Vector3();
     ls.forEach(function (n) {
       var geo = n.mesh.geometry, idx = geo.index.array, pos = geo.attributes.position.array;
       var triCount = idx.length / 3;
       var want = Math.max(1, Math.round(maxN * (n.tris || 0) / total));
       var step = Math.max(1, Math.floor(triCount / want));
-      for (var t = 0; t < triCount && pts.length < maxN * 2; t += step) {
+      for (var t = 0; t < triCount; t += step) {
         va.fromArray(pos, idx[t * 3] * 3); vb.fromArray(pos, idx[t * 3 + 1] * 3); vc.fromArray(pos, idx[t * 3 + 2] * 3);
         u.subVectors(vb, va); v.subVectors(vc, va);
         var cr = new THREE.Vector3().crossVectors(u, v);
-        pts.push({
+        var area = cr.length() / 2;
+        if (!(area > 0)) continue;
+        out.push({
           p: new THREE.Vector3((va.x + vb.x + vc.x) / 3, (va.y + vb.y + vc.y) / 3, (va.z + vb.z + vc.z) / 3),
-          n: cr.clone().normalize(), a: cr.length() / 2
+          n: cr.normalize(), a: area * step
         });
       }
     });
-    return pts;
+    return out;
+  }
+  /* 向き u (部品 → カメラ) から見える投影面積。遮蔽は見ない (安いので候補をたくさん試せる) */
+  function faceArea(u, faces) {
+    var s = 0;
+    for (var i = 0; i < faces.length; i++) {
+      var c = faces[i].n.dot(u);
+      if (c > 0) s += c * faces[i].a;
+    }
+    return s;
+  }
+  /* 面積の大きい法線の向きを k 個。板ならその板の面がまっすぐ正面に来る向きが出る。
+   * 角度を格子で撒くだけだと、水平な板を真上から見る向き (phi≈0) に永久にたどり着けない。 */
+  function dominantDirs(faces, k) {
+    var cl = [];
+    for (var i = 0; i < faces.length; i++) {
+      var f = faces[i], hit = null;
+      for (var j = 0; j < cl.length; j++) if (cl[j].n.dot(f.n) > 0.94) { hit = cl[j]; break; }   // 20° 以内は同じ向き
+      if (hit) { hit.a += f.a; hit.n.addScaledVector(f.n, f.a / hit.a).normalize(); }
+      else if (cl.length < 64) cl.push({ n: f.n.clone(), a: f.a });
+    }
+    cl.sort(function (a, b) { return b.a - a.a; });
+    return cl.slice(0, k).map(function (c) { return c.n; });
   }
   function camPosFor(target, dist, theta, phi) {
     var sp = Math.sin(phi);
     return new THREE.Vector3(target.x + dist * sp * Math.cos(theta), target.y + dist * sp * Math.sin(theta), target.z + dist * Math.cos(phi));
   }
-  /* その位置から見える「投影面積」を返す。
-   * 遮られていないカメラ向きの面について 面積 × cos を足す。
-   * 単に「遮られていないか」で判定すると、真横から薄く見えているだけの角度でも合格してしまう。
-   * 面積で測れば、板状の部品なら板の面が正面に来る角度がいちばん高くなる = 見やすい角度になる。
+  /* 向きベクトル → カメラ角。真上・真下は少しだけ倒す (phi=0 ちょうどだと上方向が決まらない) */
+  function anglesFor(u) {
+    var z = Math.max(-1, Math.min(1, u.z));
+    return { theta: Math.atan2(u.y, u.x), phi: Math.min(Math.PI - 0.06, Math.max(0.06, Math.acos(z))) };
+  }
+  function dirFor(theta, phi) {
+    var sp = Math.sin(phi);
+    return new THREE.Vector3(sp * Math.cos(theta), sp * Math.sin(theta), Math.cos(phi));
+  }
+  /* 角度の差 (回り込む量)。同じくらい見えるなら動きの小さい方を選ぶための物差し */
+  function moveCost(theta, phi) {
+    var dT = Math.abs(((theta - ctrl.theta + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI);
+    return dT + Math.abs(phi - ctrl.phi);
+  }
+  /* その位置から実際に見える投影面積。遮られている標本は数えない。
    * 対象自身も遮蔽物に含めるので、自分の手前の面に隠れる部分は見えない扱いになる。 */
   function visibleArea(camPos, pts, objs, eps) {
     var sum = 0, dir = new THREE.Vector3();
@@ -340,36 +377,70 @@ var Viewer3D = (function () {
     }
     return sum;
   }
+  /* 遮蔽を見るための標本は少しでいい (レイが高い)。面積の重みは保ったまま間引く */
+  function thinOut(faces, maxN) {
+    if (faces.length <= maxN) return faces;
+    var step = Math.ceil(faces.length / maxN), out = [];
+    for (var i = 0; i < faces.length; i += step) out.push({ p: faces[i].p, n: faces[i].n, a: faces[i].a * step });
+    return out;
+  }
+
   function focusNode(node) {
     var box = boxOf(node);
     if (!box) return;
     var c = box.getCenter(new THREE.Vector3()), s2 = box.getSize(new THREE.Vector3());
     var r = Math.max(s2.length() / 2, 0.5);
     var dist = r / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2)) * 1.15;
-    var pts = samplePoints(node, 12);
+    var faces = faceList(node, 1200);
+    if (!faces.length) { animateTo({ theta: ctrl.theta, phi: ctrl.phi, dist: dist, target: c }, 420); return { rotated: false, score: 0 }; }
+
+    // 1) まず遮蔽を無視して「面積がいちばん大きく見える向き」を探す (安いので広く探せる)
+    var cands = [{ theta: ctrl.theta, phi: ctrl.phi }];
+    dominantDirs(faces, 8).forEach(function (u) { cands.push(anglesFor(u)); });   // 板の面をまっすぐ向く角度
+    var PH = [0.08, 0.22, 0.36, 0.5, 0.64, 0.78, 0.92];
+    for (var pi = 0; pi < PH.length; pi++) {
+      for (var ti = 0; ti < 12; ti++) cands.push({ theta: ctrl.theta + ti * Math.PI * 2 / 12, phi: PH[pi] * Math.PI });
+    }
+    cands.forEach(function (k) { k.area = faceArea(dirFor(k.theta, k.phi), faces); });
+    cands.sort(function (a, b) { return b.area - a.area || moveCost(a.theta, a.phi) - moveCost(b.theta, b.phi); });
+
+    // 2) いちばん良かった向きの周りを細かく詰める (格子の 30° 刻みのままだと面が斜めを向く)
+    var top = cands[0], stepA = Math.PI / 12;
+    for (var pass = 0; pass < 4; pass++, stepA /= 2) {
+      var improved = false;
+      for (var d = 0; d < 4; d++) {
+        var t2 = top.theta + (d === 0 ? stepA : d === 1 ? -stepA : 0);
+        var p2 = Math.min(Math.PI - 0.06, Math.max(0.06, top.phi + (d === 2 ? stepA : d === 3 ? -stepA : 0)));
+        var a2 = faceArea(dirFor(t2, p2), faces);
+        if (a2 > top.area * 1.0005) { top = { theta: t2, phi: p2, area: a2 }; improved = true; }
+      }
+      if (!improved) continue;
+      pass--; stepA *= 2;                    // 良くなっている間は同じ刻みで進む
+      if (stepA < 1e-3) break;
+    }
+    cands.unshift(top);
+
+    // 3) 上位だけ遮蔽を確かめる (レイは高いので数を絞る)。隠れている角度はここで落ちる
+    var pts = thinOut(faces, 48);
     var objs = [];
     leaves.forEach(function (n) { if (n.mesh && n.visible !== false) objs.push(n.mesh); });
     var eps = Math.max(r * 1e-3, 1e-4);
-    if (!pts.length) { animateTo({ theta: ctrl.theta, phi: ctrl.phi, dist: dist, target: c }, 420); return { rotated: false, score: 0 }; }
-
+    var seen = {}, tried = [];
+    for (var k = 0; k < cands.length && tried.length < 10; k++) {
+      var key = Math.round(cands[k].theta * 20) + ':' + Math.round(cands[k].phi * 20);
+      if (seen[key]) continue;
+      seen[key] = 1;
+      tried.push(cands[k]);
+    }
     var current = visibleArea(camPosFor(c, dist, ctrl.theta, ctrl.phi), pts, objs, eps);
     var best = { theta: ctrl.theta, phi: ctrl.phi, area: current };
-    // 球面上に候補を撒いて、いちばんよく見える角度を選ぶ
-    var cands = [], PH = [Math.PI * 0.22, Math.PI * 0.38, Math.PI * 0.5, Math.PI * 0.62, Math.PI * 0.78];
-    for (var pi = 0; pi < PH.length; pi++) {
-      for (var ti = 0; ti < 12; ti++) {
-        var theta = ctrl.theta + (ti + 0.5) * Math.PI * 2 / 12;
-        var dT = Math.abs(((theta - ctrl.theta + Math.PI) % (Math.PI * 2)) - Math.PI);
-        cands.push({ theta: theta, phi: PH[pi], move: dT + Math.abs(PH[pi] - ctrl.phi) });
+    tried.forEach(function (k) {
+      var area = visibleArea(camPosFor(c, dist, k.theta, k.phi), pts, objs, eps);
+      // 同じくらい見えるなら動きの小さい方
+      if (area > best.area * 1.02 || (area > best.area * 0.98 && moveCost(k.theta, k.phi) < moveCost(best.theta, best.phi) && area > best.area)) {
+        best = { theta: k.theta, phi: k.phi, area: area };
       }
-    }
-    cands.sort(function (a, b) { return a.move - b.move; });   // 同じくらい見えるなら動きの小さい方
-    var deadline = performance.now() + 200;                     // 巨大なモデルでも待たせない
-    for (var k = 0; k < cands.length; k++) {
-      var area = visibleArea(camPosFor(c, dist, cands[k].theta, cands[k].phi), pts, objs, eps);
-      if (area > best.area * 1.001) best = { theta: cands[k].theta, phi: cands[k].phi, area: area };
-      if (performance.now() > deadline) break;
-    }
+    });
     // 今の角度でも十分よく見えているなら回さない (むやみに視点を変えない)
     var rotated = best.area > current / 0.85;
     if (!rotated) { best.theta = ctrl.theta; best.phi = ctrl.phi; }

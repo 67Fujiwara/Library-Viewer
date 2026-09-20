@@ -114,6 +114,65 @@ const ms = await page.evaluate(() => { const t = performance.now(); Viewer3D.foc
 console.log('    focusNode の所要時間:', ms.toFixed(1), 'ms');
 check(ms < 500, 'focusNode completes quickly (' + ms.toFixed(1) + ' ms)');
 
+// ---- いちばん面積が大きく見える角度を選ぶ ----
+// FLAT_PLATE は水平な薄板。既定のカメラ (phi=60°) からは cos60 = 半分しか見えないので、
+// まっすぐ上から見る角度まで回り込まないといけない (角度を格子で撒くだけでは届かない)。
+await page.goto('file://' + html);
+await page.waitForTimeout(1200);
+await page.setInputFiles('#file-input', [{ name: 'faces.step', mimeType: 'application/step', buffer: fs.readFileSync('test/out/faces.step') }]);
+await page.waitForFunction(() => App.devices().length === 1, null, { timeout: 60000 });
+await page.waitForSelector('#overlay', { state: 'hidden', timeout: 60000 });
+await page.waitForTimeout(400);
+
+/* 今のカメラから見える投影面積と、全方位を細かく回して測った最大値の比 */
+const areaRatio = () => page.evaluate(() => {
+  const node = App.selected();
+  const faces = [];
+  Viewer3D.leavesOf(node).forEach(n => {
+    if (!n.mesh) return;
+    const g = n.mesh.geometry, idx = g.index.array, pos = g.attributes.position.array;
+    const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+    for (let t = 0; t < idx.length / 3; t++) {
+      a.fromArray(pos, idx[t * 3] * 3); b.fromArray(pos, idx[t * 3 + 1] * 3); c.fromArray(pos, idx[t * 3 + 2] * 3);
+      const cr = new THREE.Vector3().crossVectors(b.clone().sub(a), c.clone().sub(a));
+      const ar = cr.length() / 2;
+      if (ar > 0) faces.push({ n: cr.normalize(), a: ar });
+    }
+  });
+  const area = (u) => faces.reduce((s, f) => s + Math.max(0, f.n.dot(u)) * f.a, 0);
+  // 今のカメラの向き (部品 → カメラ)
+  const box = new THREE.Box3();
+  Viewer3D.leavesOf(node).forEach(n => { if (n.mesh) box.union(n.mesh.geometry.boundingBox); });
+  const cur = Viewer3D.camera().position.clone().sub(box.getCenter(new THREE.Vector3())).normalize();
+  // 2° 刻みで全方位を舐めて最大値を出す
+  let best = 0, bestU = null;
+  for (let pi = 1; pi < 90; pi++) for (let ti = 0; ti < 180; ti++) {
+    const phi = pi * Math.PI / 90, th = ti * Math.PI / 90;
+    const u = new THREE.Vector3(Math.sin(phi) * Math.cos(th), Math.sin(phi) * Math.sin(th), Math.cos(phi));
+    const v = area(u);
+    if (v > best) { best = v; bestU = u; }
+  }
+  return { ratio: area(cur) / best, cur: cur.toArray(), best: bestU.toArray() };
+});
+
+for (const [name, axis, label] of [['FLAT_PLATE', 2, '水平な板 → 真上/真下から'], ['WALL_PLATE', 0, '立った板 → 真横から']]) {
+  await page.locator('.tree-row', { hasText: name }).first().locator('button.name').click();
+  await page.waitForTimeout(200);
+  const before = await areaRatio();
+  await page.click('#btn-fit-sel');
+  await page.waitForTimeout(900);
+  const after = await areaRatio();
+  console.log(`    ${name} (${label}): 見える面積 ${(before.ratio * 100).toFixed(0)}% → ${(after.ratio * 100).toFixed(0)}%  カメラの向き [${after.cur.map(v => v.toFixed(2))}]`);
+  check(after.ratio > 0.95, `${name}: after 寄る the part is seen at ${(after.ratio * 100).toFixed(0)}% of its largest possible area`);
+  check(Math.abs(after.cur[axis]) > 0.9, `${name}: the camera ended up facing the big face head-on`);
+  check(after.ratio > before.ratio + 0.2, `${name}: and that is a real improvement over the default angle (${(before.ratio * 100).toFixed(0)}%)`);
+}
+await page.screenshot({ path: outDir + '/shot-29-faces.png' });
+
+// 面を正面から見ている状態でもう一度押しても、もう回らない
+const again = await page.evaluate(() => Viewer3D.focusNode(App.selected()));
+check(again.rotated === false, 'facing the big face already, 寄る does not rotate again');
+
 console.log('errors:', errors.length ? errors : 'none');
 await browser.close();
 if (errors.length) process.exit(1);
