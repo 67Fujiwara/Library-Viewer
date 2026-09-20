@@ -19,6 +19,9 @@ page.on('pageerror', e => errors.push('pageerror: ' + e.message));
 page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
 function check(c, m) { if (!c) throw new Error('FAIL: ' + m); console.log('  ok  ' + m); }
 
+// 設定は左下の歯車の中にまとまっているので、触る前に開く
+const openSettings = async () => { if (await page.getAttribute('#btn-settings', 'aria-expanded') !== 'true') await page.click('#btn-settings'); };
+const closeSettings = async () => { if (await page.getAttribute('#btn-settings', 'aria-expanded') === 'true') await page.click('#btn-settings'); };
 await page.goto('file://' + path.resolve('dist/library-viewer.html'));
 await page.waitForFunction(() => typeof Occt !== 'undefined' && Occt.workers() > 0, null, { timeout: 60000 });
 const cores = await page.evaluate(() => navigator.hardwareConcurrency);
@@ -83,11 +86,15 @@ check(progressive.firstAt < progressive.total * 0.8,
   `the first model shows up well before the batch finishes (${progressive.firstAt} ms of ${progressive.total} ms)`);
 
 // --- 精度を変えるとキャッシュは当たらない (当たってはいけない) ---
+await openSettings();
 await page.selectOption('#precision', 'coarse');
+await closeSettings();
 const other = await load(['heavy.step']);
 console.log(`    同じファイルを別の精度で: ${other} ms`);
 check(other > second * 5, `a different precision must miss the cache (${other} ms)`);
+await openSettings();
 await page.selectOption('#precision', 'standard');
+await closeSettings();
 
 const stats = await page.evaluate(() => ConvCache.stats());
 console.log(`    キャッシュ: ${stats.count} 件 ${(stats.bytes / 1048576).toFixed(1)} MB`);

@@ -16,6 +16,9 @@ page.on('pageerror', e => errors.push('pageerror: ' + e.message));
 
 function check(cond, msg) { if (!cond) { throw new Error('FAIL: ' + msg); } console.log('  ok  ' + msg); }
 
+// 設定は左下の歯車の中にまとまっているので、触る前に開く
+const openSettings = async () => { if (await page.getAttribute('#btn-settings', 'aria-expanded') !== 'true') await page.click('#btn-settings'); };
+const closeSettings = async () => { if (await page.getAttribute('#btn-settings', 'aria-expanded') === 'true') await page.click('#btn-settings'); };
 await page.goto('file://' + html);
 await page.waitForTimeout(1500);
 check(await page.title() === 'Library Viewer', 'title');
@@ -73,7 +76,23 @@ await page.waitForTimeout(200);
 await page.screenshot({ path: outDir + '/shot-3-section-edges.png' });
 await page.click('label[for="vm-normal"]');
 
+// 設定は左下の歯車 1 か所にまとまっている
+check(await page.$eval('#btn-settings', b => b.closest('footer').id) === 'footer', 'the gear sits in the bottom-left footer');
+check(await page.$eval('#settings-menu', m => m.hidden), 'the settings panel starts closed');
+for (const sel of ['#precision', '#btn-remesh', '#chk-ghost', '#btn-roster', '#btn-rules', '#btn-clear-cache', 'input[name="theme"]'])
+  check(await page.$eval(sel, (e) => !!e.closest('#settings-menu')), `${sel} lives in the settings panel`);
+check(await page.$('#header #precision') === null && await page.$('#header input[name="theme"]') === null, 'they are gone from the header');
+check(await page.$('#tree-panel #chk-ghost') === null && await page.$('#lib-panel #btn-rules') === null, 'and from the side panels');
+await page.click('#btn-settings');
+check(!(await page.$eval('#settings-menu', m => m.hidden)), 'the gear opens the settings panel');
+await page.keyboard.press('Escape');
+check(await page.$eval('#settings-menu', m => m.hidden), 'Escape closes it');
+await page.click('#btn-settings');
+await page.click('#header h1');   // 3D を押すと選択が変わってしまうので、関係ない場所で試す
+check(await page.$eval('#settings-menu', m => m.hidden), 'clicking outside closes it');
+
 // ダークテーマ (3D 側の連動も含めて画面が変わること)
+await openSettings();
 await page.click('label[for="theme-dark"]');
 await page.waitForTimeout(400);
 check(await page.$eval('html', h => h.dataset.theme) === 'dark', 'dark theme applied');
@@ -81,6 +100,7 @@ await page.screenshot({ path: outDir + '/shot-4-dark.png' });
 await page.click('label[for="theme-light"]');
 await page.waitForTimeout(400);
 check(await page.$eval('html', h => h.dataset.theme) === 'light', 'light theme applied');
+await closeSettings();
 await page.screenshot({ path: outDir + '/shot-4b-light.png' });
 
 // 格納ダイアログ → ZIP
@@ -112,8 +132,10 @@ await page.screenshot({ path: outDir + '/shot-5-stored.png' });
 
 // 再変換 (精度変更)
 await page.keyboard.press('Escape');
+await openSettings();
 await page.selectOption('#precision', 'coarse');
 await page.click('#btn-remesh');
+await closeSettings();
 await page.waitForSelector('#overlay', { state: 'hidden', timeout: 60000 });
 check((await page.$$('.tree-row')).length === 10, 'tree rebuilt after remesh');
 

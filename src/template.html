@@ -31,23 +31,9 @@
       <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/><path d="M12 17v-6M9 14l3-3 3 3"/></svg><span class="lbl">フォルダを開く</span>
       <input type="file" id="dir-input" webkitdirectory directory multiple>
     </label>
-    <div class="field-inline">
-      <label for="precision" class="lbl">精度</label>
-      <select id="precision" title="メッシュ精度">
-        <option value="coarse">粗い（最軽量）</option>
-        <option value="standard" selected>標準</option>
-        <option value="fine">細かい</option>
-      </select>
-      <button type="button" id="btn-remesh" class="btn secondary" disabled title="今の精度で STEP を変換し直します">再変換</button>
-    </div>
     <button type="button" id="btn-store" class="btn primary" disabled title="案件情報を付けてライブラリに格納します">
       <svg viewBox="0 0 24 24"><path d="M4 4h12l4 4v12H4z M8 4v5h8V4 M8 20v-6h8v6"/></svg><span class="lbl">格納する</span>
     </button>
-    <div class="seg" role="group" aria-label="テーマ">
-      <input type="radio" name="theme" id="theme-auto" value="auto" checked><label for="theme-auto">自動</label>
-      <input type="radio" name="theme" id="theme-light" value="light"><label for="theme-light">ライト</label>
-      <input type="radio" name="theme" id="theme-dark" value="dark"><label for="theme-dark">ダーク</label>
-    </div>
     <button type="button" id="btn-toggle-right" class="btn icon" aria-pressed="true" aria-controls="right" title="右サイドバー（案件横断）の表示 / 非表示  ]">
       <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>
     </button>
@@ -65,7 +51,6 @@
       <div class="panel-tools">
         <button type="button" id="btn-show-all" class="btn small secondary">すべて表示</button>
         <button type="button" id="btn-invert" class="btn small secondary">反転</button>
-        <input type="checkbox" id="chk-ghost" class="toggle"><label for="chk-ghost" class="btn small secondary toggle-label">非表示を薄く残す</label>
         <button type="button" id="btn-new-folder" class="btn small secondary icon-only" title="新しいフォルダー（選んでいるフォルダの中に作ります）">
           <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/><path d="M12 11v6M9 14h6"/></svg>
         </button>
@@ -78,8 +63,6 @@
     <section id="lib-panel" class="panel" hidden>
       <div class="panel-tools">
         <button type="button" id="btn-rescan" class="btn small secondary" disabled>再読み込み</button>
-        <button type="button" id="btn-roster" class="btn small secondary">名簿</button>
-        <button type="button" id="btn-rules" class="btn small secondary">ルール</button>
         <span id="lib-path" class="muted mono small"></span>
       </div>
       <section id="lib-home" class="lib-home" hidden>
@@ -220,10 +203,52 @@
 </main>
 
 <footer id="footer">
+  <button type="button" id="btn-settings" class="btn icon" aria-haspopup="menu" aria-expanded="false" title="設定">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
+  </button>
   <div id="sel-info" class="sel-info">
     <span class="muted">未選択</span>
   </div>
 </footer>
+
+<!-- 設定はここ 1 か所に集める (歯車から開く) -->
+<div id="settings-menu" class="settings-menu" role="menu" hidden>
+  <h3>表示</h3>
+  <div class="sm-row">
+    <span class="sm-label">テーマ</span>
+    <div class="seg" role="group" aria-label="テーマ">
+      <input type="radio" name="theme" id="theme-auto" value="auto" checked><label for="theme-auto">自動</label>
+      <input type="radio" name="theme" id="theme-light" value="light"><label for="theme-light">ライト</label>
+      <input type="radio" name="theme" id="theme-dark" value="dark"><label for="theme-dark">ダーク</label>
+    </div>
+  </div>
+  <div class="sm-row">
+    <span class="sm-label">非表示の部品</span>
+    <span><input type="checkbox" id="chk-ghost" class="toggle"><label for="chk-ghost" class="btn small secondary toggle-label">薄く残す</label></span>
+  </div>
+  <h3>STEP の変換</h3>
+  <div class="sm-row">
+    <label class="sm-label" for="precision">メッシュ精度</label>
+    <span>
+      <select id="precision" title="メッシュ精度">
+        <option value="coarse">粗い（最軽量）</option>
+        <option value="standard" selected>標準</option>
+        <option value="fine">細かい</option>
+      </select>
+      <button type="button" id="btn-remesh" class="btn small secondary" disabled title="今の精度で STEP を変換し直します">再変換</button>
+    </span>
+  </div>
+  <div class="sm-row">
+    <span class="sm-label">変換キャッシュ</span>
+    <button type="button" id="btn-clear-cache" class="btn small secondary" title="保存してある変換結果を消します">消す…</button>
+  </div>
+  <h3>ライブラリ</h3>
+  <div class="sm-actions">
+    <button type="button" id="btn-roster" class="btn small secondary">名簿</button>
+    <button type="button" id="btn-rules" class="btn small secondary">ネーミングルール</button>
+    <button type="button" id="btn-lib-home" class="btn small secondary">既定のライブラリ</button>
+  </div>
+</div>
 
 <div id="overlay" class="overlay" hidden>
   <div class="overlay-card">

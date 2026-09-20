@@ -10,7 +10,7 @@ var App = (function () {
     Viewer3D.init({ onSelect: function (n) { select(n); }, onHover: function (n) { /* 3D 側ホバーはツリー連動なし */ } });
     Theme.onChange(function () { Viewer3D.applyTheme(); });
     Tree.init({ onSelect: function (n) { select(n); }, onHover: function (n) { Viewer3D.setHover(n); }, onClose: function (d) { removeDevice(d); } });
-    CrossRef.init(); Search.init(); TreeEdit.init(); Library.init(); Store.init(); Measure.init();
+    CrossRef.init(); Search.init(); TreeEdit.init(); Library.init(); Store.init(); Measure.init(); Settings.init();
     bindUI();
     // 起動直後の空き時間に WASM を展開しておく (初回変換を速くする)
     setTimeout(function () { Occt.load().catch(function (e) { showMessage('初期化エラー', e.message); }); }, 400);
@@ -57,6 +57,8 @@ var App = (function () {
     $$('input[name="left-tab"]').forEach(function (r) { r.addEventListener('change', function () { if (r.checked) showLeftTab(r.value); }); });
     // キーボード
     window.addEventListener('keydown', function (e) {
+      // 設定パネルが開いていれば Esc はまずそれを閉じる (選択まで外さない)。入力欄の中でも効かせる
+      if (e.key === 'Escape' && Settings.isOpen()) { Settings.close(); e.preventDefault(); return; }
       var t = e.target; if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.closest('dialog'))) return;
       if (e.key === '/' || ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F'))) { Search.focus(); e.preventDefault(); }
       else if (e.key === 'm' || e.key === 'M') { Measure.toggle(); e.preventDefault(); }
@@ -226,6 +228,16 @@ var App = (function () {
     return { model: model, fileName: e.name, stepBytes: bytes || new Uint8Array(await e.file.arrayBuffer()),
              source: { kind: 'folder' }, groupPath: e.rel };
   }
+  /* 変換キャッシュを消す (設定パネルと、読み込み後の案内の両方から呼ぶ) */
+  async function clearCache(after) {
+    var st = await ConvCache.stats();
+    if (!st.count) { showMessage('変換キャッシュ', '保存されている変換結果はありません。'); return 0; }
+    if (!await showConfirm('変換キャッシュを消しますか？', '保存済み ' + st.count + ' 件 (' + fmtBytes(st.bytes) + ') を消します。\n次に同じファイルを開くときは変換からやり直します。', '消す')) return 0;
+    var n = await ConvCache.clear();
+    if (after) after();
+    showMessage('変換キャッシュ', n + ' 件を消しました。');
+    return n;
+  }
   function reportCache(cached, total) {
     var el2 = $('#load-note');
     el2.hidden = false; el2.textContent = '';
@@ -233,13 +245,7 @@ var App = (function () {
     el2.appendChild(document.createTextNode(' '));
     el2.appendChild(el('button.btn.link.small', {
       type: 'button', text: 'キャッシュを消す',
-      onclick: async function () {
-        var st = await ConvCache.stats();
-        if (!await showConfirm('変換キャッシュを消しますか？', '保存済み ' + st.count + ' 件 (' + fmtBytes(st.bytes) + ') を消します。\n次に同じファイルを開くときは変換からやり直します。', '消す')) return;
-        var n = await ConvCache.clear();
-        el2.hidden = true;
-        showMessage('変換キャッシュ', n + ' 件を消しました。');
-      }
+      onclick: function () { clearCache(function () { el2.hidden = true; }); }
     }));
     clearTimeout(reportCache.t);
     reportCache.t = setTimeout(function () { el2.hidden = true; }, 12000);
@@ -391,7 +397,7 @@ var App = (function () {
     init: init, addDevice: addDevice, removeDevice: removeDevice, clearDevices: clearDevices, select: select,
     devices: function () { return devices; }, selected: function () { return selectedNode; }, precision: function () { return currentPrecision; },
     addDevices: addDevices, loadEntries: loadEntries,
-    showOverlay: showOverlay, hideOverlay: hideOverlay, showLeftTab: showLeftTab,
+    showOverlay: showOverlay, hideOverlay: hideOverlay, showLeftTab: showLeftTab, clearCache: clearCache,
     onLibraryChanged: function () { }, stepSource: function (e) { lastLibraryEntry = e; }, loadFolders: loadFolders
   };
 })();

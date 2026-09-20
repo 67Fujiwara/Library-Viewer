@@ -20,6 +20,9 @@ const widths = () => page.evaluate(() => ({
   headerH: document.querySelector('#header').getBoundingClientRect().height,
 }));
 
+// 設定は左下の歯車の中にまとまっているので、触る前に開く
+const openSettings = async () => { if (await page.getAttribute('#btn-settings', 'aria-expanded') !== 'true') await page.click('#btn-settings'); };
+const closeSettings = async () => { if (await page.getAttribute('#btn-settings', 'aria-expanded') === 'true') await page.click('#btn-settings'); };
 await page.goto('file://' + html);
 await page.waitForTimeout(1200);
 await page.setInputFiles('#file-input', [{ name: 'P2026-001_検査装置A_ワークX_設計1課_山田.step', mimeType: 'application/step', buffer: fs.readFileSync('test/out/assembly.step') }]);
@@ -47,7 +50,9 @@ await page.screenshot({ path: outDir + '/shot-12-both-collapsed.png' });
 // 開閉アニメ中に 3D が黒くちらつかないこと。
 // パネル幅が変わるたび setSize で描画バッファが空になるので、同じフレーム内で描き直していないと
 // そのフレームが黒く合成される (アプリより後に登録した ResizeObserver はアプリの処理の直後に走る)。
+await openSettings();
 await page.click('label[for="theme-light"]');
+await closeSettings();
 await page.waitForTimeout(300);
 const flicker = await page.evaluate(() => new Promise(res => {
   const canvas = document.querySelector('#gl');

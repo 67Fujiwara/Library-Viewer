@@ -180,6 +180,8 @@ body.left-collapsed #left, body.right-collapsed #right { border: 0; padding-left
 .tree-row.device > .name { font-weight: 500; }
 .tree-row.group > .name { font-weight: 500; color: var(--muted); }
 .tree-row.group > .name svg { width: 13px; height: 13px; }
+/* 中身のあるフォルダは塗りつぶす (空のフォルダは輪郭だけ) */
+.tree-row.group > .name svg.filled { fill: currentColor; color: var(--body-strong); }
 .tree-row.group { background: linear-gradient(to right, var(--surface-soft), transparent 70%); }
 .tree-row .cnt { font-size: 11px; color: var(--muted-soft); font-family: var(--font-mono); flex: none; }
 .tree-row .xbadge { flex: none; }
@@ -326,7 +328,25 @@ body.measuring #gl { cursor: crosshair; }
 .xref-card .diff.down { color: var(--accent-teal); }
 
 /* ==== フッター ==== */
-#footer { border-top: 1px solid var(--hairline); background: var(--canvas); display: flex; align-items: center; padding: 0 var(--sp-md); font-size: 12px; overflow: hidden; }
+#footer { border-top: 1px solid var(--hairline); background: var(--canvas); display: flex; align-items: center; gap: var(--sp-sm); padding: 0 var(--sp-md); font-size: 12px; overflow: hidden; }
+#btn-settings { flex: none; width: 28px; height: 28px; padding: 0; }
+#btn-settings[aria-expanded="true"] { background: var(--surface-strong); border-color: var(--primary); color: var(--primary-active); }
+
+/* 設定 (歯車から開く。左下から上に出す) */
+.settings-menu {
+  position: fixed; left: var(--sp-sm); bottom: 46px; z-index: 60; width: 300px;
+  background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--r-lg);
+  box-shadow: 0 8px 24px rgba(20,20,19,0.18); padding: var(--sp-sm);
+  display: flex; flex-direction: column; gap: var(--sp-xs);
+}
+.settings-menu h3 { font: 500 11px/1.4 var(--font-sans); letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); margin: var(--sp-xs) 0 0; }
+.settings-menu h3:first-child { margin-top: 0; }
+.sm-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-xs); min-height: 28px; }
+.sm-row > span:last-child { display: inline-flex; align-items: center; gap: 4px; }
+.sm-label { color: var(--body); flex: none; }
+/* 既定の select は 36px・上下 padding 8px。小さくするときは padding と矢印の位置も一緒に詰める */
+.settings-menu select { height: 32px; min-width: 132px; padding: 5px 28px 5px 10px; background-position: calc(100% - 15px) 13px, calc(100% - 10px) 13px; }
+.sm-actions { display: flex; flex-wrap: wrap; gap: var(--sp-xxs); }
 .sel-info { display: flex; gap: var(--sp-md); align-items: center; white-space: nowrap; overflow: hidden; }
 .sel-info .n { font-weight: 500; color: var(--ink); font-size: 13px; }
 .sel-info .k { color: var(--muted); margin-right: 4px; }

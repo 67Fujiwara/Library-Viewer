@@ -160,7 +160,10 @@ var Tree = (function () {
     var tw = el('button.twisty', { type: 'button', title: '開閉' }, [svgIcon(ICON.chevron)]);
     var cb = el('input', { type: 'checkbox', id: 'cb-' + n.id, dataset: { id: n.id }, title: 'このフォルダをまとめて表示 / 非表示' });
     cb.checked = true;
-    var nameBtn = el('button.name', { type: 'button', title: n.path.join(' / ') }, [svgIcon(ICON.folder), el('label', { text: n.name })]);
+    // 中身のあるフォルダは塗りつぶして、空のフォルダと一目で区別できるようにする
+    var icon = svgIcon(ICON.folder);
+    if (n.children.length) icon.classList.add('filled');
+    var nameBtn = el('button.name', { type: 'button', title: n.path.join(' / ') + (n.children.length ? '' : '（空）') }, [icon, el('label', { text: n.name })]);
     var tags = tagChips(n);
     var cnt = el('span.cnt', { text: devicesUnder(n).length + ' 件' });
     var solo = el('button.solo.btn.small.secondary', { type: 'button', text: 'ソロ', title: 'このフォルダだけ表示 / もう一度で全部戻す' });

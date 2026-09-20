@@ -51,6 +51,11 @@ await page.keyboard.press('Enter');
 await page.waitForTimeout(200);
 check((await shape()).includes('[装置A]\n  [ユニット1]'), 'nested folder created inside the selected one');
 
+// 中身のあるフォルダは塗りつぶし、空のフォルダは輪郭だけ
+const folderFilled = (name) => page.locator('.tree-row.group', { hasText: name }).first().locator('.name svg').evaluate(s => s.classList.contains('filled'));
+check(!(await folderFilled('ユニット1')), 'a folder with nothing in it is drawn as an outline');
+check(await folderFilled('装置A'), 'a folder holding another folder is filled in');
+
 // ドラッグで装置をフォルダへ入れる
 async function dragRow(fromText, toText) {
   const from = page.locator('.tree-row', { hasText: fromText }).first();
@@ -65,6 +70,7 @@ await dragRow('ブラケット', 'ユニット1');
 await dragRow('ベース板', '装置A');
 await show('整理後');
 check((await shape()) === '[装置A]\n  [ユニット1]\n    アーム\n    ブラケット\n  ベース板', 'devices moved into the folders: \n' + await shape());
+check(await folderFilled('ユニット1'), 'once devices are moved in, the folder is filled in');
 await page.screenshot({ path: outDir + '/shot-25-organised.png' });
 
 // F2 で装置の名前を変える

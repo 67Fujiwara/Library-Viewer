@@ -60,6 +60,9 @@ await page.addInitScript((seed) => {
   window.__ls = (p) => { const parts = p.split('/'); let d = root; for (const s of parts) { if (!s) continue; d = d._e.get(s); if (!d) return null; } return d.kind === 'file' ? { file: d.name, size: d._d.length, text: d._d.length < 20000 ? new TextDecoder().decode(d._d) : null } : [...d._e.keys()]; };
 }, seed);
 
+// 設定は左下の歯車の中にまとまっているので、触る前に開く
+const openSettings = async () => { if (await page.getAttribute('#btn-settings', 'aria-expanded') !== 'true') await page.click('#btn-settings'); };
+const closeSettings = async () => { if (await page.getAttribute('#btn-settings', 'aria-expanded') === 'true') await page.click('#btn-settings'); };
 await page.goto('file://' + html);
 await page.waitForTimeout(1500);
 await page.click('#btn-open-lib');
@@ -89,6 +92,7 @@ check((await page.evaluate(() => window.__ls('inbox/フォルダ'))).length === 
 check((await page.evaluate(() => window.__ls('library.json'))).text.includes('"naming"'), 'library.json carries naming rule');
 
 // ルール変更 → 未一致だったファイルが一致する
+await openSettings();
 await page.click('#btn-rules');
 await page.waitForSelector('#rules-dialog[open]');
 await page.fill('#rule-pattern', '{deviceName}');
@@ -147,6 +151,7 @@ check(files.filter(f => f.endsWith('.glb')).length === 3, 'duplicate base names 
 
 // 名簿 → members.json
 await page.click('label[for="tab-lib"]');
+await openSettings();
 await page.click('#btn-roster');
 await page.waitForSelector('#roster-dialog[open]');
 await page.fill('#roster-text', '設計1課, 山田\n設計2課, 鈴木\n生産技術, 高橋');
