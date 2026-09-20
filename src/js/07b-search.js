@@ -5,18 +5,23 @@
  *   カメラは角度を変えずに収める (Viewer3D.fitNode)。回り込むのは「この部品に寄る」だけ
  */
 var Search = (function () {
-  var panelEl, xrefEl, listEl, sumEl, clearBtn, allBtn;
+  var panelEl, xrefEl, listEl, sumEl, inputEl, clearBtn, allBtn;
   var MAX_PARTS = 50;
-  var hits = [], query = '', currentId = null, opened = false;
+  var hits = [], query = '', currentId = null;
 
   function init() {
     panelEl = $('#search-panel'); xrefEl = $('#xref-panel');
     listEl = $('#search-list'); sumEl = $('#search-sum');
+    inputEl = $('#tree-search');
     clearBtn = $('#search-clear'); allBtn = $('#search-showall');
-    clearBtn.addEventListener('click', function () { Tree.setSearch(''); });
+    clearBtn.addEventListener('click', function () { Tree.setSearch(''); inputEl.focus(); });
     allBtn.addEventListener('click', function () { $('#btn-show-all').click(); currentId = null; mark(); });
-    // 自分で開けた後にユーザーが右パネルを触ったら、もう畳み直さない
-    Panels.onUserToggle(function (side) { if (side === 'right') opened = false; });
+  }
+
+  /* 検索欄は右パネルの中にあるので、畳んでいたら開いてから入れる (/ か Ctrl+F) */
+  function focus() {
+    if (!Panels.isOpen('right')) Panels.set('right', true);
+    inputEl.focus(); inputEl.select();
   }
 
   function run(raw) {
@@ -26,14 +31,11 @@ var Search = (function () {
       listEl.textContent = ''; sumEl.textContent = '';   // 消し忘れた結果を DOM に残さない
       panelEl.hidden = true; xrefEl.hidden = false;
       CrossRef.show(App.selected());
-      if (opened) { Panels.set('right', false); opened = false; }   // 自分で開けた分だけ畳み直す
       return hits;
     }
     hits = collect(Tags.fold(query));
     panelEl.hidden = false; xrefEl.hidden = true;
     render();
-    // 結果の置き場が畳まれていると誰も気づけないので、検索のときだけ開く
-    if (!Panels.isOpen('right')) { Panels.set('right', true); opened = true; }
     return hits;
   }
 
@@ -115,5 +117,5 @@ var Search = (function () {
   /* 装置を消した・読み込んだ後に一覧を作り直す (消えたノードを指したままにしない) */
   function refresh() { if (query) run(query); }
 
-  return { init: init, run: run, refresh: refresh, query: function () { return query; }, hits: function () { return hits; } };
+  return { init: init, run: run, refresh: refresh, focus: focus, query: function () { return query; }, hits: function () { return hits; } };
 })();

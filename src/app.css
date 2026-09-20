@@ -133,7 +133,11 @@ body.left-collapsed #main { --left-w: 0px; }
 body.right-collapsed #main { --right-w: 0px; }
 #left, #right { background: var(--canvas); min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 #left { border-right: 1px solid var(--hairline); }
-#right { border-left: 1px solid var(--hairline); padding: var(--sp-md); overflow: auto; gap: var(--sp-sm); }
+#right { border-left: 1px solid var(--hairline); padding: var(--sp-md); overflow: hidden; gap: var(--sp-sm); }
+/* 検索欄は上に固定し、結果だけスクロールさせる */
+.right-body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--sp-sm); }
+#right > .search-row { flex: none; padding: 0; }
+#right > .search-row svg { left: 10px; top: 9px; }
 body.left-collapsed #left, body.right-collapsed #right { border: 0; padding-left: 0; padding-right: 0; }
 /* 折りたたみ中に端から開けるハンドル */
 .edge-handle { position: absolute; top: 50%; transform: translateY(-50%); z-index: 3; width: 18px; height: 56px; padding: 0;

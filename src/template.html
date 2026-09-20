@@ -70,14 +70,9 @@
           <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/><path d="M12 11v6M9 14h6"/></svg>
         </button>
       </div>
-      <div class="search-row">
-        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
-        <input type="search" id="tree-search" placeholder="名称・タグで検索" autocomplete="off">
-      </div>
       <div class="counter mono"><span id="tree-counter">0 / 0 表示中</span><span id="tree-picked" class="picked-count"></span></div>
       <p id="load-note" class="load-note small" hidden></p>
       <div id="tree" class="tree" role="tree"></div>
-      <p id="tree-empty" class="empty">STEP ファイルをウィンドウにドロップするか、<br>「ファイルを開く」「ライブラリを開く」から始めてください。</p>
     </section>
 
     <section id="lib-panel" class="panel" hidden>
@@ -196,25 +191,31 @@
         <span class="mb-pt"><span class="k">3</span><span class="v mono" id="a-p3">–</span></span>
       </div>
     </div>
-    <div id="hud-hint" class="hud-hint mono small">左ドラッグ 回転 · 右/Shift+ドラッグ 移動 · ホイール 拡大 · クリック 選択 · ← → 同名ユニット · [ ] サイドバー · M 計測</div>
+    <div id="hud-hint" class="hud-hint mono small">左ドラッグ 回転 · 右/Shift+ドラッグ 移動 · ホイール 拡大 · クリック 選択 · ← → 同名ユニット · [ ] サイドバー · / 検索 · M 計測</div>
   </div>
 
   <aside id="right">
-    <section id="search-panel" class="right-section" hidden>
-      <h2 class="panel-title">検索結果</h2>
-      <p id="search-sum" class="muted small"></p>
-      <div id="search-list" class="xref-list"></div>
-      <div class="sp-actions">
-        <button type="button" id="search-showall" class="btn small secondary">すべて表示に戻す</button>
-        <button type="button" id="search-clear" class="btn small secondary">検索をやめる</button>
-      </div>
-    </section>
-    <section id="xref-panel" class="right-section">
-      <h2 class="panel-title">案件横断</h2>
-      <p id="xref-hint" class="muted small">部品を選ぶと、他の装置にある同名ユニットをここに並べます。</p>
-      <div id="xref-current" class="xref-current" hidden></div>
-      <div id="xref-list" class="xref-list"></div>
-    </section>
+    <div class="search-row">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+      <input type="search" id="tree-search" placeholder="名称・タグで検索" autocomplete="off">
+    </div>
+    <div id="right-body" class="right-body">
+      <section id="search-panel" class="right-section" hidden>
+        <h2 class="panel-title">検索結果</h2>
+        <p id="search-sum" class="muted small"></p>
+        <div id="search-list" class="xref-list"></div>
+        <div class="sp-actions">
+          <button type="button" id="search-showall" class="btn small secondary">すべて表示に戻す</button>
+          <button type="button" id="search-clear" class="btn small secondary">検索をやめる</button>
+        </div>
+      </section>
+      <section id="xref-panel" class="right-section">
+        <h2 class="panel-title">案件横断</h2>
+        <p id="xref-hint" class="muted small">部品を選ぶと、他の装置にある同名ユニットをここに並べます。</p>
+        <div id="xref-current" class="xref-current" hidden></div>
+        <div id="xref-list" class="xref-list"></div>
+      </section>
+    </div>
   </aside>
 </main>
 

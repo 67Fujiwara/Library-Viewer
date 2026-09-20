@@ -58,7 +58,8 @@ var App = (function () {
     // キーボード
     window.addEventListener('keydown', function (e) {
       var t = e.target; if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.closest('dialog'))) return;
-      if (e.key === 'm' || e.key === 'M') { Measure.toggle(); e.preventDefault(); }
+      if (e.key === '/' || ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F'))) { Search.focus(); e.preventDefault(); }
+      else if (e.key === 'm' || e.key === 'M') { Measure.toggle(); e.preventDefault(); }
       else if (e.key === '[') { Panels.toggle('left'); e.preventDefault(); }
       else if (e.key === ']') { Panels.toggle('right'); e.preventDefault(); }
       else if (e.key === 'ArrowLeft') { CrossRef.step(-1); e.preventDefault(); }

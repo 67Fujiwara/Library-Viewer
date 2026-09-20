@@ -140,17 +140,23 @@ await page.waitForTimeout(300);
 check(await page.inputValue('#tree-search') === '', 'the search box is cleared');
 check(await page.locator('#search-panel').isHidden() && await page.locator('#xref-panel').isVisible(), '案件横断 comes back');
 
-// ---- 7. 畳んだ右パネルは検索のときだけ開き、やめたら畳み直す ----
+// ---- 7. 検索欄は右サイドバーの中。畳んでいても / で開いて飛べる ----
+check(await page.evaluate(() => document.querySelector('#tree-search').closest('aside').id) === 'right', 'the search box lives in the right sidebar');
+check(await page.$('#tree-panel .search-row') === null, 'and is gone from the left panel');
 await page.click('#btn-toggle-right');
 await page.waitForTimeout(300);
 check(await page.evaluate(() => !Panels.isOpen('right')), 'right panel collapsed by the user');
-await search('客先A');
-check(await page.evaluate(() => Panels.isOpen('right')), 'search opens the right panel so the hits can be seen');
+await page.click('#gl', { position: { x: 700, y: 700 } });   // 3D にフォーカスを移してからキーを送る
+await page.keyboard.press('/');
+await page.waitForTimeout(400);
+check(await page.evaluate(() => Panels.isOpen('right')), '"/" opens the right panel');
+check(await page.evaluate(() => document.activeElement.id) === 'tree-search', 'and puts the cursor in the search box');
+await page.keyboard.type('客先A');
+await page.waitForTimeout(400);
+check((await hitTitles()).length === 2, 'typing right after "/" searches: ' + await hitTitles());
 await page.click('#search-clear');
 await page.waitForTimeout(400);
-check(await page.evaluate(() => !Panels.isOpen('right')), 'ending the search collapses it again (the user had it closed)');
-await page.click('#edge-right');
-await page.waitForTimeout(300);
+check(await page.evaluate(() => Panels.isOpen('right')), 'ending the search leaves the panel open (the search box lives there)');
 
 // ---- 8. 改名してもタグは付いてくる (フォルダの id はパスから作られる) ----
 await folderRow('検査ユニット').click();

@@ -133,7 +133,7 @@ await page.locator('.tree-row.device', { hasText: 'assembly_b' }).first().locato
 await page.waitForTimeout(300);
 check((await page.textContent('#sel-info')).includes('未選択'), 'selection cleared when its own device is closed');
 check((await page.$$('.tree-row')).length === 0, 'tree is empty after closing every device');
-check(!(await page.$eval('#tree-empty', e => e.hidden)), 'empty hint shown again');
+check(await page.$('#tree-empty') === null, 'no leftover hint text in the tree panel');
 check(await page.$eval('#btn-store', e => e.disabled), '格納する disabled with nothing loaded');
 check(!(await page.$eval('#drop-hint', e => e.hidden)), 'drop hint shown again');
 

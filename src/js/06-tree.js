@@ -1,7 +1,7 @@
 /* 構成ツリー。行 = [開閉] [チェックボックス] [部品名] [子の数] [ソロ]
  * チェック操作でカメラは動かさない。 */
 var Tree = (function () {
-  var container, counterEl, emptyEl, searchEl;
+  var container, counterEl, searchEl;
   var devices = [], nodesById = {}, rows = {}, soloNode = null, selectedNode = null, filter = '';
   var groups = [], groupIds = [], collapsedGroups = {};   // フォルダ階層 (元のフォルダ構成をそのまま出す)
   var folderPaths = {};      // ユーザーが作ったフォルダ。中身が空でも残す ("装置A/ユニット1" → true)
@@ -11,7 +11,7 @@ var Tree = (function () {
 
   function init(opts) {
     callbacks = opts;
-    container = $('#tree'); counterEl = $('#tree-counter'); emptyEl = $('#tree-empty'); searchEl = $('#tree-search');
+    container = $('#tree'); counterEl = $('#tree-counter'); searchEl = $('#tree-search');
     // イベント委譲 (行ごとにリスナーを付けない)
     container.addEventListener('change', function (e) {
       var cb = e.target; if (cb.type !== 'checkbox') return;
@@ -145,7 +145,6 @@ var Tree = (function () {
     devices = devs;
     container.textContent = '';
     buildForest().forEach(function (n) { renderAny(n, container); });
-    emptyEl.hidden = devices.length > 0 || Object.keys(folderPaths).length > 0;
     applyFocus();
     refresh();
   }
