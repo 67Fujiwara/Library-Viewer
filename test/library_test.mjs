@@ -19,7 +19,7 @@ const seed = {
   // Fusion スクリプトが置いた想定: STEP + meta.json のみ (glb 未生成)
   'models/設計2課/鈴木/P2026-002_搬送装置B/_/step/assembly_b.step': b64('test/out/assembly_b.step'),
   'models/設計2課/鈴木/P2026-002_搬送装置B/_/meta.json': Buffer.from(JSON.stringify({
-    schema: 'library-viewer/1', projectCode: 'P2026-002', deviceName: '搬送装置B', workpiece: '', department: '設計2課', owner: '鈴木', savedAt: '2026-09-18T10:00:00+09:00', precision: null,
+    schema: 'library-viewer/1', projectCode: 'P2026-002', deviceName: '搬送装置B', workpiece: '', customer: '△△製作所', department: '設計2課', owner: '鈴木', savedAt: '2026-09-18T10:00:00+09:00', precision: null,
     files: [{ name: 'assembly_b', step: 'step/assembly_b.step', glb: 'assembly_b.glb' }],
     source: { cad: 'fusion', document: 'DEVICE_B v3', fusionWebURL: 'https://example.autodesk360.com/g/data/xxxx' }
   })).toString('base64'),
@@ -90,6 +90,9 @@ check(!(await page.textContent('#search-sum')).includes('ライブラリ 1'), 'o
 await page.fill('#tree-search', 'P2026-002');     // 案件コードでも当たる
 await page.waitForTimeout(350);
 check((await hitTitles()).includes('搬送装置B'), 'searching a project code works too');
+await page.fill('#tree-search', '△△製作所');     // 取引先でも当たる
+await page.waitForTimeout(350);
+check((await hitTitles()).includes('搬送装置B'), 'searching a customer finds their devices: ' + await hitTitles());
 await page.fill('#tree-search', '');
 await page.waitForTimeout(300);
 await page.evaluate(() => App.clearDevices());

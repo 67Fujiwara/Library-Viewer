@@ -76,6 +76,11 @@ await page.waitForTimeout(200);
 await page.screenshot({ path: outDir + '/shot-3-section-edges.png' });
 await page.click('label[for="vm-normal"]');
 
+// 版は小数点なしの通し番号 (日付ではない)
+const ver = await page.textContent('.ver');
+console.log('    版:', ver);
+check(/^v\d+$/.test(ver.trim()), 'version is a plain integer build number: ' + ver);
+
 // 設定は左下の歯車 1 か所にまとまっている
 check(await page.$eval('#btn-settings', b => b.closest('footer').id) === 'footer', 'the gear sits in the bottom-left footer');
 check(await page.$eval('#settings-menu', m => m.hidden), 'the settings panel starts closed');
@@ -109,6 +114,7 @@ await page.waitForSelector('#store-dialog[open]');
 await page.fill('#st-project', 'P2026-001');
 await page.fill('#st-device', '検査装置A');
 await page.fill('#st-work', 'ワークX');
+await page.fill('#st-customer', '〇〇食品');
 await page.click('#st-roster button.dept >> nth=0');
 await page.click('#st-roster label.member >> nth=0');
 const preview = await page.textContent('#st-preview');
@@ -127,6 +133,7 @@ check(listing.includes(`browser-unz/models/設計1課/${owner}/P2026-001_検査�
 check(listing.includes('/step/assembly_b.step') && listing.includes('/meta.json') && listing.includes('/index.json'), 'zip contains step/meta/index');
 const meta = JSON.parse(fs.readFileSync(`${outDir}/browser-unz/models/設計1課/${owner}/P2026-001_検査装置A/ワークX/meta.json`, 'utf8'));
 check(meta.owner === '山田' && meta.files.length === 2 && meta.files[0].triangles === 36, 'meta.json content');
+check(meta.customer === '〇〇食品', 'meta.json carries the customer');
 await page.waitForTimeout(300);
 await page.screenshot({ path: outDir + '/shot-5-stored.png' });
 

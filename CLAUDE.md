@@ -94,7 +94,11 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
   隠れたままだとユーザーは「自動で読み込まれない」としか分からない
 - 中身のあるディレクトリは `removeEntry(name, { recursive: true })` でないと消せない。
   削除後は空になった親フォルダも `models/` の 1 つ下まで遡って片づける（空フォルダを残さない）
-- ネーミングルールで区切り文字を含んでよいのは **装置名だけ**（左右の項目を先に確定し、残りを装置名にする）
+- ネーミングルールで区切り文字を含んでよいのは **装置名だけ**（左右の項目を先に確定し、残りを装置名にする）。
+  空を許すのは **対象ワークと取引先だけ**（`Naming.OPTIONAL` / `NAMING_OPTIONAL`）。
+  取引先 `{customer}` は既定のパターンには入れない（既存のファイル名が全部ルール外になるため）
+- **版は小数点なしの通し番号**（ヘッダーの `v20`）。`build.py` が `git rev-list --count HEAD` から作り、
+  git の無い環境のために `VERSION` に控えを残す。日付にしない（新旧の判別がしづらい）
 - `inbox/` は装置フォルダの走査対象から外す（`SKIP_DIRS`）。取り込めたファイルだけ `removeEntry` で消す
 - Playwright の `setInputFiles` は **非 ASCII のファイルパスを渡せない**。日本語ファイル名のテストは `{name, buffer}` 形式で渡す
   （フォルダのテストは `webkitRelativePath` を付けた `File` を `DataTransfer` 経由で `#dir-input` に流し込む）
@@ -216,7 +220,7 @@ src/js/01b-panels.js     左右サイドバーの開閉
 src/js/01c-settings.js   設定パネル (左下の歯車。置き場所と開け閉めだけ持つ)
 src/js/02-glb.js         GLB ライター/リーダー (node でも require 可)
 src/js/03-zip.js         ZIP ライター (格納方式, UTF-8 フラグ)
-src/js/03b-naming.js     ネーミングルール (ファイル名 ⇔ 案件情報)
+src/js/03b-naming.js     ネーミングルール (ファイル名 ⇔ 案件情報。取引先も項目に持つ)
 src/js/00b-idb.js        IndexedDB の口 (フォルダハンドルと変換キャッシュで共用。版とストアはここだけ)
 src/js/04-step.js        STEP 変換のワーカープール (WASM は 1 回コンパイルして共有)
 src/js/04b-cache.js      変換キャッシュ (同じファイル・同じ精度なら GLB を読み直す)

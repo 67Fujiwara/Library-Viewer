@@ -4,7 +4,8 @@
  * 装置名だけは区切り文字を含んでよい (左右の項目を先に確定し、残りをすべて装置名にする)。
  * ルールは library.json の naming に保存し、ビューアと Fusion スクリプトで共有する。 */
 var Naming = (function () {
-  var FIELDS = { projectCode: '案件コード', deviceName: '装置名', workpiece: '対象ワーク', department: '部署', owner: '担当者' };
+  var FIELDS = { projectCode: '案件コード', deviceName: '装置名', workpiece: '対象ワーク', customer: '取引先', department: '部署', owner: '担当者' };
+  var OPTIONAL = { workpiece: 1, customer: 1 };   // 空でもよい項目
   var DEFAULT = { pattern: '{projectCode}_{deviceName}_{workpiece}_{department}_{owner}', separator: '_' };
   var GREEDY = 'deviceName';
   var KEY = 'lv.naming';
@@ -42,7 +43,7 @@ var Naming = (function () {
     var after = fields.length - gi - 1;
     for (i = 0; i < after; i++) out[fields[fields.length - 1 - i]] = parts[parts.length - 1 - i];
     out[fields[gi]] = parts.slice(gi, parts.length - after).join(sep);
-    for (var k in out) if (!out[k] && k !== 'workpiece') return null;   // 対象ワーク以外は空を許さない
+    for (var k in out) if (!out[k] && !OPTIONAL[k]) return null;   // 対象ワーク・取引先だけ空を許す
     return out;
   }
   /* 案件情報 → ファイル名 (拡張子なし) */
@@ -52,7 +53,7 @@ var Naming = (function () {
     return fields.map(function (f) { return sanitizeSegment(v[f] || '').replace(new RegExp(sep.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), f === GREEDY ? sep : '-'); }).join(sep);
   }
   function example(rule) {
-    return format({ projectCode: 'P2026-001', deviceName: '検査装置A', workpiece: 'ワークX', department: '設計1課', owner: '山田' }, rule) + '.step';
+    return format({ projectCode: 'P2026-001', deviceName: '検査装置A', workpiece: 'ワークX', customer: '〇〇工業', department: '設計1課', owner: '山田' }, rule) + '.step';
   }
   function describe(rule) {
     var f = fieldsOf(rule || current()); if (!f) return '';

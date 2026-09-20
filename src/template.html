@@ -267,6 +267,7 @@
       <div class="field"><label for="st-project">案件コード <em>必須</em></label><input type="text" id="st-project" required autocomplete="off" list="dl-projects"><datalist id="dl-projects"></datalist></div>
       <div class="field"><label for="st-device">装置名 <em>必須</em></label><input type="text" id="st-device" required autocomplete="off"></div>
       <div class="field"><label for="st-work">対象ワーク</label><input type="text" id="st-work" autocomplete="off" list="dl-works"><datalist id="dl-works"></datalist></div>
+      <div class="field"><label for="st-customer">取引先</label><input type="text" id="st-customer" autocomplete="off" list="dl-customers"><datalist id="dl-customers"></datalist></div>
     </div>
     <div class="field">
       <span class="label">部署 / 担当者 <em>必須</em> <button type="button" id="st-edit-roster" class="btn link small">名簿を編集</button></span>
@@ -314,7 +315,7 @@
       <div class="field"><label for="rule-pattern">パターン</label><input type="text" id="rule-pattern" autocomplete="off" spellcheck="false"></div>
       <div class="field"><label for="rule-sep">区切り文字</label><input type="text" id="rule-sep" maxlength="3" autocomplete="off"></div>
     </div>
-    <div class="field"><span class="label">使える項目</span><div class="muted small mono">{projectCode} 案件コード · {deviceName} 装置名 · {workpiece} 対象ワーク · {department} 部署 · {owner} 担当者<br>装置名だけは区切り文字を含められます。対象ワークは空でも可 (区切りを続けて書く)。</div></div>
+    <div class="field"><span class="label">使える項目</span><div class="muted small mono">{projectCode} 案件コード · {deviceName} 装置名 · {workpiece} 対象ワーク · {customer} 取引先 · {department} 部署 · {owner} 担当者<br>装置名だけは区切り文字を含められます。対象ワークと取引先は空でも可 (区切りを続けて書く)。</div></div>
     <div class="field"><span class="label">例</span><div id="rule-example" class="path-preview mono"></div></div>
     <div class="field"><span class="label">試す</span><input type="text" id="rule-try" placeholder="ファイル名を入れると解析結果を表示" autocomplete="off"><div id="rule-try-out" class="muted small mono"></div></div>
     <div class="field"><label class="device-list"><input type="checkbox" id="rule-inbox-auto"> ライブラリを開いたとき、受信箱を自動で取り込む</label></div>

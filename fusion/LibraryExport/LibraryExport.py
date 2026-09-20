@@ -80,7 +80,8 @@ def library_layout(root):
 
 
 # ---- ネーミングルール (ビューアの src/js/03b-naming.js と同じ規則) ----
-NAMING_FIELDS = ('projectCode', 'deviceName', 'workpiece', 'department', 'owner')
+NAMING_FIELDS = ('projectCode', 'deviceName', 'workpiece', 'customer', 'department', 'owner')
+NAMING_OPTIONAL = ('workpiece', 'customer')   # 空でもよい項目
 NAMING_DEFAULT = {'pattern': '{projectCode}_{deviceName}_{workpiece}_{department}_{owner}', 'separator': '_'}
 NAMING_GREEDY = 'deviceName'
 
@@ -123,7 +124,7 @@ def naming_parse(name, rule):
         out[fields[len(fields) - 1 - i]] = parts[len(parts) - 1 - i]
     out[fields[gi]] = sep.join(parts[gi:len(parts) - after])
     for k, v in out.items():
-        if not v and k != 'workpiece':
+        if not v and k not in NAMING_OPTIONAL:
             return None
     return out
 
@@ -140,13 +141,15 @@ def naming_format(values, rule):
 
 def catalog_codes(root):
     cat = read_json(os.path.join(root, 'catalog.json')) or {}
-    codes, works = [], []
+    codes, works, customers = [], [], []
     for e in cat.get('entries', []):
         if e.get('projectCode') and e['projectCode'] not in codes:
             codes.append(e['projectCode'])
         if e.get('workpiece') and e['workpiece'] not in works:
             works.append(e['workpiece'])
-    return codes, works
+        if e.get('customer') and e['customer'] not in customers:
+            customers.append(e['customer'])
+    return codes, works, customers
 
 
 def component_tree(root_comp):
@@ -190,13 +193,14 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             inputs.addBoolValueInput('browse', 'フォルダを選ぶ…', False, '', False)
 
             inputs.addStringValueInput('projectCode', '案件コード *', parsed.get('projectCode') or st.get('lastProjectCode', ''))
-            codes, works = catalog_codes(root) if root else ([], [])
+            codes, works, customers = catalog_codes(root) if root else ([], [], [])
             dd = inputs.addDropDownCommandInput('codePick', '既存の案件から', adsk.core.DropDownStyles.TextListDropDownStyle)
             dd.listItems.add('（選択）', True)
             for c in codes[:50]:
                 dd.listItems.add(c, False)
             inputs.addStringValueInput('deviceName', '装置名 *', parsed.get('deviceName') or (design.rootComponent.name if design else doc_name))
             inputs.addStringValueInput('workpiece', '対象ワーク', parsed.get('workpiece') if parsed else st.get('lastWorkpiece', ''))
+            inputs.addStringValueInput('customer', '取引先', (parsed.get('customer') if parsed else None) or st.get('lastCustomer', ''))
 
             members = library_members(root) if root else []
             depts = []
@@ -234,7 +238,8 @@ def get_params(inputs):
     return {
         'root': inputs.itemById('libraryRoot').value.strip(),
         'codeRaw': inputs.itemById('projectCode').value.strip(), 'devRaw': inputs.itemById('deviceName').value.strip(),
-        'workRaw': inputs.itemById('workpiece').value.strip(), 'deptRaw': dept.strip(), 'ownerRaw': owner.strip(),
+        'workRaw': inputs.itemById('workpiece').value.strip(), 'customerRaw': inputs.itemById('customer').value.strip(),
+        'deptRaw': dept.strip(), 'ownerRaw': owner.strip(),
         'code': sanitize(inputs.itemById('projectCode').value), 'dev': sanitize(inputs.itemById('deviceName').value),
         'work': sanitize(inputs.itemById('workpiece').value), 'dept': sanitize(dept), 'owner': sanitize(owner),
     }
@@ -306,7 +311,7 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
             doc = _app.activeDocument
             # STEP のファイル名はネーミングルールに従わせる (ビューアに直接ドロップしても案件情報が復元できる)
             base = naming_format({'projectCode': p['codeRaw'], 'deviceName': p['devRaw'], 'workpiece': p['workRaw'],
-                                  'department': p['deptRaw'], 'owner': p['ownerRaw']}, naming_rule(p['root']))
+                                  'customer': p['customerRaw'], 'department': p['deptRaw'], 'owner': p['ownerRaw']}, naming_rule(p['root']))
             step_path = os.path.join(target, 'step', base + '.step')
             em = design.exportManager
             opts = em.createSTEPExportOptions(step_path, design.rootComponent)
@@ -331,7 +336,7 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
             tree = component_tree(design.rootComponent)
             meta = {
                 'schema': 'library-viewer/1', 'projectCode': p['codeRaw'], 'deviceName': p['devRaw'], 'workpiece': p['workRaw'],
-                'department': p['deptRaw'], 'owner': p['ownerRaw'], 'savedAt': now_iso(),
+                'customer': p['customerRaw'], 'department': p['deptRaw'], 'owner': p['ownerRaw'], 'savedAt': now_iso(),
                 'precision': None,   # glb はビューアが初回に開いたときに生成する
                 'files': [{'name': base, 'step': 'step/' + base + '.step', 'glb': base + '.glb', 'stepSize': os.path.getsize(step_path), 'glbSize': None,
                            'triangles': None, 'solids': tree[0]['solids'] if tree else None, 'rootName': design.rootComponent.name}],
@@ -351,7 +356,8 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
                                'members': [{'department': d, 'name': n} for d, n in members]}, f, ensure_ascii=False, indent=2)
 
             st = load_settings()
-            st.update({'libraryRoot': p['root'], 'lastProjectCode': p['codeRaw'], 'lastWorkpiece': p['workRaw'], 'lastDept': p['deptRaw'], 'lastOwner': p['ownerRaw']})
+            st.update({'libraryRoot': p['root'], 'lastProjectCode': p['codeRaw'], 'lastWorkpiece': p['workRaw'],
+                       'lastCustomer': p['customerRaw'], 'lastDept': p['deptRaw'], 'lastOwner': p['ownerRaw']})
             save_settings(st)
             _ui.messageBox('格納しました:\n' + target + '\n\nLibrary Viewer の「ライブラリ」タブに表示されます（初回に開いたとき glb が生成されます）。')
         except Exception:

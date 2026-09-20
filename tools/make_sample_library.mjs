@@ -34,9 +34,9 @@ const PRECISION = { preset: 'standard', linearDeflection: 0.0012, angularDeflect
 /* ライブラリに入れておく装置。BASE_PLATE / ARM_UNIT / COLUMN / HEAD_UNIT を共有するので
  * 複数を読み込むと「案件横断」パネルで同名ユニットを比較できる。 */
 const ENTRIES = [
-  { projectCode: 'P2026-001', deviceName: '検査装置A', workpiece: 'ワークX', department: '設計1課', owner: '山田', scale: 1.0, convert: true, savedAt: '2026-09-10T09:15:00+09:00' },
-  { projectCode: 'P2026-007', deviceName: '検査装置A2', workpiece: 'ワークX', department: '設計1課', owner: '山田', scale: 1.25, convert: true, savedAt: '2026-09-16T14:02:00+09:00' },
-  { projectCode: 'P2026-002', deviceName: '搬送装置B', workpiece: 'ワークY', department: '設計2課', owner: '鈴木', scale: 1.6, convert: false, savedAt: '2026-09-18T10:00:00+09:00',
+  { projectCode: 'P2026-001', deviceName: '検査装置A', workpiece: 'ワークX', customer: '〇〇食品', department: '設計1課', owner: '山田', scale: 1.0, convert: true, savedAt: '2026-09-10T09:15:00+09:00' },
+  { projectCode: 'P2026-007', deviceName: '検査装置A2', workpiece: 'ワークX', customer: '〇〇食品', department: '設計1課', owner: '山田', scale: 1.25, convert: true, savedAt: '2026-09-16T14:02:00+09:00' },
+  { projectCode: 'P2026-002', deviceName: '搬送装置B', workpiece: 'ワークY', customer: '△△製作所', department: '設計2課', owner: '鈴木', scale: 1.6, convert: false, savedAt: '2026-09-18T10:00:00+09:00',
     source: { cad: 'fusion', app: 'fusion-library-export', document: '搬送装置B v3', version: 3, exportedBy: '鈴木', fusionWebURL: 'https://myhub.autodesk360.com/' } },
 ];
 /* 受信箱に置くファイル (ファイル名だけで格納先が決まることの確認用) */
@@ -121,7 +121,7 @@ for (const e of ENTRIES) {
   }
   json(path.join(dir, 'meta.json'), {
     schema: 'library-viewer/1', projectCode: e.projectCode, deviceName: e.deviceName, workpiece: e.workpiece,
-    department: e.department, owner: e.owner, savedAt: e.savedAt,
+    customer: e.customer || '', department: e.department, owner: e.owner, savedAt: e.savedAt,
     precision: e.convert ? PRECISION : null,
     files: [{ name: base, glb: base + '.glb', step: 'step/' + base + '.step', stepSize: stepBytes.length, glbSize, triangles: e.convert ? tris : null, solids: model.meshes.length, rootName: model.name }],
     source: e.source || { cad: 'step', app: 'library-viewer' },

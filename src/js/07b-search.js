@@ -46,7 +46,7 @@ var Search = (function () {
   function deviceWords(d) {
     var m = (d.source && d.source.entry && d.source.entry.meta) || d.naming || {};
     var rel = (d.source && d.source.entry && d.source.entry.rel) || [];
-    return Tags.fold([d.name, d.fileName, m.projectCode, m.deviceName, m.workpiece, m.department, m.owner, rel.join('/')].join(' '));
+    return Tags.fold([d.name, d.fileName, m.projectCode, m.deviceName, m.workpiece, m.customer, m.department, m.owner, rel.join('/')].join(' '));
   }
 
   /* フォルダ → 装置 → 部品 → ライブラリ の順。タグで当たったフォルダを先頭に出す */
@@ -131,6 +131,7 @@ var Search = (function () {
       el('div.path', { text: h.entry.rel.join(' / ') }),
       el('div.stats', {}, [
         m.projectCode ? el('span', { text: m.projectCode }) : null,
+        m.customer ? el('span', { text: m.customer }) : null,
         m.workpiece ? el('span', { text: m.workpiece }) : null,
         el('span', { text: 'ファイル ' + h.entry.files.length })
       ])

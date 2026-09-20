@@ -14,7 +14,7 @@ var Store = (function () {
     previewEl = $('#st-preview'); methodEl = $('#st-method'); devicesEl = $('#st-devices');
     $('#btn-store').addEventListener('click', open);
     $('#st-cancel').addEventListener('click', function () { dlg.close(); });
-    ['#st-project', '#st-device', '#st-work'].forEach(function (s) { $(s).addEventListener('input', updatePreview); $(s).addEventListener('change', updatePreview); });
+    ['#st-project', '#st-device', '#st-work', '#st-customer'].forEach(function (s) { $(s).addEventListener('input', updatePreview); $(s).addEventListener('change', updatePreview); });
     form.addEventListener('submit', function (e) { e.preventDefault(); save(); });
     $('#st-edit-roster').addEventListener('click', function () { openRoster(); });
     $('#btn-roster').addEventListener('click', function () { openRoster(); });
@@ -97,6 +97,7 @@ var Store = (function () {
     var note = $('#st-naming'), nm = devs[0].naming;
     if (nm) {
       $('#st-project').value = nm.projectCode; $('#st-device').value = nm.deviceName; $('#st-work').value = nm.workpiece || '';
+      if (nm.customer) $('#st-customer').value = nm.customer;
       selectedOwner = { dept: nm.department, name: nm.owner };
       note.hidden = false; note.className = 'naming-note small'; note.textContent = 'ファイル名のルール「' + Naming.describe() + '」に一致したので、案件情報を自動入力しました: ' + devs[0].fileName;
     } else {
@@ -108,6 +109,8 @@ var Store = (function () {
     lib.forEach(function (e) { var c = e.meta.projectCode; if (c && !seen[c]) { seen[c] = 1; dl.appendChild(el('option', { value: c })); } });
     var dw = $('#dl-works'); dw.textContent = ''; var seenW = {};
     lib.forEach(function (e) { var c = e.meta.workpiece; if (c && !seenW[c]) { seenW[c] = 1; dw.appendChild(el('option', { value: c })); } });
+    var dc = $('#dl-customers'); dc.textContent = ''; var seenC = {};
+    lib.forEach(function (e) { var c = e.meta.customer; if (c && !seenC[c]) { seenC[c] = 1; dc.appendChild(el('option', { value: c })); } });
     devicesEl.textContent = '';
     devs.forEach(function (d, i) {
       var st = Viewer3D.stats(d.root);
@@ -176,7 +179,7 @@ var Store = (function () {
     });
     var meta = {
       schema: 'library-viewer/1', projectCode: fields.projectCode, deviceName: fields.deviceName, workpiece: fields.workpiece || '',
-      department: fields.department, owner: fields.owner, savedAt: isoNowLocal(),
+      customer: fields.customer || '', department: fields.department, owner: fields.owner, savedAt: isoNowLocal(),
       precision: { preset: preset, linearDeflection: pr.linearDeflection, angularDeflection: pr.angularDeflection },
       files: metaFiles, source: source || { cad: 'step', app: 'library-viewer' }
     };
@@ -200,7 +203,7 @@ var Store = (function () {
     try {
       // Fusion スクリプト等から来た装置なら出所情報を引き継ぐ
       var src = devs[0].source && devs[0].source.entry && devs[0].source.entry.meta && devs[0].source.entry.meta.source;
-      var fields = { projectCode: $('#st-project').value.trim(), deviceName: $('#st-device').value.trim(), workpiece: $('#st-work').value.trim(), department: selectedOwner.dept, owner: selectedOwner.name };
+      var fields = { projectCode: $('#st-project').value.trim(), deviceName: $('#st-device').value.trim(), workpiece: $('#st-work').value.trim(), customer: $('#st-customer').value.trim(), department: selectedOwner.dept, owner: selectedOwner.name };
       var pkg = buildPackage(devs, fields, preset, src || null);
       var files = pkg.files;
       await ensureMember(selectedOwner.dept, selectedOwner.name);

@@ -256,7 +256,7 @@ var Library = (function () {
   async function writeCatalog() {
     try {
       var cat = { schema: 'library-viewer/catalog/1', generatedAt: isoNowLocal(), count: entries.length, entries: entries.map(function (e) {
-        var m = e.meta; return { path: e.rel.join('/'), projectCode: m.projectCode, deviceName: m.deviceName, workpiece: m.workpiece, department: m.department, owner: m.owner, savedAt: m.savedAt, files: e.files.map(function (f) { return { name: f.name, glb: !!f.glb, step: !!f.step }; }) };
+        var m = e.meta; return { path: e.rel.join('/'), projectCode: m.projectCode, deviceName: m.deviceName, workpiece: m.workpiece, customer: m.customer || '', department: m.department, owner: m.owner, savedAt: m.savedAt, files: e.files.map(function (f) { return { name: f.name, glb: !!f.glb, step: !!f.step }; }) };
       }) };
       await writeFile(handle, 'catalog.json', JSON.stringify(cat, null, 2));
     } catch (e) { /* 読み取り専用など */ }
@@ -266,7 +266,7 @@ var Library = (function () {
    * (部署・担当者・案件コード・装置名・対象ワークが全部入っている) */
   function haystack(e) {
     var m = e.meta || {};
-    return Tags.fold([m.projectCode, m.deviceName, m.workpiece, m.department, m.owner, e.rel.join('/')].join(' '));
+    return Tags.fold([m.projectCode, m.deviceName, m.workpiece, m.customer, m.department, m.owner, e.rel.join('/')].join(' '));
   }
   function matches(e, folded) { return !folded || haystack(e).indexOf(folded) >= 0; }
 
@@ -299,6 +299,7 @@ var Library = (function () {
     return el('div.lib-card', {}, [
       el('div.t', {}, [el('span', { text: m.deviceName || e.rel[e.rel.length - 1] }), el('span.code', { text: m.projectCode || '' })]),
       el('div.m', {}, [
+        m.customer ? el('span', { text: '取引先: ' + m.customer }) : null,
         m.workpiece ? el('span', { text: 'ワーク: ' + m.workpiece }) : null,
         el('span', { text: m.owner || '' }),
         el('span.mono', { text: fmtDate(m.savedAt) }),

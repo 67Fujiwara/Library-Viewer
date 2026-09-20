@@ -7,7 +7,7 @@
 
   python3 build.py
 """
-import base64, gzip, os, sys, glob, datetime
+import base64, gzip, os, sys, glob, subprocess
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 NM = os.path.join(ROOT, 'node_modules')
@@ -17,6 +17,36 @@ OUT = os.path.join(ROOT, 'dist', 'library-viewer.html')
 def read(p, mode='r'):
     with open(p, mode, encoding=None if 'b' in mode else 'utf-8') as f:
         return f.read()
+
+
+def build_version():
+    """版は小数点なしの通し番号。git のコミット数を使う。
+
+    git が無い環境 (ソースだけコピーした PC など) のために VERSION に控えを残し、
+    そちらを読む。ビューアのヘッダーに v12 のように出る。
+    """
+    path = os.path.join(ROOT, 'VERSION')
+    n = None
+    try:
+        r = subprocess.run(['git', 'rev-list', '--count', 'HEAD'], cwd=ROOT,
+                           capture_output=True, text=True, timeout=5)
+        if r.returncode == 0:
+            n = int(r.stdout.strip())
+    except Exception:
+        pass
+    if n is None:
+        try:
+            n = int(read(path).strip())
+        except Exception:
+            n = 0
+    else:
+        try:
+            if not os.path.exists(path) or read(path).strip() != str(n):
+                with open(path, 'w', encoding='utf-8') as f:
+                    f.write(str(n) + '\n')
+        except Exception:
+            pass
+    return str(n)
 
 
 def main():
@@ -30,7 +60,7 @@ def main():
     js_files = sorted(glob.glob(os.path.join(ROOT, 'src', 'js', '*.js')))
     app_js = '\n'.join(f'// ---- {os.path.basename(p)} ----\n' + read(p) for p in js_files)
 
-    version = datetime.datetime.now().strftime('%Y.%m.%d')
+    version = build_version()
     for name, body in (('three', three), ('occt', occt_js), ('app', app_js)):
         if '</script' in body.lower():
             sys.exit(f'ERROR: "</script" found in {name} — HTML would break')

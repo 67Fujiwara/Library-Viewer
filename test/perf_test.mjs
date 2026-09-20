@@ -73,17 +73,23 @@ const progressive = await page.evaluate(async () => {
   const names = ['p1.step', 'p2.step', 'p3.step'];
   const entries = names.map(n => ({ file: window.__mk(n), name: n, rel: [] }));
   const t = performance.now();
-  let firstAt = null;
-  const iv = setInterval(() => { if (firstAt === null && App.devices().length > 0) firstAt = Math.round(performance.now() - t); }, 50);
+  let firstAt = null, firstCount = 0;
+  const iv = setInterval(() => {
+    if (firstAt === null && App.devices().length > 0) { firstAt = Math.round(performance.now() - t); firstCount = App.devices().length; }
+  }, 50);
   await App.loadEntries(entries);
   clearInterval(iv);
-  return { total: Math.round(performance.now() - t), firstAt: firstAt, n: App.devices().length, workers: Occt.workers() };
+  return { total: Math.round(performance.now() - t), firstAt: firstAt, firstCount: firstCount, n: App.devices().length, workers: Occt.workers() };
 });
 console.log(`    重い STEP 3 件: 全体 ${progressive.total} ms / 最初の 1 件が出るまで ${progressive.firstAt} ms / ワーカー ${progressive.workers} 本`);
 check(progressive.n === 3, '3 devices loaded');
 check(progressive.workers > 1, `the pool grew to ${progressive.workers} workers`);
-check(progressive.firstAt < progressive.total * 0.8,
-  `the first model shows up well before the batch finishes (${progressive.firstAt} ms of ${progressive.total} ms)`);
+// 「できた端から出す」の中身は *全部終わる前に画面へ出したか*。所要時間の比で測ると
+// ワーカー 2 本 × 3 件では境界ぎりぎり (実測 0.73〜0.80) になり、たまに落ちる
+check(progressive.firstCount < 3,
+  `the first model is shown while the rest are still converting (${progressive.firstCount} of 3 at that moment)`);
+check(progressive.total - progressive.firstAt > 500,
+  `and that is well before the batch finishes (${progressive.firstAt} ms of ${progressive.total} ms)`);
 
 // --- 精度を変えるとキャッシュは当たらない (当たってはいけない) ---
 await openSettings();
