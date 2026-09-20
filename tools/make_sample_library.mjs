@@ -104,11 +104,11 @@ function flatten(root) {
   return out;
 }
 
-// ---- models/ (layout 0: models / 部署 / 案件コード_装置名 / 対象ワーク) ----
+// ---- models/ (models / 部署 / 担当者 / 案件コード_装置名 / 対象ワーク) ----
 const made = [];
 for (const e of ENTRIES) {
   const base = `${e.projectCode}_${e.deviceName}_${e.workpiece}_${e.department}_${e.owner}`;
-  const dir = path.join(OUT, 'models', e.department, `${e.projectCode}_${e.deviceName}`, e.workpiece);
+  const dir = path.join(OUT, 'models', e.department, e.owner, `${e.projectCode}_${e.deviceName}`, e.workpiece);
   const stepBytes = genStep(path.join(TMP, base + '.step'), e.deviceName, e.scale);
   write(path.join(dir, 'step', base + '.step'), stepBytes);
   const model = convert(stepBytes, e.deviceName);
@@ -142,10 +142,10 @@ execFileSync('python3', [path.join(ROOT, 'tools', 'gen_test_step.py'), path.join
 fs.copyFileSync(path.join(TMP, 'std', 'holes.step'), path.join(OUT, 'sample-step', '計測練習_穴あき板_中心間100mm.step'));
 
 json(path.join(OUT, 'library.json'), {
-  schema: 'library-viewer/library/1', layout: 0,
+  schema: 'library-viewer/library/1', layout: 'models / 部署 / 担当者 / 案件コード_装置名 / 対象ワーク',
   naming: { pattern: '{projectCode}_{deviceName}_{workpiece}_{department}_{owner}', separator: '_' },
   inboxAuto: false, createdAt: new Date().toISOString().replace(/\.\d+Z$/, '+09:00'),
-  note: 'このファイルはライブラリの保存階層とネーミングルールを固定します。編集はビューアの「ルール」から。',
+  note: 'このファイルはライブラリの保存階層とネーミングルールを記録します。編集はビューアの「ネーミングルール」から。',
 });
 json(path.join(OUT, 'members.json'), { schema: 'library-viewer/members/1', updatedAt: new Date().toISOString().replace(/\.\d+Z$/, '+09:00'), members: MEMBERS });
 fs.rmSync(TMP, { recursive: true, force: true });

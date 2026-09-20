@@ -1,12 +1,10 @@
 /* 格納: 案件情報を付けてフォルダ階層に保存 (File System Access API が本命、無ければ ZIP) */
 var Store = (function () {
   var dlg, form, rosterEl, ownerView, previewEl, methodEl, devicesEl;
-  var LAYOUTS = [
-    function (p) { return ['models', p.dept, p.code + '_' + p.dev, p.work]; },
-    function (p) { return ['models', p.code + '_' + p.dev, p.work]; },
-    function (p) { return ['models', p.work, p.code + '_' + p.dev]; },
-    function (p) { return ['models', p.dept, p.code + '_' + p.dev]; }
-  ];
+  /* 保存先の階層は 1 つに固定する (選ばせない。ライブラリ全体で同じ形でないと探せない)。
+   * 担当者を階層に入れてあるので、フォルダを辿るだけで「その人が担当した装置」が集まる。 */
+  var LAYOUT = function (p) { return ['models', p.dept, p.owner, p.code + '_' + p.dev, p.work]; };
+  var LAYOUT_LABEL = 'models / 部署 / 担当者 / 案件コード_装置名 / 対象ワーク';
   var ROSTER_KEY = 'lv.roster';
   var DEFAULT_ROSTER = '設計1課, 山田\n設計1課, 佐藤\n設計2課, 鈴木\n生産技術, 高橋';
   var selectedOwner = null;   // {dept, name}
@@ -16,7 +14,7 @@ var Store = (function () {
     previewEl = $('#st-preview'); methodEl = $('#st-method'); devicesEl = $('#st-devices');
     $('#btn-store').addEventListener('click', open);
     $('#st-cancel').addEventListener('click', function () { dlg.close(); });
-    ['#st-project', '#st-device', '#st-work', '#st-layout'].forEach(function (s) { $(s).addEventListener('input', updatePreview); $(s).addEventListener('change', updatePreview); });
+    ['#st-project', '#st-device', '#st-work'].forEach(function (s) { $(s).addEventListener('input', updatePreview); $(s).addEventListener('change', updatePreview); });
     form.addEventListener('submit', function (e) { e.preventDefault(); save(); });
     $('#st-edit-roster').addEventListener('click', function () { openRoster(); });
     $('#btn-roster').addEventListener('click', function () { openRoster(); });
@@ -110,9 +108,6 @@ var Store = (function () {
     lib.forEach(function (e) { var c = e.meta.projectCode; if (c && !seen[c]) { seen[c] = 1; dl.appendChild(el('option', { value: c })); } });
     var dw = $('#dl-works'); dw.textContent = ''; var seenW = {};
     lib.forEach(function (e) { var c = e.meta.workpiece; if (c && !seenW[c]) { seenW[c] = 1; dw.appendChild(el('option', { value: c })); } });
-    var cfg = Library.config(), layoutSel = $('#st-layout');
-    if (cfg && cfg.layout != null) { layoutSel.value = String(cfg.layout); layoutSel.disabled = true; layoutSel.title = 'このライブラリの階層は library.json で固定されています'; }
-    else { layoutSel.disabled = false; layoutSel.title = ''; }
     devicesEl.textContent = '';
     devs.forEach(function (d, i) {
       var st = Viewer3D.stats(d.root);
@@ -122,6 +117,7 @@ var Store = (function () {
     var stored = Storage.get('lv.lastOwner', null); if (stored && !selectedOwner) selectedOwner = stored;
     if (selectedOwner) ownerView.textContent = selectedOwner.dept + ' / ' + selectedOwner.name;
     renderRoster();
+    $('#st-layout-label').textContent = LAYOUT_LABEL;
     methodEl.textContent = Library.connected()
       ? 'ライブラリ「' + Library.name() + '」に直接書き込みます。'
       : (Library.supported() ? 'ライブラリを開いていないので ZIP をダウンロードします。ZIP を共有フォルダに展開してください。' : 'このブラウザではフォルダに直接書けないため ZIP をダウンロードします。');
@@ -131,10 +127,10 @@ var Store = (function () {
   function params() {
     return {
       code: sanitizeSegment($('#st-project').value), dev: sanitizeSegment($('#st-device').value), work: sanitizeSegment($('#st-work').value) || '_',
-      dept: sanitizeSegment(selectedOwner ? selectedOwner.dept : '') || '_', layout: parseInt($('#st-layout').value, 10) || 0
+      dept: sanitizeSegment(selectedOwner ? selectedOwner.dept : '') || '_', owner: sanitizeSegment(selectedOwner ? selectedOwner.name : '') || '_'
     };
   }
-  function segments(p) { return LAYOUTS[p.layout](p).map(function (s) { return s || '_'; }); }
+  function segments(p) { return LAYOUT(p).map(function (s) { return s || '_'; }); }
   function updatePreview() {
     var p = params();
     previewEl.textContent = (Library.connected() ? Library.name() + '/' : '') + segments(p).join('/') + '/';
@@ -157,11 +153,14 @@ var Store = (function () {
     })(root, 0, []);
     return out;
   }
-  function segmentsFor(fields, layout) {
-    var p = { code: sanitizeSegment(fields.projectCode), dev: sanitizeSegment(fields.deviceName), work: sanitizeSegment(fields.workpiece) || '_', dept: sanitizeSegment(fields.department) || '_', layout: layout || 0 };
-    return segments(p);
+  function segmentsFor(fields) {
+    return segments({
+      code: sanitizeSegment(fields.projectCode), dev: sanitizeSegment(fields.deviceName),
+      work: sanitizeSegment(fields.workpiece) || '_',
+      dept: sanitizeSegment(fields.department) || '_', owner: sanitizeSegment(fields.owner) || '_'
+    });
   }
-  function buildPackage(devs, fields, layout, preset, source) {
+  function buildPackage(devs, fields, preset, source) {
     var pr = Occt.PRESETS[preset] || Occt.PRESETS.standard;
     var files = [], metaFiles = [], index = { schema: 'library-viewer/index/1', devices: [] }, used = {};
     devs.forEach(function (d) {
@@ -183,7 +182,7 @@ var Store = (function () {
     };
     files.push({ name: 'meta.json', data: new TextEncoder().encode(JSON.stringify(meta, null, 2)) });
     files.push({ name: 'index.json', data: new TextEncoder().encode(JSON.stringify(index, null, 2)) });
-    return { files: files, segs: segmentsFor(fields, layout), meta: meta };
+    return { files: files, segs: segmentsFor(fields), meta: meta };
   }
 
   /* ---- 保存 ---- */
@@ -202,12 +201,12 @@ var Store = (function () {
       // Fusion スクリプト等から来た装置なら出所情報を引き継ぐ
       var src = devs[0].source && devs[0].source.entry && devs[0].source.entry.meta && devs[0].source.entry.meta.source;
       var fields = { projectCode: $('#st-project').value.trim(), deviceName: $('#st-device').value.trim(), workpiece: $('#st-work').value.trim(), department: selectedOwner.dept, owner: selectedOwner.name };
-      var pkg = buildPackage(devs, fields, p.layout, preset, src || null);
+      var pkg = buildPackage(devs, fields, preset, src || null);
       var files = pkg.files;
       await ensureMember(selectedOwner.dept, selectedOwner.name);
       var segs = pkg.segs;
       if (Library.connected()) {
-        await Library.ensureConfig(p.layout);
+        await Library.ensureConfig();
         await Library.writeFiles(segs, files);
         App.hideOverlay(); dlg.close();
         showMessage('格納しました', segs.join('/') + '/\n' + files.map(function (f) { return '  ' + f.name + '  (' + fmtBytes(f.data.length) + ')'; }).join('\n'));
@@ -223,5 +222,5 @@ var Store = (function () {
       showMessage('格納に失敗しました', String(e && e.message || e));
     }
   }
-  return { init: init, open: open, buildPackage: buildPackage, segmentsFor: segmentsFor, ensureMember: ensureMember };
+  return { init: init, open: open, buildPackage: buildPackage, segmentsFor: segmentsFor, ensureMember: ensureMember, layoutLabel: function () { return LAYOUT_LABEL; } };
 })();

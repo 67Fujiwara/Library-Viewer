@@ -267,14 +267,6 @@
       <div class="field"><label for="st-project">案件コード <em>必須</em></label><input type="text" id="st-project" required autocomplete="off" list="dl-projects"><datalist id="dl-projects"></datalist></div>
       <div class="field"><label for="st-device">装置名 <em>必須</em></label><input type="text" id="st-device" required autocomplete="off"></div>
       <div class="field"><label for="st-work">対象ワーク</label><input type="text" id="st-work" autocomplete="off" list="dl-works"><datalist id="dl-works"></datalist></div>
-      <div class="field"><label for="st-layout">保存先の階層</label>
-        <select id="st-layout">
-          <option value="0">models / 部署 / 案件コード_装置名 / 対象ワーク</option>
-          <option value="1">models / 案件コード_装置名 / 対象ワーク</option>
-          <option value="2">models / 対象ワーク / 案件コード_装置名</option>
-          <option value="3">models / 部署 / 案件コード_装置名</option>
-        </select>
-      </div>
     </div>
     <div class="field">
       <span class="label">部署 / 担当者 <em>必須</em> <button type="button" id="st-edit-roster" class="btn link small">名簿を編集</button></span>
@@ -286,7 +278,7 @@
       <div id="st-devices" class="device-list"></div>
     </div>
     <div class="field">
-      <span class="label">保存先パス</span>
+      <span class="label">保存先パス <em id="st-layout-label"></em></span>
       <div id="st-preview" class="path-preview mono"></div>
     </div>
     <div class="field">

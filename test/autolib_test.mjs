@@ -10,11 +10,11 @@ import { chromium } from 'playwright';
 const html = path.resolve('dist/library-viewer.html');
 const outDir = path.resolve('test/out');
 const b64 = p => fs.readFileSync(p).toString('base64');
-const stored = outDir + '/browser-unz/models/設計1課/P2026-001_検査装置A/ワークX';
+const stored = outDir + '/browser-unz/models/設計1課/山田/P2026-001_検査装置A/ワークX';
 if (!fs.existsSync(stored)) { console.error('先に npm run test:browser を実行してください'); process.exit(1); }
 const seed = {
-  'models/設計1課/P2026-001_検査装置A/ワークX/assembly.glb': b64(stored + '/assembly.glb'),
-  'models/設計1課/P2026-001_検査装置A/ワークX/meta.json': b64(stored + '/meta.json'),
+  'models/設計1課/山田/P2026-001_検査装置A/ワークX/assembly.glb': b64(stored + '/assembly.glb'),
+  'models/設計1課/山田/P2026-001_検査装置A/ワークX/meta.json': b64(stored + '/meta.json'),
   'members.json': Buffer.from(JSON.stringify({ members: [{ department: '設計1課', name: '山田' }] })).toString('base64'),
 };
 

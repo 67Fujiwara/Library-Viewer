@@ -178,8 +178,8 @@ var Library = (function () {
       try {
         var bytes = new Uint8Array(await (await f.handle.getFile()).arrayBuffer());
         var model = await Occt.convert(bytes, App.precision(), baseName(f.name));
-        await ensureConfig(0);
-        var pkg = Store.buildPackage([{ fileName: f.name, model: model, stepBytes: bytes }], f.fields, config.layout, App.precision(), { cad: 'step', app: 'library-viewer', via: 'inbox' });
+        await ensureConfig();
+        var pkg = Store.buildPackage([{ fileName: f.name, model: model, stepBytes: bytes }], f.fields, App.precision(), { cad: 'step', app: 'library-viewer', via: 'inbox' });
         await writeFiles(pkg.segs, pkg.files);
         await Store.ensureMember(f.fields.department, f.fields.owner);
         await f.dir.removeEntry(f.name);   // 格納できたものだけ受信箱から消す
@@ -217,7 +217,7 @@ var Library = (function () {
     if (Naming.validate(r)) return;
     Naming.saveLocal(r);
     if (handle) {
-      await ensureConfig(0);
+      await ensureConfig();
       config.naming = r; config.inboxAuto = $('#rule-inbox-auto').checked; config.updatedAt = isoNowLocal();
       try { await writeFile(handle, 'library.json', JSON.stringify(config, null, 2)); } catch (e) { showMessage('ルール', 'library.json に書き込めませんでした。この PC にだけ保存しました。'); }
       renderInbox(); inbox.forEach(function (f) { f.fields = Naming.parse(f.name); }); renderInbox();
@@ -262,13 +262,18 @@ var Library = (function () {
     } catch (e) { /* 読み取り専用など */ }
   }
 
+  /* 保存先パスと案件情報をつないだ 1 本の文字列。検索はこれに当てる
+   * (部署・担当者・案件コード・装置名・対象ワークが全部入っている) */
+  function haystack(e) {
+    var m = e.meta || {};
+    return Tags.fold([m.projectCode, m.deviceName, m.workpiece, m.department, m.owner, e.rel.join('/')].join(' '));
+  }
+  function matches(e, folded) { return !folded || haystack(e).indexOf(folded) >= 0; }
+
   function renderList() {
     listEl.textContent = '';
-    var q = searchEl.value.trim().toLowerCase();
-    var list = entries.filter(function (e) {
-      if (!q) return true;
-      var m = e.meta; return [m.projectCode, m.deviceName, m.workpiece, m.department, m.owner, e.rel.join('/')].join(' ').toLowerCase().indexOf(q) >= 0;
-    });
+    var q = Tags.fold(searchEl.value.trim());
+    var list = entries.filter(function (e) { return matches(e, q); });
     emptyEl.hidden = entries.length > 0;
     if (entries.length && !list.length) listEl.appendChild(el('p.empty', { text: '一致する装置がありません' }));
     var groups = {};
@@ -389,9 +394,9 @@ var Library = (function () {
     }
     return dir;
   }
-  async function ensureConfig(layout) {
+  async function ensureConfig() {
     if (config) return config;
-    config = { schema: 'library-viewer/library/1', layout: layout, naming: Naming.current(), inboxAuto: false, createdAt: isoNowLocal(), note: 'このファイルはライブラリの保存階層とネーミングルールを固定します。編集はビューアの「ルール」から。' };
+    config = { schema: 'library-viewer/library/1', layout: Store.layoutLabel(), naming: Naming.current(), inboxAuto: false, createdAt: isoNowLocal(), note: 'このファイルはライブラリの保存階層とネーミングルールを記録します。編集はビューアの「ネーミングルール」から。' };
     try { await writeFile(handle, 'library.json', JSON.stringify(config, null, 2)); } catch (e) { }
     return config;
   }
@@ -404,6 +409,7 @@ var Library = (function () {
   return {
     init: init, supported: supported, open: open, scan: scan, writeFiles: writeFiles, ensureConfig: ensureConfig, saveMembers: saveMembers,
     connected: function () { return !!handle; }, name: function () { return handle ? handle.name : ''; }, processInbox: processInbox,
-    entries: function () { return entries; }, config: function () { return config; }, members: function () { return members; }, deleteEntry: deleteEntry
+    entries: function () { return entries; }, config: function () { return config; }, members: function () { return members; }, deleteEntry: deleteEntry,
+    matches: matches, openEntry: openEntry
   };
 })();

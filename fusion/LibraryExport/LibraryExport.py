@@ -23,19 +23,12 @@ _handlers = []          # イベントハンドラを GC から守る
 CMD_ID = 'libraryViewerExport'
 SETTINGS_PATH = os.path.join(os.path.expanduser('~'), '.library-viewer', 'fusion.json')
 
-# ビューアと同じ保存階層プリセット (library.json の layout と一致させる)
-LAYOUTS = [
-    lambda p: ['models', p['dept'], p['code'] + '_' + p['dev'], p['work']],
-    lambda p: ['models', p['code'] + '_' + p['dev'], p['work']],
-    lambda p: ['models', p['work'], p['code'] + '_' + p['dev']],
-    lambda p: ['models', p['dept'], p['code'] + '_' + p['dev']],
-]
-LAYOUT_LABELS = [
-    'models / 部署 / 案件コード_装置名 / 対象ワーク',
-    'models / 案件コード_装置名 / 対象ワーク',
-    'models / 対象ワーク / 案件コード_装置名',
-    'models / 部署 / 案件コード_装置名',
-]
+# ビューアと同じ保存階層。**1 つに固定** (09-store.js の LAYOUT と必ず揃える)
+def layout_segments(p):
+    return ['models', p['dept'], p['owner'], p['code'] + '_' + p['dev'], p['work']]
+
+
+LAYOUT_LABEL = 'models / 部署 / 担当者 / 案件コード_装置名 / 対象ワーク'
 
 
 def sanitize(s):
@@ -81,11 +74,9 @@ def library_members(root):
 
 
 def library_layout(root):
+    """library.json があるかどうか (階層そのものは 1 つに固定なので、記録の有無だけ見る)。"""
     cfg = read_json(os.path.join(root, 'library.json'))
-    try:
-        return int(cfg.get('layout', 0)) if cfg else None
-    except Exception:
-        return None
+    return cfg.get('layout') if cfg else None
 
 
 # ---- ネーミングルール (ビューアの src/js/03b-naming.js と同じ規則) ----
@@ -226,12 +217,7 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             dd3.listItems.add('（名簿にない担当者を入力）', dd3.listItems.count == 0 or last_owner not in [n for _, n in members])
             inputs.addStringValueInput('ownerText', '担当者 (手入力)', last_owner if last_owner not in [n for _, n in members] else '')
 
-            layout = library_layout(root) if root else None
-            dd4 = inputs.addDropDownCommandInput('layout', '保存先の階層', adsk.core.DropDownStyles.TextListDropDownStyle)
-            for i, lab in enumerate(LAYOUT_LABELS):
-                dd4.listItems.add(lab, i == (layout if layout is not None else 0))
-            dd4.isEnabled = layout is None
-            inputs.addTextBoxCommandInput('preview', '保存先', '', 2, True)
+            inputs.addTextBoxCommandInput('preview', '保存先  (' + LAYOUT_LABEL + ')', '', 2, True)
 
             on_change = InputChangedHandler(); cmd.inputChanged.add(on_change); _handlers.append(on_change)
             on_exec = ExecuteHandler(); cmd.execute.add(on_exec); _handlers.append(on_exec)
@@ -245,22 +231,18 @@ def get_params(inputs):
     dept = dept_sel.name if dept_sel and not dept_sel.name.startswith('（') else inputs.itemById('deptText').value
     own_sel = inputs.itemById('owner').selectedItem
     owner = own_sel.name if own_sel and not own_sel.name.startswith('（') else inputs.itemById('ownerText').value
-    layout = 0
-    for i, li in enumerate(inputs.itemById('layout').listItems):
-        if li.isSelected:
-            layout = i
     return {
         'root': inputs.itemById('libraryRoot').value.strip(),
         'codeRaw': inputs.itemById('projectCode').value.strip(), 'devRaw': inputs.itemById('deviceName').value.strip(),
         'workRaw': inputs.itemById('workpiece').value.strip(), 'deptRaw': dept.strip(), 'ownerRaw': owner.strip(),
         'code': sanitize(inputs.itemById('projectCode').value), 'dev': sanitize(inputs.itemById('deviceName').value),
-        'work': sanitize(inputs.itemById('workpiece').value), 'dept': sanitize(dept), 'layout': layout,
+        'work': sanitize(inputs.itemById('workpiece').value), 'dept': sanitize(dept), 'owner': sanitize(owner),
     }
 
 
 def update_preview(inputs):
     p = get_params(inputs)
-    segs = LAYOUTS[p['layout']](p)
+    segs = layout_segments(p)
     inputs.itemById('preview').text = (p['root'] or '（ライブラリ未設定）') + '\n' + '/'.join(segs) + '/'
 
 
@@ -313,13 +295,11 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
                 _ui.messageBox('デザインを開いた状態で実行してください。'); return
 
             # library.json が無ければ、選んだ階層でライブラリを初期化 (以後この階層で固定)
-            layout = library_layout(p['root'])
-            if layout is None:
-                layout = p['layout']
+            if library_layout(p['root']) is None:
                 with open(os.path.join(p['root'], 'library.json'), 'w', encoding='utf-8') as f:
-                    json.dump({'schema': 'library-viewer/library/1', 'layout': layout, 'naming': NAMING_DEFAULT, 'inboxAuto': False, 'createdAt': now_iso(),
-                               'note': 'このファイルはライブラリの保存階層とネーミングルールを固定します。編集はビューアの「ルール」から。'}, f, ensure_ascii=False, indent=2)
-            segs = LAYOUTS[layout](p)
+                    json.dump({'schema': 'library-viewer/library/1', 'layout': LAYOUT_LABEL, 'naming': NAMING_DEFAULT, 'inboxAuto': False, 'createdAt': now_iso(),
+                               'note': 'このファイルはライブラリの保存階層とネーミングルールを記録します。編集はビューアの「ネーミングルール」から。'}, f, ensure_ascii=False, indent=2)
+            segs = layout_segments(p)
             target = os.path.join(p['root'], *segs)
             os.makedirs(os.path.join(target, 'step'), exist_ok=True)
 

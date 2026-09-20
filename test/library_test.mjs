@@ -8,17 +8,17 @@ const html = path.resolve('dist/library-viewer.html');
 const outDir = path.resolve('test/out');
 const exe = '/opt/pw-browsers/chromium';
 const b64 = p => fs.readFileSync(p).toString('base64');
-const stored = outDir + '/browser-unz/models/設計1課/P2026-001_検査装置A/ワークX';
+const stored = outDir + '/browser-unz/models/設計1課/山田/P2026-001_検査装置A/ワークX';
 const seed = {
-  'models/設計1課/P2026-001_検査装置A/ワークX/assembly.glb': b64(stored + '/assembly.glb'),
-  'models/設計1課/P2026-001_検査装置A/ワークX/step/assembly.step': b64(stored + '/step/assembly.step'),
-  'models/設計1課/P2026-001_検査装置A/ワークX/assembly_b.glb': b64(stored + '/assembly_b.glb'),
-  'models/設計1課/P2026-001_検査装置A/ワークX/step/assembly_b.step': b64(stored + '/step/assembly_b.step'),
-  'models/設計1課/P2026-001_検査装置A/ワークX/meta.json': b64(stored + '/meta.json'),
-  'models/設計1課/P2026-001_検査装置A/ワークX/index.json': b64(stored + '/index.json'),
+  'models/設計1課/山田/P2026-001_検査装置A/ワークX/assembly.glb': b64(stored + '/assembly.glb'),
+  'models/設計1課/山田/P2026-001_検査装置A/ワークX/step/assembly.step': b64(stored + '/step/assembly.step'),
+  'models/設計1課/山田/P2026-001_検査装置A/ワークX/assembly_b.glb': b64(stored + '/assembly_b.glb'),
+  'models/設計1課/山田/P2026-001_検査装置A/ワークX/step/assembly_b.step': b64(stored + '/step/assembly_b.step'),
+  'models/設計1課/山田/P2026-001_検査装置A/ワークX/meta.json': b64(stored + '/meta.json'),
+  'models/設計1課/山田/P2026-001_検査装置A/ワークX/index.json': b64(stored + '/index.json'),
   // Fusion スクリプトが置いた想定: STEP + meta.json のみ (glb 未生成)
-  'models/設計2課/P2026-002_搬送装置B/_/step/assembly_b.step': b64('test/out/assembly_b.step'),
-  'models/設計2課/P2026-002_搬送装置B/_/meta.json': Buffer.from(JSON.stringify({
+  'models/設計2課/鈴木/P2026-002_搬送装置B/_/step/assembly_b.step': b64('test/out/assembly_b.step'),
+  'models/設計2課/鈴木/P2026-002_搬送装置B/_/meta.json': Buffer.from(JSON.stringify({
     schema: 'library-viewer/1', projectCode: 'P2026-002', deviceName: '搬送装置B', workpiece: '', department: '設計2課', owner: '鈴木', savedAt: '2026-09-18T10:00:00+09:00', precision: null,
     files: [{ name: 'assembly_b', step: 'step/assembly_b.step', glb: 'assembly_b.glb' }],
     source: { cad: 'fusion', document: 'DEVICE_B v3', fusionWebURL: 'https://example.autodesk360.com/g/data/xxxx' }
@@ -68,12 +68,38 @@ await page.waitForTimeout(1500);
 await page.click('#btn-open-lib');
 await page.waitForFunction(() => document.querySelector('#lib-status').textContent.includes('件'), null, { timeout: 15000 });
 check((await page.textContent('#lib-status')).includes('2 件'), 'library scan found 2 entries');
+
+// ---- 保存先パスの語で検索できる (担当者の名前で、その人が担当した装置が出る) ----
+const hitTitles = () => page.$$eval('#search-list .hit-card .dev > span:first-of-type', ss => ss.map(s => s.textContent.trim()));
+await page.fill('#tree-search', '鈴木');          // 名簿にしかいない担当者 = 保存先パスの語
+await page.waitForTimeout(350);
+const byOwner = await hitTitles();
+console.log('    「鈴木」の検索結果:', JSON.stringify(byOwner), await page.textContent('#search-sum'));
+check(byOwner.includes('搬送装置B'), 'searching an owner name finds what they stored, even unloaded: ' + byOwner);
+check((await page.textContent('#search-sum')).includes('ライブラリ 1'), 'and it is counted as a library hit');
+await page.fill('#tree-search', '設計1課');       // 部署でも当たる
+await page.waitForTimeout(350);
+check((await hitTitles()).includes('検査装置A'), 'searching a department finds its devices: ' + await hitTitles());
+// 結果を押すとライブラリから読み込まれる (glb 済みの 検査装置A で試す。未変換のものは後の検証に残す)
+await page.locator('#search-list .hit-card', { hasText: '検査装置A' }).first().click();
+await page.waitForFunction(() => App.devices().length > 0, null, { timeout: 60000 });
+await page.waitForSelector('#overlay', { state: 'hidden', timeout: 60000 });
+await page.waitForTimeout(400);
+check(await page.evaluate(() => App.devices().length) >= 1, 'clicking a library hit loads it');
+check(!(await page.textContent('#search-sum')).includes('ライブラリ 1'), 'once loaded it is no longer listed as unloaded');
+await page.fill('#tree-search', 'P2026-002');     // 案件コードでも当たる
+await page.waitForTimeout(350);
+check((await hitTitles()).includes('搬送装置B'), 'searching a project code works too');
+await page.fill('#tree-search', '');
+await page.waitForTimeout(300);
+await page.evaluate(() => App.clearDevices());
+await page.waitForTimeout(200);
 await page.click('label[for="tab-lib"]');
 check(!(await page.$eval('#inbox', e => e.hidden)), 'inbox section shown');
 const inboxRows = await page.$$eval('#inbox-list li', l => l.map(x => [x.className, x.textContent]));
 console.log('  inbox:', JSON.stringify(inboxRows));
 check(inboxRows.length === 3 && inboxRows.filter(r => r[0] === 'bad').length === 1, 'inbox lists 3 files, 1 not matching');
-check(inboxRows.some(r => r[1].includes('models/設計2課/P2026-005_組立_ライン_E/_')), 'greedy device name with underscores and empty workpiece resolved');
+check(inboxRows.some(r => r[1].includes('models/設計2課/鈴木/P2026-005_組立_ライン_E/_')), 'greedy device name with underscores and empty workpiece resolved');
 await page.screenshot({ path: outDir + '/shot-7-inbox.png' });
 await page.click('#btn-inbox');
 await page.waitForSelector('#msg-dialog[open]', { timeout: 60000 });
@@ -81,9 +107,9 @@ console.log('  ' + (await page.textContent('#msg-body')).split('\n').join(' / ')
 await page.keyboard.press('Escape');
 await page.waitForFunction(() => document.querySelector('#lib-status').textContent.includes('4 件'), null, { timeout: 15000 });
 check(true, 'inbox processed: 4 entries');
-const stored4 = await page.evaluate(() => window.__ls('models/設計1課/P2026-004_溶接装置D/ワークY'));
+const stored4 = await page.evaluate(() => window.__ls('models/設計1課/田中/P2026-004_溶接装置D/ワークY'));
 check(stored4 && stored4.includes('meta.json') && stored4.includes('P2026-004_溶接装置D_ワークY_設計1課_田中.glb'), 'inbox file stored at rule path: ' + stored4);
-const meta4 = JSON.parse((await page.evaluate(() => window.__ls('models/設計1課/P2026-004_溶接装置D/ワークY/meta.json'))).text);
+const meta4 = JSON.parse((await page.evaluate(() => window.__ls('models/設計1課/田中/P2026-004_溶接装置D/ワークY/meta.json'))).text);
 check(meta4.owner === '田中' && meta4.workpiece === 'ワークY' && meta4.source.via === 'inbox' && meta4.files[0].triangles === 12, 'meta.json from naming rule');
 check((await page.evaluate(() => window.__ls('members.json'))).text.includes('田中'), 'unknown owner added to members.json');
 const inboxLeft = await page.evaluate(() => window.__ls('inbox'));
@@ -100,7 +126,7 @@ check(!(await page.$eval('#rule-error', e => e.hidden)), 'rule validation reject
 await page.fill('#rule-pattern', '{projectCode}-{deviceName}');
 await page.fill('#rule-sep', '-');
 await page.fill('#rule-try', 'Z1-テスト機.step');
-check((await page.textContent('#rule-try-out')).includes('models/_/Z1_テスト機'), 'rule try-out shows target path: ' + await page.textContent('#rule-try-out'));
+check((await page.textContent('#rule-try-out')).includes('models/_/_/Z1_テスト機'), 'rule try-out shows target path: ' + await page.textContent('#rule-try-out'));
 await page.click('#rule-cancel');
 
 check((await page.evaluate(() => window.__ls('catalog.json'))).text.includes('P2026-002'), 'catalog.json written to library root');
@@ -117,7 +143,7 @@ await page.locator('.lib-card', { hasText: '搬送装置B' }).locator('button', 
 await page.waitForSelector('#overlay', { state: 'hidden', timeout: 60000 });
 await page.waitForTimeout(400);
 check((await page.$$eval('.tree-row.device .name', r => r.map(x => x.textContent))).join().includes('assembly_b'), 'opened the entry from the library');
-const glbInfo = await page.evaluate(() => window.__ls('models/設計2課/P2026-002_搬送装置B/_/assembly_b.glb'));
+const glbInfo = await page.evaluate(() => window.__ls('models/設計2課/鈴木/P2026-002_搬送装置B/_/assembly_b.glb'));
 check(glbInfo && glbInfo.size > 1000, 'glb written back into library (' + (glbInfo && glbInfo.size) + ' bytes)');
 await page.click('label[for="tab-lib"]');
 check(await page.locator('.lib-card', { hasText: '搬送装置B' }).locator('.warn').count() === 0, 'warning cleared after conversion');
@@ -136,14 +162,14 @@ await page.fill('#st-project', 'P2026-003');
 await page.fill('#st-device', '組立装置C');
 await page.locator('#st-roster button.dept', { hasText: '設計2課' }).click();
 await page.locator('#st-roster label.member', { hasText: '鈴木' }).click();
-check((await page.textContent('#st-preview')) === 'Library/models/設計2課/P2026-003_組立装置C/_/', 'preview uses roster dept (from members.json)');
+check((await page.textContent('#st-preview')) === 'Library/models/設計2課/鈴木/P2026-003_組立装置C/_/', 'preview uses roster dept (from members.json)');
 await page.click('#st-save');
 await page.waitForSelector('#msg-dialog[open]', { timeout: 30000 });
 console.log('  ' + (await page.textContent('#msg-body')).split('\n').join(' / '));
 await page.keyboard.press('Escape');
-const files = await page.evaluate(() => window.__ls('models/設計2課/P2026-003_組立装置C/_'));
+const files = await page.evaluate(() => window.__ls('models/設計2課/鈴木/P2026-003_組立装置C/_'));
 check(files && files.includes('meta.json') && files.includes('assembly_b.glb') && files.includes('step'), 'files written into library: ' + files);
-check((await page.evaluate(() => window.__ls('library.json'))).text.includes('"layout": 0'), 'library.json has layout');
+check((await page.evaluate(() => window.__ls('library.json'))).text.includes('部署 / 担当者 / 案件コード_装置名'), 'library.json records the (fixed) layout');
 await page.waitForFunction(() => document.querySelector('#lib-status').textContent.includes('5 件'), null, { timeout: 15000 });
 check(true, 'library rescanned: 5 entries');
 
@@ -163,18 +189,18 @@ check((await page.evaluate(() => window.__ls('members.json'))).text.includes('�
 await page.click('label[for="tab-lib"]');
 await page.waitForTimeout(200);
 const before = (await page.$$('.lib-card')).length;
-check((await page.evaluate(() => window.__ls('models/設計2課'))).length === 3, '設計2課 has 3 project folders before delete');
+check((await page.evaluate(() => window.__ls('models/設計2課/鈴木'))).length === 3, '鈴木 has 3 project folders before delete');
 
 // 確認ダイアログでキャンセルすると消えない
 await page.locator('.lib-card', { hasText: '組立装置C' }).locator('button', { hasText: '削除' }).click();
 await page.waitForSelector('#confirm-dialog[open]');
 const cbody = await page.textContent('#confirm-body');
-check(cbody.includes('models/設計2課/P2026-003_組立装置C/_/') && cbody.includes('meta.json'), 'confirm shows the path and files');
+check(cbody.includes('models/設計2課/鈴木/P2026-003_組立装置C/_/') && cbody.includes('meta.json'), 'confirm shows the path and files');
 check(cbody.includes('全員から見えなくなります'), 'confirm warns it is shared');
 await page.click('#confirm-cancel');
 await page.waitForTimeout(300);
 check((await page.$$('.lib-card')).length === before, 'cancel keeps the entry');
-check(await page.evaluate(() => window.__ls('models/設計2課/P2026-003_組立装置C')) !== null, 'cancel keeps the folder');
+check(await page.evaluate(() => window.__ls('models/設計2課/鈴木/P2026-003_組立装置C')) !== null, 'cancel keeps the folder');
 
 // 削除する
 await page.locator('.lib-card', { hasText: '組立装置C' }).locator('button', { hasText: '削除' }).click();
@@ -184,11 +210,11 @@ await page.waitForSelector('#msg-dialog[open]', { timeout: 15000 });
 await page.keyboard.press('Escape');
 await page.waitForFunction((n) => document.querySelectorAll('.lib-card').length === n, before - 1, { timeout: 15000 });
 check(true, 'entry removed from the list (' + before + ' → ' + (before - 1) + ')');
-check(await page.evaluate(() => window.__ls('models/設計2課/P2026-003_組立装置C')) === null, 'device folder deleted from the library');
-check((await page.evaluate(() => window.__ls('models/設計2課'))).length === 2, 'sibling folders untouched');
+check(await page.evaluate(() => window.__ls('models/設計2課/鈴木/P2026-003_組立装置C')) === null, 'device folder deleted from the library');
+check((await page.evaluate(() => window.__ls('models/設計2課/鈴木'))).length === 2, 'sibling folders untouched');
 
 // 部署が空になったら、その部署フォルダも消える
-check((await page.evaluate(() => window.__ls('models/設計1課'))).length === 2, '設計1課 has 2 project folders');
+check((await page.evaluate(() => window.__ls('models/設計1課'))).length === 2, '設計1課 has 2 owner folders (山田 / 田中)');
 for (const name of ['溶接装置D', '検査装置A']) {
   await page.locator('.lib-card', { hasText: name }).locator('button', { hasText: '削除' }).click();
   await page.waitForSelector('#confirm-dialog[open]');
@@ -197,7 +223,7 @@ for (const name of ['溶接装置D', '検査装置A']) {
   await page.keyboard.press('Escape');
   await page.waitForTimeout(600);
 }
-check(await page.evaluate(() => window.__ls('models/設計1課')) === null, 'empty department folder cleaned up too');
+check(await page.evaluate(() => window.__ls('models/設計1課')) === null, 'empty owner and department folders cleaned up too');
 check(await page.evaluate(() => window.__ls('models')) !== null, 'models/ itself is kept');
 await page.screenshot({ path: outDir + '/shot-18-after-delete.png' });
 

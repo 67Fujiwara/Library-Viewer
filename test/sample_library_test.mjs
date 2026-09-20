@@ -63,7 +63,7 @@ await page.click('label[for="tab-lib"]');
 await page.locator('.lib-card', { hasText: '搬送装置B' }).locator('button', { hasText: '追加' }).click();
 await page.waitForFunction(() => App.devices().length === 2, null, { timeout: 60000 });
 await page.waitForSelector('#overlay', { state: 'hidden', timeout: 60000 });
-const glb = await page.evaluate(() => window.__ls('models/設計2課/P2026-002_搬送装置B/ワークY/P2026-002_搬送装置B_ワークY_設計2課_鈴木.glb'));
+const glb = await page.evaluate(() => window.__ls('models/設計2課/鈴木/P2026-002_搬送装置B/ワークY/P2026-002_搬送装置B_ワークY_設計2課_鈴木.glb'));
 check(glb && glb.size > 1000, 'unconverted entry converted and glb written back (' + (glb && glb.size) + ' bytes)');
 
 // 案件横断: 2 装置がユニット名を共有している
