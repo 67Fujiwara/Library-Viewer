@@ -1,7 +1,7 @@
 /* 案件横断: 複数装置の同名ユニットを串刺しで見る */
 var CrossRef = (function () {
   var index = {}, keys = [], devices = [], current = null, list = [], cursor = -1;
-  var listEl, curEl, hintEl;
+  var listEl, curEl;
 
   /* 名寄せ: 全角半角・空白・_・- を無視し、末尾の連番やリビジョン表記を落とす */
   function normalize(name) {
@@ -14,7 +14,7 @@ var CrossRef = (function () {
     return s;
   }
 
-  function init() { listEl = $('#xref-list'); curEl = $('#xref-current'); hintEl = $('#xref-hint'); }
+  function init() { listEl = $('#xref-list'); curEl = $('#xref-current'); }
 
   function rebuild(devs) {
     devices = devs; index = {};
@@ -66,9 +66,14 @@ var CrossRef = (function () {
   function show(n) {
     current = n; list = []; cursor = -1;
     listEl.textContent = ''; curEl.textContent = '';
-    if (!n || n.depth === 0) { curEl.hidden = true; hintEl.hidden = false; if (n) hintEl.textContent = '装置全体が選択されています。ユニットや部品を選ぶと他の装置と比較できます。'; return; }
+    // 常設の案内は置かない。何か選ばれているときだけ、その状況を出す
+    if (!n || n.depth === 0) {
+      curEl.hidden = true;
+      if (n) listEl.appendChild(el('p.muted.small', { text: '装置全体が選択されています。ユニットや部品を選ぶと他の装置と比較できます。' }));
+      return;
+    }
     var st = Viewer3D.stats(n), r = matchesFor(n);
-    curEl.hidden = false; hintEl.hidden = true;
+    curEl.hidden = false;
     curEl.appendChild(el('div.n', { text: n.name }));
     curEl.appendChild(el('div.muted', { text: n.device.name + ' · ' + (n.path.slice(1, -1).join(' / ') || 'ルート直下') }));
     curEl.appendChild(el('div.mono.small', { text: 'ソリッド ' + st.solids + ' · △ ' + fmtInt(st.tris) }));

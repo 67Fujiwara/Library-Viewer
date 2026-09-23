@@ -194,7 +194,6 @@
       </section>
       <section id="xref-panel" class="right-section">
         <h2 class="panel-title">案件横断</h2>
-        <p id="xref-hint" class="muted small">部品を選ぶと、他の装置にある同名ユニットをここに並べます。</p>
         <div id="xref-current" class="xref-current" hidden></div>
         <div id="xref-list" class="xref-list"></div>
       </section>
@@ -214,40 +213,61 @@
 <!-- 設定はここ 1 か所に集める (歯車から開く) -->
 <div id="settings-menu" class="settings-menu" role="menu" hidden>
   <h3>表示</h3>
-  <div class="sm-row">
-    <span class="sm-label">テーマ</span>
-    <div class="seg" role="group" aria-label="テーマ">
-      <input type="radio" name="theme" id="theme-auto" value="auto" checked><label for="theme-auto">自動</label>
-      <input type="radio" name="theme" id="theme-light" value="light"><label for="theme-light">ライト</label>
-      <input type="radio" name="theme" id="theme-dark" value="dark"><label for="theme-dark">ダーク</label>
+  <div class="sm-group">
+    <div class="sm-row">
+      <span class="sm-label">テーマ</span>
+      <div class="seg" role="group" aria-label="テーマ">
+        <input type="radio" name="theme" id="theme-auto" value="auto" checked><label for="theme-auto">自動</label>
+        <input type="radio" name="theme" id="theme-light" value="light"><label for="theme-light">ライト</label>
+        <input type="radio" name="theme" id="theme-dark" value="dark"><label for="theme-dark">ダーク</label>
+      </div>
+    </div>
+    <div class="sm-row">
+      <label class="sm-label" for="chk-ghost">非表示の部品を薄く残す</label>
+      <input type="checkbox" id="chk-ghost" class="switch"><label for="chk-ghost" class="switch-label" aria-hidden="true"></label>
     </div>
   </div>
-  <div class="sm-row">
-    <span class="sm-label">非表示の部品</span>
-    <span><input type="checkbox" id="chk-ghost" class="toggle"><label for="chk-ghost" class="btn small secondary toggle-label">薄く残す</label></span>
-  </div>
+
   <h3>STEP の変換</h3>
-  <div class="sm-row">
-    <label class="sm-label" for="precision">メッシュ精度</label>
-    <span>
-      <select id="precision" title="メッシュ精度">
+  <div class="sm-group">
+    <div class="sm-row">
+      <label class="sm-label" for="precision">メッシュ精度</label>
+      <select id="precision" title="読み込むときのメッシュの細かさ">
         <option value="coarse">粗い（最軽量）</option>
         <option value="standard" selected>標準</option>
         <option value="fine">細かい</option>
       </select>
-      <button type="button" id="btn-remesh" class="btn small secondary" disabled title="今の精度で STEP を変換し直します">再変換</button>
-    </span>
+    </div>
+    <button type="button" id="btn-remesh" class="sm-item" disabled title="いま開いている装置を、今の精度で変換し直します">
+      <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5"/></svg>
+      <span>今の精度で変換し直す</span>
+    </button>
+    <button type="button" id="btn-clear-cache" class="sm-item" title="保存してある変換結果を消します">
+      <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg>
+      <span>変換キャッシュを消す</span>
+      <svg class="sm-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+    </button>
   </div>
-  <div class="sm-row">
-    <span class="sm-label">変換キャッシュ</span>
-    <button type="button" id="btn-clear-cache" class="btn small secondary" title="保存してある変換結果を消します">消す…</button>
-  </div>
+
   <h3>ライブラリ</h3>
-  <div class="sm-actions">
-    <button type="button" id="btn-roster" class="btn small secondary">名簿</button>
-    <button type="button" id="btn-rules" class="btn small secondary">ネーミングルール</button>
-    <button type="button" id="btn-lib-home" class="btn small secondary">既定のライブラリ</button>
+  <div class="sm-group">
+    <button type="button" id="btn-roster" class="sm-item" title="部署と担当者の一覧を編集します">
+      <svg viewBox="0 0 24 24"><path d="M16 20v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 18.5V20M10 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M20 20v-1.5a3.5 3.5 0 0 0-2.6-3.4M15.5 4.1a3.5 3.5 0 0 1 0 6.8"/></svg>
+      <span>名簿</span>
+      <svg class="sm-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+    </button>
+    <button type="button" id="btn-rules" class="sm-item" title="ファイル名から案件情報を読み取る規則">
+      <svg viewBox="0 0 24 24"><path d="M6 2h8l4 4v16H6z M14 2v4h4M9 13h6M9 17h4"/></svg>
+      <span>ネーミングルール</span>
+      <svg class="sm-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+    </button>
+    <button type="button" id="btn-lib-home" class="sm-item" title="開いたときに自動で読み込むライブラリ">
+      <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>
+      <span>既定のライブラリ</span>
+      <svg class="sm-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+    </button>
   </div>
+</div>
 </div>
 
 <div id="overlay" class="overlay" hidden>
