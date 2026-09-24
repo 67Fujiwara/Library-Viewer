@@ -11,9 +11,9 @@ const html = path.resolve('dist/library-viewer.html');
 const outDir = path.resolve('test/out');
 const b64 = p => fs.readFileSync(p).toString('base64');
 const stored = outDir + '/browser-unz/models/設計1課/山田/P2026-001_検査装置A/ワークX';
-if (!fs.existsSync(stored)) { console.error('先に npm run test:browser を実行してください'); process.exit(1); }
+if (!fs.existsSync(stored + '/assembly.glb.gz')) { console.error('先に npm run test:browser を実行してください'); process.exit(1); }
 const seed = {
-  'models/設計1課/山田/P2026-001_検査装置A/ワークX/assembly.glb': b64(stored + '/assembly.glb'),
+  'models/設計1課/山田/P2026-001_検査装置A/ワークX/assembly.glb.gz': b64(stored + '/assembly.glb.gz'),
   'models/設計1課/山田/P2026-001_検査装置A/ワークX/meta.json': b64(stored + '/meta.json'),
   'members.json': Buffer.from(JSON.stringify({ members: [{ department: '設計1課', name: '山田' }] })).toString('base64'),
 };
@@ -28,9 +28,11 @@ async function openPage({ permission, auto, remembered = true }) {
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
   await page.addInitScript(({ seed, permission, auto, remembered }) => {
-    class FileH { constructor(n, b) { this.kind = 'file'; this.name = n; this._d = b; }
-      async getFile() { return new File([this._d], this.name); }
-      async createWritable() { const s = this; const buf = []; return { async write(d) { buf.push(typeof d === 'string' ? new TextEncoder().encode(d) : new Uint8Array(d)); }, async close() { const n = buf.reduce((a, x) => a + x.length, 0); const o = new Uint8Array(n); let p = 0; buf.forEach(x => { o.set(x, p); p += x.length; }); s._d = o; } }; } }
+    // 本物の API と同じく、更新日時は書き込んだときだけ変わる (差分スキャンが効くように)
+    let __mtime = 1758600000000;
+    class FileH { constructor(n, b) { this.kind = 'file'; this.name = n; this._d = b; this._m = ++__mtime; }
+      async getFile() { return new File([this._d], this.name, { lastModified: this._m }); }
+      async createWritable() { const s = this; const buf = []; return { async write(d) { buf.push(typeof d === 'string' ? new TextEncoder().encode(d) : new Uint8Array(d)); }, async close() { const n = buf.reduce((a, x) => a + x.length, 0); const o = new Uint8Array(n); let p = 0; buf.forEach(x => { o.set(x, p); p += x.length; }); s._d = o; s._m = ++__mtime; } }; } }
     class DirH { constructor(n) { this.kind = 'directory'; this.name = n; this._e = new Map(); }
       async getFileHandle(n, o) { const h = this._e.get(n); if (h && h.kind === 'file') return h; if (o && o.create) { const f = new FileH(n, new Uint8Array()); this._e.set(n, f); return f; } throw Object.assign(new Error('nf'), { name: 'NotFoundError' }); }
       async getDirectoryHandle(n, o) { const h = this._e.get(n); if (h && h.kind === 'directory') return h; if (o && o.create) { const d = new DirH(n); this._e.set(n, d); return d; } throw Object.assign(new Error('nf'), { name: 'NotFoundError' }); }

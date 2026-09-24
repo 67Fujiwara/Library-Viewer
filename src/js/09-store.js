@@ -163,20 +163,29 @@ var Store = (function () {
       dept: sanitizeSegment(fields.department) || '_', owner: sanitizeSegment(fields.owner) || '_'
     });
   }
-  function buildPackage(devs, fields, preset, source) {
+  /* 共有フォルダに置くのは **gzip した glb だけ**。
+   * 実測 (1.36MB の STEP): glb 1.31MB (96% — ほとんど減らない) / gzip 0.12MB (9%)。
+   * STEP のマスターは Fusion のクラウドにあるので共有フォルダには残さない
+   * (設定「変換後も STEP を残す」を入れたときだけ置く)。 */
+  async function buildPackage(devs, fields, preset, source) {
     var pr = Occt.PRESETS[preset] || Occt.PRESETS.standard;
     var files = [], metaFiles = [], index = { schema: 'library-viewer/index/1', devices: [] }, used = {};
-    devs.forEach(function (d) {
+    var keepStep = Settings.keepStep();
+    for (var i = 0; i < devs.length; i++) {
+      var d = devs[i];
       var base = baseName(d.fileName), k = 2;
       while (used[base]) base = baseName(d.fileName) + '_' + (k++);   // 同名ファイルの上書きを防ぐ
       used[base] = 1;
       var glb = GLB.write(d.model);   // glb は格納時に初めて生成する
+      var gz = await gzipBytes(glb);
       var st = modelStats(d.model);
-      files.push({ name: base + '.glb', data: glb });
-      if (d.stepBytes) files.push({ name: 'step/' + base + '.step', data: d.stepBytes });
-      metaFiles.push({ name: base, glb: base + '.glb', step: d.stepBytes ? 'step/' + base + '.step' : null, stepSize: d.stepBytes ? d.stepBytes.length : null, glbSize: glb.length, triangles: st.tris, solids: st.solids, rootName: d.model.name });
+      files.push({ name: base + '.glb.gz', data: gz });
+      if (keepStep && d.stepBytes) files.push({ name: 'step/' + base + '.step', data: d.stepBytes });
+      metaFiles.push({ name: base, glb: base + '.glb.gz', step: (keepStep && d.stepBytes) ? 'step/' + base + '.step' : null,
+        stepSize: d.stepBytes ? d.stepBytes.length : null, glbSize: gz.length, rawGlbSize: glb.length,
+        triangles: st.tris, solids: st.solids, rootName: d.model.name });
       index.devices.push({ file: base, rootName: d.model.name, tree: flattenTree(d.model.root) });
-    });
+    }
     var meta = {
       schema: 'library-viewer/1', projectCode: fields.projectCode, deviceName: fields.deviceName, workpiece: fields.workpiece || '',
       customer: fields.customer || '', department: fields.department, owner: fields.owner, savedAt: isoNowLocal(),
@@ -204,7 +213,7 @@ var Store = (function () {
       // Fusion スクリプト等から来た装置なら出所情報を引き継ぐ
       var src = devs[0].source && devs[0].source.entry && devs[0].source.entry.meta && devs[0].source.entry.meta.source;
       var fields = { projectCode: $('#st-project').value.trim(), deviceName: $('#st-device').value.trim(), workpiece: $('#st-work').value.trim(), customer: $('#st-customer').value.trim(), department: selectedOwner.dept, owner: selectedOwner.name };
-      var pkg = buildPackage(devs, fields, preset, src || null);
+      var pkg = await buildPackage(devs, fields, preset, src || null);
       var files = pkg.files;
       await ensureMember(selectedOwner.dept, selectedOwner.name);
       var segs = pkg.segs;

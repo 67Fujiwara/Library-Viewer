@@ -1,5 +1,6 @@
 // dist/library-viewer.html を file:// で開き、STEP 読み込み〜ツリー〜格納 (ZIP) まで実機確認する
 import fs from 'node:fs';
+import zlib from 'node:zlib';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
 import { chromium } from 'playwright';
@@ -129,9 +130,15 @@ await download.saveAs(zipPath);
 fs.rmSync(outDir + '/browser-unz', { recursive: true, force: true });
 const listing = execSync(`cd ${outDir} && unzip -o -q browser-store.zip -d browser-unz && find browser-unz -type f | sort`).toString();
 console.log(listing);
-check(listing.includes(`browser-unz/models/設計1課/${owner}/P2026-001_検査装置A/ワークX/assembly.glb`), 'zip contains glb at Japanese path');
-check(listing.includes('/step/assembly_b.step') && listing.includes('/meta.json') && listing.includes('/index.json'), 'zip contains step/meta/index');
+check(listing.includes(`browser-unz/models/設計1課/${owner}/P2026-001_検査装置A/ワークX/assembly.glb.gz`), 'zip contains the gzipped glb at a Japanese path');
+check(!listing.includes('/step/'), 'and no STEP (the master lives in Fusion cloud): ' + listing.split('\n').filter(l => l.includes('step')).join(','));
+check(listing.includes('/meta.json') && listing.includes('/index.json'), 'zip contains meta/index');
 const meta = JSON.parse(fs.readFileSync(`${outDir}/browser-unz/models/設計1課/${owner}/P2026-001_検査装置A/ワークX/meta.json`, 'utf8'));
+// gzip がどれだけ効いているか (容量削減の裏付け)
+const gzPath = `${outDir}/browser-unz/models/設計1課/${owner}/P2026-001_検査装置A/ワークX/assembly.glb.gz`;
+console.log(`  glb ${meta.files[0].rawGlbSize} B → gzip ${fs.statSync(gzPath).size} B (${(fs.statSync(gzPath).size / meta.files[0].rawGlbSize * 100).toFixed(0)}%)`);
+check(fs.statSync(gzPath).size < meta.files[0].rawGlbSize, 'the stored glb is gzipped (smaller than the raw glb)');
+check(zlib.gunzipSync(fs.readFileSync(gzPath)).length === meta.files[0].rawGlbSize, 'and it decompresses back to the original glb');
 check(meta.owner === '山田' && meta.files.length === 2 && meta.files[0].triangles === 36, 'meta.json content');
 check(meta.customer === '〇〇食品', 'meta.json carries the customer');
 await page.waitForTimeout(300);

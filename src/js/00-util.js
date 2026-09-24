@@ -55,6 +55,19 @@ var Storage = {
   set: function (k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
 };
 
+/* gzip 圧縮 / 展開 (ブラウザ標準。WASM の展開でも同じ API を使っている)。
+ * ライブラリには glb を gzip して置く。実測 1.36MB の STEP → glb 1.31MB → gzip 0.12MB。
+ * glb は float32 の座標が並ぶだけなので、素の glb ではほとんど縮まない。効くのは gzip。 */
+async function gzipBytes(bytes) {
+  var s = new Blob([bytes]).stream().pipeThrough(new CompressionStream('gzip'));
+  return new Uint8Array(await new Response(s).arrayBuffer());
+}
+async function gunzipBytes(bytes) {
+  var s = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return new Uint8Array(await new Response(s).arrayBuffer());
+}
+function isGz(name) { return /\.gz$/i.test(String(name || '')); }
+
 function b64ToBytes(b64) {
   var bin = atob(b64), out = new Uint8Array(bin.length);
   for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);

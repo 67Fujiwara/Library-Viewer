@@ -20,6 +20,9 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
 - 対象は Windows の Chrome / Edge のみ
 - **管理者レス。** ライブラリの真実はフォルダと各装置の `meta.json`。中央の一覧ファイルを人が保守する設計にしない
   （`catalog.json` はビューアが自動生成するキャッシュ。無くても動く）
+- **共有フォルダに置くのは gzip した glb だけ**（`<名前>.glb.gz`）。STEP のマスターは Fusion のクラウドにあり、
+  共有フォルダには残さない（設定「共有フォルダに STEP も残す」を入れたときだけ置く）。
+  実測: STEP 20,667B + 素の glb 4,804B = 25,471B → gzip した glb 1,105B = **23 分の 1**
 
 ## やってはいけないこと
 
@@ -105,6 +108,21 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
   - ワーカーへ渡すときに `slice()` を挟まない（その場でもう 1 本コピーができる）
   - **測るときはファイルを base64 で `page.evaluate` に渡さない。** 79MB の base64 文字列で
     ページが落ち、「59MB は変換できない」と誤診した。`setInputFiles` で実運用と同じ経路を通す
+- **glb は素のままではほとんど縮まない。効くのは gzip。**
+  実測 (1.36MB の STEP): glb 1.31MB (**96%**) / gzip 0.12MB (**9%**)。
+  glb は float32 の座標が並ぶだけなので、形式を変えても減らない。
+  圧縮・展開は `CompressionStream` / `DecompressionStream`（ブラウザ標準。WASM の展開でも使用中）。
+  読み込みは拡張子で分岐する（`isGz()`）。**素の `.glb` も読めるようにしておく**（前の版で作ったライブラリ）
+- **STEP を消したら `meta.json` も直す。** `meta.json` の `glb` は「ここに置く」という予告なので、
+  実際に置いた名前 (`.glb.gz`) と STEP を片づけたことを書き戻す（`syncMeta`）。
+  忘れると次のスキャンで glb が見つからず、毎回変換し直しになる
+- **ライブラリの一覧は差分スキャン。** `meta.json` の中身を読むのが一番高い
+  （DirectCloud では実体の取得が走る）。更新日時とサイズが前と同じなら読まずに
+  IndexedDB の控え (`cat` ストア) を使う。存在確認 (`getFileHandle`) は毎回やるので、
+  誰かが glb を足したことは次のスキャンで分かる。状況は `#lib-status` の title に出す
+- **開いた装置は変換キャッシュに入れる** (`ConvCache` の preset `'lib'`)。2 回目は共有フォルダを読みに行かない
+- **偽ハンドルのテストでは `lastModified` を固定する。** 毎回 `new File()` すると更新日時が現在時刻になり、
+  差分スキャンもキャッシュも永久に当たらない（書き込んだときだけ進める）
 - **STEP の変換が遅いのは解析と B-rep 構築で、メッシュ精度を落としても速くならない。**
   実測 (1.4MB / 150 部品): 極粗 4.2 秒 / 粗い 3.4 秒 / 標準 3.7 秒 / 細かい 4.4 秒。
   効くのは (1) 変換キャッシュ 3.9 秒 → 38ms (103 倍) (2) ワーカーで UI を止めないこと (54 fps)
@@ -196,6 +214,7 @@ STEP の変換（メッシュ精度・再変換・変換キャッシュ）/ ラ�
   **押すと何か開く行** (`.sm-item`: アイコン + ラベル + 右端の `>`)。高さは 40px で揃える。
   ボタンを並べただけの節を作らない（元が別々の場所にあった機能でも、ここでは同じ見た目にする）
 - 設定の中の on/off は **`.switch`**（つまみ）で統一する。`.btn` 風のトグルを混ぜない
+- 「共有フォルダに STEP も残す」は既定 **オフ**（`Settings.keepStep()`）。容量が 23 倍違う
 - `Esc` は **App のキーボード処理 1 か所**で扱う。設定パネル側にも Esc を付けると、
   閉じるのと同時に 3D の選択まで外れる（実際にそうなって browser_test が落ちた）
 - 小さくした `select` は padding と矢印の位置も一緒に詰める（既定は 36px・上下 8px 前提で、
@@ -255,14 +274,14 @@ STEP の変換（メッシュ精度・再変換・変換キャッシュ）/ ラ�
 build.py                 テンプレート置換ビルド → dist/library-viewer.html
 src/template.html        HTML 骨格 ({{APP_CSS}} {{THREE_JS}} {{OCCT_JS}} {{WASM_GZ_B64}} {{APP_JS}})
 src/app.css              トークン (DESIGN.md) と UI
-src/js/00-util.js        DOM ヘルパ, Storage, nextFrames, cssVar
+src/js/00-util.js        DOM ヘルパ, Storage, nextFrames, cssVar, gzip 圧縮/展開
 src/js/01-theme.js       時刻によるライト/ダーク
 src/js/01b-panels.js     左右サイドバーの開閉
 src/js/01c-settings.js   設定パネル (左下の歯車。置き場所と開け閉めだけ持つ)
 src/js/02-glb.js         GLB ライター/リーダー + 組立位置の焼き込み (node でも require 可)
 src/js/03-zip.js         ZIP ライター (格納方式, UTF-8 フラグ)
 src/js/03b-naming.js     ネーミングルール (ファイル名 ⇔ 案件情報。取引先も項目に持つ)
-src/js/00b-idb.js        IndexedDB の口 (フォルダハンドルと変換キャッシュで共用。版とストアはここだけ)
+src/js/00b-idb.js        IndexedDB の口 (ハンドル・変換キャッシュ・一覧の差分スキャンで共用。版とストアはここだけ)
 src/js/04-step.js        STEP 変換のワーカープール (WASM は 1 回コンパイルして共有)
 src/js/04b-cache.js      変換キャッシュ (同じファイル・同じ精度なら GLB を読み直す)
 src/js/05-viewer.js      three.js シーン・カメラ・表示モード・断面・エッジ・ハイライト

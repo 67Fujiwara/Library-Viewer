@@ -124,9 +124,15 @@ var Library = (function () {
     members = Array.isArray(mj) ? mj : (mj && Array.isArray(mj.members) ? mj.members : null);
     var modelsDir = null;
     try { modelsDir = await handle.getDirectoryHandle('models'); } catch (e) { modelsDir = null; }
-    await walk(modelsDir || handle, modelsDir ? ['models'] : [], 0);
+    await loadCatCache();
+    scanStats = { read: 0, reused: 0 };
+    var seen = {}, t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    await walk(modelsDir || handle, modelsDir ? ['models'] : [], 0, seen);
+    await saveCatCache(seen);
+    scanStats.ms = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0);
     entries.sort(function (a, b) { return String(b.meta.savedAt || '').localeCompare(String(a.meta.savedAt || '')); });
     statusEl.textContent = handle.name + ' · ' + entries.length + ' 件'; statusEl.className = 'status ok';
+    statusEl.title = '読み直し ' + scanStats.read + ' 件 / 前回のまま ' + scanStats.reused + ' 件 (' + scanStats.ms + ' ms)';
     pathEl.textContent = handle.name + '/';
     $('#btn-rescan').disabled = false;
     countEl.hidden = false; countEl.textContent = String(entries.length);
@@ -179,7 +185,7 @@ var Library = (function () {
         var bytes = new Uint8Array(await (await f.handle.getFile()).arrayBuffer());
         var model = await Occt.convert(bytes, App.precision(), baseName(f.name));
         await ensureConfig();
-        var pkg = Store.buildPackage([{ fileName: f.name, model: model, stepBytes: bytes }], f.fields, App.precision(), { cad: 'step', app: 'library-viewer', via: 'inbox' });
+        var pkg = await Store.buildPackage([{ fileName: f.name, model: model, stepBytes: bytes }], f.fields, App.precision(), { cad: 'step', app: 'library-viewer', via: 'inbox' });
         await writeFiles(pkg.segs, pkg.files);
         await Store.ensureMember(f.fields.department, f.fields.owner);
         await f.dir.removeEntry(f.name);   // 格納できたものだけ受信箱から消す
@@ -224,10 +230,47 @@ var Library = (function () {
     }
     $('#rules-dialog').close();
   }
-  async function walk(dir, rel, depth) {
+  /* 一覧の差分スキャン用の控え。鍵は装置フォルダのパス、値は {size, mtime, meta}。
+   * meta.json の中身を読む (= DirectCloud では実体を取りに行く) のが一番高い処理なので、
+   * 更新日時とサイズが前と同じなら読まずに控えを使う。存在確認 (getFileHandle) は毎回やる
+   * ので、誰かが glb を足したことは次のスキャンで分かる。 */
+  var catCache = {}, catDirty = false;
+  async function loadCatCache() {
+    catCache = {}; catDirty = false;
+    try {
+      (await IDB.entries('cat')).forEach(function (r) { catCache[r.key] = r.value; });
+    } catch (e) { /* file:// で使えないことがある */ }
+  }
+  async function saveCatCache(seen) {
+    if (!catDirty) return;
+    try {
+      var keys = Object.keys(catCache);
+      for (var i = 0; i < keys.length; i++) {
+        if (seen[keys[i]]) await IDB.put('cat', keys[i], catCache[keys[i]]);
+        else { delete catCache[keys[i]]; await IDB.del('cat', keys[i]); }   // 消えた装置は控えも捨てる
+      }
+    } catch (e) { }
+  }
+  async function readMeta(dir, key) {
+    var fh;
+    try { fh = await dir.getFileHandle('meta.json'); } catch (e) { return null; }
+    var f = await fh.getFile();
+    var c = catCache[key];
+    if (c && c.size === f.size && c.mtime === (f.lastModified || 0)) { scanStats.reused++; return c.meta; }
+    var meta = null;
+    try { meta = JSON.parse(await f.text()); } catch (e) { return null; }
+    catCache[key] = { size: f.size, mtime: f.lastModified || 0, meta: meta };
+    catDirty = true; scanStats.read++;
+    return meta;
+  }
+  var scanStats = { read: 0, reused: 0 };
+
+  async function walk(dir, rel, depth, seen) {
     if (depth > 6) return;
-    var meta = await readJson(dir, 'meta.json');
+    var key = rel.join('/');
+    var meta = await readMeta(dir, key);
     if (meta && meta.schema && String(meta.schema).indexOf('library-viewer') === 0) {
+      seen[key] = 1;
       var files = [];
       for (var i = 0; i < (meta.files || []).length; i++) {
         var f = meta.files[i];
@@ -238,7 +281,7 @@ var Library = (function () {
     }
     for await (var [name, h] of dir.entries()) {
       if (h.kind !== 'directory' || SKIP_DIRS[name.toLowerCase()] || name[0] === '.') continue;
-      await walk(h, rel.concat([name]), depth + 1);
+      await walk(h, rel.concat([name]), depth + 1, seen);
     }
   }
   async function hasStepFile(dir, relPath) {
@@ -246,10 +289,25 @@ var Library = (function () {
     try { for (var i = 0; i < parts.length - 1; i++) d = await d.getDirectoryHandle(parts[i]); await d.getFileHandle(parts[parts.length - 1]); return true; } catch (e) { return false; }
   }
   async function readFileBytes(dir, relPath) {
+    return new Uint8Array(await (await fileOf(dir, relPath)).arrayBuffer());
+  }
+  async function fileOf(dir, relPath) {
     var parts = relPath.split('/'), d = dir;
     for (var i = 0; i < parts.length - 1; i++) d = await d.getDirectoryHandle(parts[i]);
-    var f = await (await d.getFileHandle(parts[parts.length - 1])).getFile();
-    return new Uint8Array(await f.arrayBuffer());
+    return (await d.getFileHandle(parts[parts.length - 1])).getFile();
+  }
+  /* 共有フォルダの glb を読む。`.gz` なら展開する。
+   * 一度読んだものは変換キャッシュに置いて、2 回目は共有フォルダを読みに行かない
+   * (DirectCloud ではここで実体の取得が走るため、効きが大きい)。 */
+  async function readModel(dir, relPath) {
+    var file = await fileOf(dir, relPath);
+    var cached = await ConvCache.get(file, 'lib');
+    if (cached) return cached;
+    var bytes = new Uint8Array(await file.arrayBuffer());
+    if (isGz(relPath)) bytes = await gunzipBytes(bytes);
+    var model = GLB.read(bytes);
+    ConvCache.put(file, 'lib', model);        // 書き込みは待たない
+    return model;
   }
 
   /* 一覧用のキャッシュ。Fusion スクリプト等が案件コードの候補に使う。失敗しても無視 */
@@ -319,8 +377,7 @@ var Library = (function () {
       var f = e.files[i];
       try {
         if (f.glb) {
-          var bytes = await readFileBytes(e.dir, f.glb);
-          devices.push({ model: GLB.read(bytes), fileName: f.step ? f.step.split('/').pop() : f.name + '.step', stepBytes: null, source: { kind: 'library', entry: e, file: f } });
+          devices.push({ model: await readModel(e.dir, f.glb), fileName: f.step ? f.step.split('/').pop() : f.name + '.step', stepBytes: null, source: { kind: 'library', entry: e, file: f } });
         } else if (f.step) {
           var sb = await readFileBytes(e.dir, f.step);
           App.showOverlay('変換中', (i + 1) + ' / ' + e.files.length + '  ' + f.step.split('/').pop());
@@ -331,7 +388,14 @@ var Library = (function () {
           if (f.placement) GLB.place(model, f.placement);
           var dev = { model: model, fileName: f.step.split('/').pop(), stepBytes: sb, source: { kind: 'library', entry: e, file: f } };
           devices.push(dev);
-          try { await writeFile(e.dir, f.name + '.glb', GLB.write(model)); f.glb = f.name + '.glb'; } catch (werr) { /* 書けなくても表示は続ける */ }
+          // glb は gzip して置く。書けたら STEP は片づける (マスターは Fusion のクラウド)
+          try {
+            var gz = await gzipBytes(GLB.write(model));
+            await writeFile(e.dir, f.name + '.glb.gz', gz);
+            f.glb = f.name + '.glb.gz';
+            if (!Settings.keepStep()) await dropStep(e, f);
+            await syncMeta(e, f, gz.length);   // meta.json を直さないと次のスキャンで見つからない
+          } catch (werr) { /* 書けなくても表示は続ける */ }
         }
       } catch (err) {
         App.hideOverlay();
@@ -342,6 +406,34 @@ var Library = (function () {
     devices.forEach(function (d) { App.addDevice(d); });
     if (devices.length) { App.showLeftTab('tree'); App.stepSource(e); Viewer3D.fitAll(); }
     if (e.files.some(function (f) { return f.glb && f.glb.indexOf('.glb') > 0; })) { renderList(); }
+  }
+
+  /* 書き戻した結果を meta.json に反映する。
+   * Fusion スクリプトが書いた meta.json は「これから glb をここに置く」という予告なので、
+   * 実際に置いた名前 (.glb.gz) と、STEP を片づけたことを書き戻しておく。 */
+  async function syncMeta(e, f, glbSize) {
+    var list = (e.meta && e.meta.files) || [];
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].name !== f.name) continue;
+      list[i].glb = f.glb; list[i].step = f.step || null; list[i].glbSize = glbSize;
+      try { await writeFile(e.dir, 'meta.json', JSON.stringify(e.meta, null, 2)); } catch (err) { }
+      return;
+    }
+  }
+
+  /* glb にできた STEP を装置フォルダから消す (空になった step/ も片づける)。
+   * 容量は実測で 1/22 になる。マスターは Fusion のクラウドにあり、
+   * 「Fusion で開く」から戻れるという前提。設定で残すこともできる。 */
+  async function dropStep(e, f) {
+    if (!f.step) return;
+    var parts = f.step.split('/');
+    try {
+      var d = e.dir;
+      for (var i = 0; i < parts.length - 1; i++) d = await d.getDirectoryHandle(parts[i]);
+      await d.removeEntry(parts[parts.length - 1]);
+      if (parts.length > 1 && await isEmpty(d)) await e.dir.removeEntry(parts[0]);
+      f.step = null;
+    } catch (err) { /* 読み取り専用などは放っておく */ }
   }
 
   /* ---- 削除: 装置フォルダごと消し、空になった親フォルダも掃除する ---- */

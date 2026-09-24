@@ -2,6 +2,7 @@
 // 格納 (直接書き込み) → 名簿共有 (members.json) までを通しで確認する
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { chromium } from 'playwright';
 
 const html = path.resolve('dist/library-viewer.html');
@@ -9,12 +10,17 @@ const outDir = path.resolve('test/out');
 const exe = '/opt/pw-browsers/chromium';
 const b64 = p => fs.readFileSync(p).toString('base64');
 const stored = outDir + '/browser-unz/models/設計1課/山田/P2026-001_検査装置A/ワークX';
+// 検査装置A は **旧形式 (素の .glb)** で置く。前の版で作ったライブラリが
+// そのまま開けること (下位互換) をここで見る。meta.json も .glb を指すように直す
+const unzip = p => zlib.gunzipSync(fs.readFileSync(p)).toString('base64');
+const oldMeta = JSON.parse(fs.readFileSync(stored + '/meta.json', 'utf8'));
+oldMeta.files.forEach(f => { f.glb = f.name + '.glb'; f.step = 'step/' + f.name + '.step'; });
 const seed = {
-  'models/設計1課/山田/P2026-001_検査装置A/ワークX/assembly.glb': b64(stored + '/assembly.glb'),
-  'models/設計1課/山田/P2026-001_検査装置A/ワークX/step/assembly.step': b64(stored + '/step/assembly.step'),
-  'models/設計1課/山田/P2026-001_検査装置A/ワークX/assembly_b.glb': b64(stored + '/assembly_b.glb'),
-  'models/設計1課/山田/P2026-001_検査装置A/ワークX/step/assembly_b.step': b64(stored + '/step/assembly_b.step'),
-  'models/設計1課/山田/P2026-001_検査装置A/ワークX/meta.json': b64(stored + '/meta.json'),
+  'models/設計1課/山田/P2026-001_検査装置A/ワークX/assembly.glb': unzip(stored + '/assembly.glb.gz'),
+  'models/設計1課/山田/P2026-001_検査装置A/ワークX/step/assembly.step': b64('test/out/assembly.step'),
+  'models/設計1課/山田/P2026-001_検査装置A/ワークX/assembly_b.glb': unzip(stored + '/assembly_b.glb.gz'),
+  'models/設計1課/山田/P2026-001_検査装置A/ワークX/step/assembly_b.step': b64('test/out/assembly_b.step'),
+  'models/設計1課/山田/P2026-001_検査装置A/ワークX/meta.json': Buffer.from(JSON.stringify(oldMeta)).toString('base64'),
   'models/設計1課/山田/P2026-001_検査装置A/ワークX/index.json': b64(stored + '/index.json'),
   // Fusion スクリプトが置いた想定: STEP + meta.json のみ (glb 未生成)
   'models/設計2課/鈴木/P2026-002_搬送装置B/_/step/assembly_b.step': b64('test/out/assembly_b.step'),
@@ -53,9 +59,12 @@ page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
 function check(c, m) { if (!c) throw new Error('FAIL: ' + m); console.log('  ok  ' + m); }
 
 await page.addInitScript((seed) => {
-  class FileH { constructor(name, bytes) { this.kind = 'file'; this.name = name; this._d = bytes; }
-    async getFile() { return new File([this._d], this.name); }
-    async createWritable() { const self = this; let buf = []; return { async write(d) { buf.push(typeof d === 'string' ? new TextEncoder().encode(d) : new Uint8Array(d)); }, async close() { const n = buf.reduce((s, b) => s + b.length, 0); const o = new Uint8Array(n); let p = 0; buf.forEach(b => { o.set(b, p); p += b.length; }); self._d = o; } }; } }
+  // 本物の File System Access API と同じく、更新日時は書き込んだときだけ変わる
+  // (毎回 new File() すると lastModified が現在時刻になり、差分スキャンもキャッシュも当たらない)
+  let __mtime = 1758600000000;
+  class FileH { constructor(name, bytes) { this.kind = 'file'; this.name = name; this._d = bytes; this._m = ++__mtime; }
+    async getFile() { return new File([this._d], this.name, { lastModified: this._m }); }
+    async createWritable() { const self = this; let buf = []; return { async write(d) { buf.push(typeof d === 'string' ? new TextEncoder().encode(d) : new Uint8Array(d)); }, async close() { const n = buf.reduce((s, b) => s + b.length, 0); const o = new Uint8Array(n); let p = 0; buf.forEach(b => { o.set(b, p); p += b.length; }); self._d = o; self._m = ++__mtime; } }; } }
   class DirH { constructor(name) { this.kind = 'directory'; this.name = name; this._e = new Map(); }
     async getFileHandle(n, o) { const h = this._e.get(n); if (h && h.kind === 'file') return h; if (o && o.create) { const f = new FileH(n, new Uint8Array()); this._e.set(n, f); return f; } throw Object.assign(new Error('NotFound ' + n), { name: 'NotFoundError' }); }
     async getDirectoryHandle(n, o) { const h = this._e.get(n); if (h && h.kind === 'directory') return h; if (o && o.create) { const d = new DirH(n); this._e.set(n, d); return d; } throw Object.assign(new Error('NotFound ' + n), { name: 'NotFoundError' }); }
@@ -126,7 +135,8 @@ await page.keyboard.press('Escape');
 await page.waitForFunction(() => document.querySelector('#lib-status').textContent.includes('5 件'), null, { timeout: 15000 });
 check(true, 'inbox processed: 5 entries');
 const stored4 = await page.evaluate(() => window.__ls('models/設計1課/田中/P2026-004_溶接装置D/ワークY'));
-check(stored4 && stored4.includes('meta.json') && stored4.includes('P2026-004_溶接装置D_ワークY_設計1課_田中.glb'), 'inbox file stored at rule path: ' + stored4);
+check(stored4 && stored4.includes('meta.json') && stored4.includes('P2026-004_溶接装置D_ワークY_設計1課_田中.glb.gz'), 'inbox file stored as gzipped glb at the rule path: ' + stored4);
+check(!stored4.includes('step'), 'and the STEP is not copied into the shared folder: ' + stored4);
 const meta4 = JSON.parse((await page.evaluate(() => window.__ls('models/設計1課/田中/P2026-004_溶接装置D/ワークY/meta.json'))).text);
 check(meta4.owner === '田中' && meta4.workpiece === 'ワークY' && meta4.source.via === 'inbox' && meta4.files[0].triangles === 12, 'meta.json from naming rule');
 check((await page.evaluate(() => window.__ls('members.json'))).text.includes('田中'), 'unknown owner added to members.json');
@@ -161,7 +171,7 @@ await page.locator('.lib-card', { hasText: '搬送装置B' }).locator('button', 
 await page.waitForSelector('#overlay', { state: 'hidden', timeout: 60000 });
 await page.waitForTimeout(400);
 check((await page.$$eval('.tree-row.device .name', r => r.map(x => x.textContent))).join().includes('assembly_b'), 'opened the entry from the library');
-const glbInfo = await page.evaluate(() => window.__ls('models/設計2課/鈴木/P2026-002_搬送装置B/_/assembly_b.glb'));
+const glbInfo = await page.evaluate(() => window.__ls('models/設計2課/鈴木/P2026-002_搬送装置B/_/assembly_b.glb.gz'));
 check(glbInfo && glbInfo.size > 1000, 'glb written back into library (' + (glbInfo && glbInfo.size) + ' bytes)');
 await page.click('label[for="tab-lib"]');
 check(await page.locator('.lib-card', { hasText: '搬送装置B' }).locator('.warn').count() === 0, 'warning cleared after conversion');
@@ -186,12 +196,13 @@ await page.waitForSelector('#msg-dialog[open]', { timeout: 30000 });
 console.log('  ' + (await page.textContent('#msg-body')).split('\n').join(' / '));
 await page.keyboard.press('Escape');
 const files = await page.evaluate(() => window.__ls('models/設計2課/鈴木/P2026-003_組立装置C/_'));
-check(files && files.includes('meta.json') && files.includes('assembly_b.glb') && files.includes('step'), 'files written into library: ' + files);
+check(files && files.includes('meta.json') && files.includes('assembly_b.glb.gz'), 'files written into library: ' + files);
+check(!files.includes('step'), 'no step/ folder is created (the master lives in Fusion cloud): ' + files);
 check((await page.evaluate(() => window.__ls('library.json'))).text.includes('部署 / 担当者 / 案件コード_装置名'), 'library.json records the (fixed) layout');
 await page.waitForFunction(() => document.querySelector('#lib-status').textContent.includes('6 件'), null, { timeout: 15000 });
 check(true, 'library rescanned: 6 entries');
 
-check(files.filter(f => f.endsWith('.glb')).length === 3, 'duplicate base names get suffix: ' + files.filter(f => f.endsWith('.glb')));
+check(files.filter(f => f.endsWith('.glb.gz')).length === 3, 'duplicate base names get suffix: ' + files.filter(f => f.endsWith('.glb.gz')));
 
 // 名簿 → members.json
 await page.click('label[for="tab-lib"]');
@@ -202,6 +213,31 @@ await page.fill('#roster-text', '設計1課, 山田\n設計2課, 鈴木\n生産�
 await page.click('#roster-save');
 await page.waitForTimeout(300);
 check((await page.evaluate(() => window.__ls('members.json'))).text.includes('高橋'), 'members.json updated in library');
+
+// ---- 2 回目以降は差分だけ読む / 開いた装置はキャッシュから ----
+// 1 回目は meta.json を全部読む。2 回目は更新日時とサイズが同じものを読み直さない
+const scanStats = () => page.evaluate(() => document.querySelector('#lib-status').title);
+console.log('    1 回目のスキャン:', await scanStats());
+await page.click('#btn-rescan');
+await page.waitForFunction(() => document.querySelector('#lib-status').className.includes('ok'), null, { timeout: 15000 });
+await page.waitForTimeout(300);
+const s2 = await scanStats();
+console.log('    2 回目のスキャン:', s2);
+check(/読み直し 0 件/.test(s2), 'the second scan re-reads no meta.json: ' + s2);
+check(/前回のまま [1-9]/.test(s2), 'and reuses the cached entries: ' + s2);
+// meta.json を書き換えたものだけ読み直す
+await page.evaluate(() => {
+  const p = 'models/設計2課/鈴木/P2026-002_搬送装置B/_/meta.json'.split('/');
+  let d = window.__root; for (let i = 0; i < p.length - 1; i++) d = d._e.get(p[i]);
+  const h = d._e.get('meta.json');
+  h._d = new TextEncoder().encode(new TextDecoder().decode(h._d).replace('搬送装置B', '搬送装置B2'));
+});
+await page.click('#btn-rescan');
+await page.waitForFunction(() => document.querySelector('#lib-status').className.includes('ok'), null, { timeout: 15000 });
+await page.waitForTimeout(300);
+const s3 = await scanStats();
+console.log('    書き換えた 1 件だけ:', s3);
+check(/読み直し 1 件/.test(s3), 'only the changed entry is read again: ' + s3);
 
 // ---- ユニット分割で格納されたエントリ: 組立位置が戻る ----
 await page.click('label[for="tab-lib"]');
@@ -223,7 +259,7 @@ check(Math.abs(placed[0].x) < 200, 'unit_a stays at the origin: x=' + placed[0].
 check(placed[1].x > 800, 'unit_b is moved to its assembly position (x=' + placed[1].x + ', +1000mm)');
 check(Math.abs(placed[1].x - placed[0].x) > 800, 'the units do not pile up on each other');
 // glb は位置を焼いた状態で書き戻される (2 回目以降は placement を当てない)
-const glbA = await page.evaluate(() => window.__ls('models/設計1課/山田/P2026-006_分割機G/_/unit_b.glb'));
+const glbA = await page.evaluate(() => window.__ls('models/設計1課/山田/P2026-006_分割機G/_/unit_b.glb.gz'));
 check(glbA && glbA.size > 0, 'a glb was written back for the unit');
 await page.evaluate(() => App.clearDevices());
 await page.click('label[for="tab-lib"]');   // 開くと構成タブへ切り替わるので戻す

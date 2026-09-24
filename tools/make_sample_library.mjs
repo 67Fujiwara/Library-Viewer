@@ -14,6 +14,7 @@
  *     sample-step/               ドラッグ&ドロップ用の STEP (ルール一致 / 不一致)
  */
 import fs from 'node:fs';
+import zlib from 'node:zlib';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -110,20 +111,23 @@ for (const e of ENTRIES) {
   const base = `${e.projectCode}_${e.deviceName}_${e.workpiece}_${e.department}_${e.owner}`;
   const dir = path.join(OUT, 'models', e.department, e.owner, `${e.projectCode}_${e.deviceName}`, e.workpiece);
   const stepBytes = genStep(path.join(TMP, base + '.step'), e.deviceName, e.scale);
-  write(path.join(dir, 'step', base + '.step'), stepBytes);
   const model = convert(stepBytes, e.deviceName);
   const tris = model.meshes.reduce((s, m) => s + m.indices.length / 3, 0);
+  // 変換済みのものは gzip した glb だけを置く (STEP のマスターは Fusion のクラウド)。
+  // 未変換のものは Fusion スクリプトが置いた直後の想定なので STEP だけ
   let glbSize = null;
   if (e.convert) {
-    const glb = GLB.write(model);
-    write(path.join(dir, base + '.glb'), glb);
-    glbSize = glb.length;
+    const gz = zlib.gzipSync(GLB.write(model), { level: 9 });
+    write(path.join(dir, base + '.glb.gz'), gz);
+    glbSize = gz.length;
+  } else {
+    write(path.join(dir, 'step', base + '.step'), stepBytes);
   }
   json(path.join(dir, 'meta.json'), {
     schema: 'library-viewer/1', projectCode: e.projectCode, deviceName: e.deviceName, workpiece: e.workpiece,
     customer: e.customer || '', department: e.department, owner: e.owner, savedAt: e.savedAt,
     precision: e.convert ? PRECISION : null,
-    files: [{ name: base, glb: base + '.glb', step: 'step/' + base + '.step', stepSize: stepBytes.length, glbSize, triangles: e.convert ? tris : null, solids: model.meshes.length, rootName: model.name }],
+    files: [{ name: base, glb: base + '.glb.gz', step: e.convert ? null : 'step/' + base + '.step', stepSize: e.convert ? null : stepBytes.length, glbSize, triangles: e.convert ? tris : null, solids: model.meshes.length, rootName: model.name }],
     source: e.source || { cad: 'step', app: 'library-viewer' },
   });
   json(path.join(dir, 'index.json'), { schema: 'library-viewer/index/1', devices: [{ file: base, rootName: model.name, tree: flatten(model.root) }] });

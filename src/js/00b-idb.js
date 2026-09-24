@@ -3,7 +3,7 @@
  * バージョンとストアの定義はここだけに置く (別々に open するとバージョン衝突で固まる)。
  * file:// では失敗しうるので、呼び出し側は必ず catch すること。 */
 var IDB = (function () {
-  var NAME = 'library-viewer', VERSION = 2, STORES = { handles: {}, conv: { keyPath: null } };
+  var NAME = 'library-viewer', VERSION = 3, STORES = { handles: {}, conv: { keyPath: null }, cat: { keyPath: null } };
   var opening = null;
 
   function open() {
@@ -14,6 +14,7 @@ var IDB = (function () {
         var db = r.result;
         if (!db.objectStoreNames.contains('handles')) db.createObjectStore('handles');
         if (!db.objectStoreNames.contains('conv')) db.createObjectStore('conv');
+        if (!db.objectStoreNames.contains('cat')) db.createObjectStore('cat');   // ライブラリ一覧の差分スキャン用
       };
       r.onsuccess = function () { res(r.result); };
       r.onerror = function () { rej(r.error); };

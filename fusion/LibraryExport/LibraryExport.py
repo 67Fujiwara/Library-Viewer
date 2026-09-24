@@ -418,7 +418,8 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
             tree = component_tree(design.rootComponent)
             files_meta = []
             for fname, sp, placement, root_name in exported:
-                fm = {'name': fname, 'step': 'step/' + fname + '.step', 'glb': fname + '.glb',
+                # glb はビューアが初回に作る。gzip して置くので名前は .glb.gz (09-store.js と揃える)
+                fm = {'name': fname, 'step': 'step/' + fname + '.step', 'glb': fname + '.glb.gz',
                       'stepSize': os.path.getsize(sp), 'glbSize': None, 'triangles': None,
                       'solids': (tree[0]['solids'] if tree else None) if placement is None else None,
                       'rootName': root_name}
