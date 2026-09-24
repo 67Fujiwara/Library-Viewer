@@ -158,6 +158,35 @@ var GLB = (function () {
     return n;
   }
 
-  return { write: write, read: read };
+  /* 組立位置を焼き込む。
+   * Fusion は部品を「自分の原点」に置いた STEP として書き出すので、
+   * アセンブリでの位置は meta.json の placement から復元する。
+   * placement は行列ではなく **原点 + 3 軸** で持つ (行優先/列優先の取り違えが起きない)。
+   *   p' = origin + x*px + y*py + z*pz     単位は mm
+   * 法線は平行移動を無視して軸だけで回す (Fusion の配置は回転 + 平行移動で、拡大縮小はない)。 */
+  function place(model, pl) {
+    if (!model || !pl) return model;
+    var o = pl.origin || [0, 0, 0], ax = pl.x || [1, 0, 0], ay = pl.y || [0, 1, 0], az = pl.z || [0, 0, 1];
+    model.meshes.forEach(function (m) {
+      var p = m.positions;
+      for (var i = 0; i < p.length; i += 3) {
+        var px = p[i], py = p[i + 1], pz = p[i + 2];
+        p[i]     = o[0] + ax[0] * px + ay[0] * py + az[0] * pz;
+        p[i + 1] = o[1] + ax[1] * px + ay[1] * py + az[1] * pz;
+        p[i + 2] = o[2] + ax[2] * px + ay[2] * py + az[2] * pz;
+      }
+      var n = m.normals;
+      if (!n) return;
+      for (var k = 0; k < n.length; k += 3) {
+        var nx = n[k], ny = n[k + 1], nz = n[k + 2];
+        n[k]     = ax[0] * nx + ay[0] * ny + az[0] * nz;
+        n[k + 1] = ax[1] * nx + ay[1] * ny + az[1] * nz;
+        n[k + 2] = ax[2] * nx + ay[2] * ny + az[2] * nz;
+      }
+    });
+    return model;
+  }
+
+  return { write: write, read: read, place: place };
 })();
 if (typeof module !== 'undefined') module.exports = GLB;

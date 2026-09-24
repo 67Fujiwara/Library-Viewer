@@ -41,6 +41,10 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
   (`#load-note`)。`.glb` を読むのは「ファイルを開く」とライブラリからのときだけ
 - 案件横断のカード移動は **角度を変えない**（`Viewer3D.fitNode` / `moveToNode`）。
   回り込むのは「この部品に寄る」（`focusNode`）だけ。この 2 つを 1 つの関数にまとめない
+- **ユニット分割の位置合わせを行列で渡さない。** `meta.json` の `placement` は
+  **原点 + 3 軸**（`origin` / `x` / `y` / `z`、mm）で持つ。行優先・列優先の取り違えが起きないため。
+  Fusion 側は `Matrix3D.getAsCoordinateSystem()`、ビューア側は `GLB.place()` が
+  `p' = origin + x*px + y*py + z*pz` で戻す。この 2 つは必ず同時に直す
 - Fusion スクリプト (`fusion/LibraryExport/`) とビューアで、**保存階層**・`meta.json` のスキーマ・**ネーミングルールの解析規則**を別々に変えない。必ず両方を同時に直す
   （`src/js/03b-naming.js` の `parse`/`format` と `LibraryExport.py` の `naming_parse`/`naming_format` は同じ規則。
   階層は `09-store.js` の `LAYOUT` と `LibraryExport.py` の `layout_segments()`）
@@ -77,6 +81,12 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
   373MB のファイルはユーザーの PC で `WebAssembly.Exception` になった
   （STEP は読み込むと何倍にもふくらむ。原本 → ワーカーへのコピー → WASM ヒープ → B-rep 数 GB。
   **この wasm は 32bit でアドレス空間が 4GB 頭打ち**）。
+  - **Fusion スクリプトの「ユニットごとに分けて書き出す」で回避する。** ルート直下のオカレンスごとに
+    STEP を分け、組立位置は `meta.json` の `placement` に入れる。ライブラリ上は 1 件のままなので運用は変わらない。
+    `createSTEPExportOptions` には **Occurrence ではなく Component を渡す**（自分の原点に置かれた形で出るので
+    位置の扱いが曖昧にならない。Occurrence を渡したときに配置が保たれるかは版によって当てにならない）
+  - 位置は STEP → glb にするときに 1 回だけ焼く（`08-library.js` の `openEntry`）。
+    書き戻した glb には焼き込み済みなので、2 回目以降は当てない（二重掛けになる）
   - 目安は **20MB 以下が実用的 / それ以上は分単位 / 数百 MB は失敗する**。
     運用は「ユニット単位で書き出して追加読み込み」。一度変換すれば
     キャッシュと glb が効くので、待つのは最初の 1 回だけ
@@ -239,7 +249,7 @@ src/js/00-util.js        DOM ヘルパ, Storage, nextFrames, cssVar
 src/js/01-theme.js       時刻によるライト/ダーク
 src/js/01b-panels.js     左右サイドバーの開閉
 src/js/01c-settings.js   設定パネル (左下の歯車。置き場所と開け閉めだけ持つ)
-src/js/02-glb.js         GLB ライター/リーダー (node でも require 可)
+src/js/02-glb.js         GLB ライター/リーダー + 組立位置の焼き込み (node でも require 可)
 src/js/03-zip.js         ZIP ライター (格納方式, UTF-8 フラグ)
 src/js/03b-naming.js     ネーミングルール (ファイル名 ⇔ 案件情報。取引先も項目に持つ)
 src/js/00b-idb.js        IndexedDB の口 (フォルダハンドルと変換キャッシュで共用。版とストアはここだけ)

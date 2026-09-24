@@ -23,6 +23,21 @@ const seed = {
     files: [{ name: 'assembly_b', step: 'step/assembly_b.step', glb: 'assembly_b.glb' }],
     source: { cad: 'fusion', document: 'DEVICE_B v3', fusionWebURL: 'https://example.autodesk360.com/g/data/xxxx' }
   })).toString('base64'),
+  // Fusion が「ユニットごとに分けて」書き出した想定: STEP 2 本 + それぞれの組立位置
+  'models/設計1課/山田/P2026-006_分割機G/_/step/unit_a.step': b64('test/out/box.step'),
+  'models/設計1課/山田/P2026-006_分割機G/_/step/unit_b.step': b64('test/out/box.step'),
+  'models/設計1課/山田/P2026-006_分割機G/_/meta.json': Buffer.from(JSON.stringify({
+    schema: 'library-viewer/1', projectCode: 'P2026-006', deviceName: '分割機G', workpiece: '', department: '設計1課', owner: '山田',
+    savedAt: '2026-09-20T10:00:00+09:00', precision: null, split: true,
+    files: [
+      // 同じ形 (box.step) を別の位置に置く。片方は原点、もう片方は x+1000mm へ z 軸まわり 90°
+      { name: 'unit_a', step: 'step/unit_a.step', glb: 'unit_a.glb', rootName: 'UNIT_A',
+        placement: { origin: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] } },
+      { name: 'unit_b', step: 'step/unit_b.step', glb: 'unit_b.glb', rootName: 'UNIT_B',
+        placement: { origin: [1000, 0, 0], x: [0, 1, 0], y: [-1, 0, 0], z: [0, 0, 1] } },
+    ],
+    source: { cad: 'fusion', app: 'fusion-library-export' }
+  })).toString('base64'),
   // 受信箱: ルール一致 (階層は library.json 未作成 → 既定 0) と不一致
   'inbox/P2026-004_溶接装置D_ワークY_設計1課_田中.step': b64('test/out/box.step'),
   'inbox/フォルダ/P2026-005_組立_ライン_E__設計2課_鈴木 v2.stp': b64('test/out/assembly.step'),
@@ -67,7 +82,7 @@ await page.goto('file://' + html);
 await page.waitForTimeout(1500);
 await page.click('#btn-open-lib');
 await page.waitForFunction(() => document.querySelector('#lib-status').textContent.includes('件'), null, { timeout: 15000 });
-check((await page.textContent('#lib-status')).includes('2 件'), 'library scan found 2 entries');
+check((await page.textContent('#lib-status')).includes('3 件'), 'library scan found 3 entries');
 
 // ---- 保存先パスの語で検索できる (担当者の名前で、その人が担当した装置が出る) ----
 const hitTitles = () => page.$$eval('#search-list .hit-card .dev > span:first-of-type', ss => ss.map(s => s.textContent.trim()));
@@ -86,7 +101,7 @@ await page.waitForFunction(() => App.devices().length > 0, null, { timeout: 6000
 await page.waitForSelector('#overlay', { state: 'hidden', timeout: 60000 });
 await page.waitForTimeout(400);
 check(await page.evaluate(() => App.devices().length) >= 1, 'clicking a library hit loads it');
-check(!(await page.textContent('#search-sum')).includes('ライブラリ 1'), 'once loaded it is no longer listed as unloaded');
+check(!(await hitTitles()).includes('検査装置A'), 'once loaded it drops out of the unloaded list: ' + await hitTitles());
 await page.fill('#tree-search', 'P2026-002');     // 案件コードでも当たる
 await page.waitForTimeout(350);
 check((await hitTitles()).includes('搬送装置B'), 'searching a project code works too');
@@ -108,8 +123,8 @@ await page.click('#btn-inbox');
 await page.waitForSelector('#msg-dialog[open]', { timeout: 60000 });
 console.log('  ' + (await page.textContent('#msg-body')).split('\n').join(' / '));
 await page.keyboard.press('Escape');
-await page.waitForFunction(() => document.querySelector('#lib-status').textContent.includes('4 件'), null, { timeout: 15000 });
-check(true, 'inbox processed: 4 entries');
+await page.waitForFunction(() => document.querySelector('#lib-status').textContent.includes('5 件'), null, { timeout: 15000 });
+check(true, 'inbox processed: 5 entries');
 const stored4 = await page.evaluate(() => window.__ls('models/設計1課/田中/P2026-004_溶接装置D/ワークY'));
 check(stored4 && stored4.includes('meta.json') && stored4.includes('P2026-004_溶接装置D_ワークY_設計1課_田中.glb'), 'inbox file stored at rule path: ' + stored4);
 const meta4 = JSON.parse((await page.evaluate(() => window.__ls('models/設計1課/田中/P2026-004_溶接装置D/ワークY/meta.json'))).text);
@@ -137,7 +152,7 @@ await page.click('label[for="tab-lib"]');
 await page.waitForTimeout(200);
 await page.screenshot({ path: outDir + '/shot-6-library.png' });
 const cards = await page.$$('.lib-card');
-check(cards.length === 4, '4 cards rendered (2 seeded + 2 from inbox)');
+check(cards.length === 5, '5 cards rendered (3 seeded + 2 from inbox)');
 check(await page.$('.lib-card .warn') !== null, 'unconverted STEP warns');
 check(await page.$('.lib-card a[href^="https://example.autodesk360.com"]') !== null, 'Fusion で開く link present');
 
@@ -173,8 +188,8 @@ await page.keyboard.press('Escape');
 const files = await page.evaluate(() => window.__ls('models/設計2課/鈴木/P2026-003_組立装置C/_'));
 check(files && files.includes('meta.json') && files.includes('assembly_b.glb') && files.includes('step'), 'files written into library: ' + files);
 check((await page.evaluate(() => window.__ls('library.json'))).text.includes('部署 / 担当者 / 案件コード_装置名'), 'library.json records the (fixed) layout');
-await page.waitForFunction(() => document.querySelector('#lib-status').textContent.includes('5 件'), null, { timeout: 15000 });
-check(true, 'library rescanned: 5 entries');
+await page.waitForFunction(() => document.querySelector('#lib-status').textContent.includes('6 件'), null, { timeout: 15000 });
+check(true, 'library rescanned: 6 entries');
 
 check(files.filter(f => f.endsWith('.glb')).length === 3, 'duplicate base names get suffix: ' + files.filter(f => f.endsWith('.glb')));
 
@@ -187,6 +202,43 @@ await page.fill('#roster-text', '設計1課, 山田\n設計2課, 鈴木\n生産�
 await page.click('#roster-save');
 await page.waitForTimeout(300);
 check((await page.evaluate(() => window.__ls('members.json'))).text.includes('高橋'), 'members.json updated in library');
+
+// ---- ユニット分割で格納されたエントリ: 組立位置が戻る ----
+await page.click('label[for="tab-lib"]');
+await page.waitForTimeout(200);
+await page.evaluate(() => App.clearDevices());
+await page.locator('.lib-card', { hasText: '分割機G' }).locator('button', { hasText: '開く' }).click();
+await page.waitForFunction(() => App.devices().length === 2, null, { timeout: 90000 });
+await page.waitForSelector('#overlay', { state: 'hidden', timeout: 60000 });
+await page.waitForTimeout(400);
+const placed = await page.evaluate(() => App.devices().map(d => {
+  const b = new THREE.Box3();
+  Viewer3D.leavesOf(d.root).forEach(n => { if (n.mesh) b.union(n.mesh.geometry.boundingBox); });
+  const c = b.getCenter(new THREE.Vector3());
+  return { name: d.fileName, x: Math.round(c.x), y: Math.round(c.y), z: Math.round(c.z) };
+}).sort((a, b) => a.name.localeCompare(b.name)));
+console.log('    ユニットの中心:', JSON.stringify(placed));
+check(placed.length === 2, 'both units of the split entry are loaded as one entry');
+check(Math.abs(placed[0].x) < 200, 'unit_a stays at the origin: x=' + placed[0].x);
+check(placed[1].x > 800, 'unit_b is moved to its assembly position (x=' + placed[1].x + ', +1000mm)');
+check(Math.abs(placed[1].x - placed[0].x) > 800, 'the units do not pile up on each other');
+// glb は位置を焼いた状態で書き戻される (2 回目以降は placement を当てない)
+const glbA = await page.evaluate(() => window.__ls('models/設計1課/山田/P2026-006_分割機G/_/unit_b.glb'));
+check(glbA && glbA.size > 0, 'a glb was written back for the unit');
+await page.evaluate(() => App.clearDevices());
+await page.click('label[for="tab-lib"]');   // 開くと構成タブへ切り替わるので戻す
+await page.waitForTimeout(200);
+await page.locator('.lib-card', { hasText: '分割機G' }).locator('button', { hasText: '開く' }).click();
+await page.waitForFunction(() => App.devices().length === 2, null, { timeout: 60000 });
+await page.waitForTimeout(400);
+const again = await page.evaluate(() => App.devices().map(d => {
+  const b = new THREE.Box3();
+  Viewer3D.leavesOf(d.root).forEach(n => { if (n.mesh) b.union(n.mesh.geometry.boundingBox); });
+  return Math.round(b.getCenter(new THREE.Vector3()).x);
+}).sort((a, b) => a - b));
+console.log('    2 回目 (glb から):', JSON.stringify(again));
+check(again[1] > 800 && Math.abs(again[0]) < 200, 'reopening from the written-back glb keeps the same positions (not doubled)');
+await page.evaluate(() => App.clearDevices());
 
 // ---- 削除: 装置フォルダごと消え、空になった親も掃除される ----
 await page.click('label[for="tab-lib"]');
@@ -218,7 +270,7 @@ check((await page.evaluate(() => window.__ls('models/設計2課/鈴木'))).lengt
 
 // 部署が空になったら、その部署フォルダも消える
 check((await page.evaluate(() => window.__ls('models/設計1課'))).length === 2, '設計1課 has 2 owner folders (山田 / 田中)');
-for (const name of ['溶接装置D', '検査装置A']) {
+for (const name of ['溶接装置D', '検査装置A', '分割機G']) {
   await page.locator('.lib-card', { hasText: name }).locator('button', { hasText: '削除' }).click();
   await page.waitForSelector('#confirm-dialog[open]');
   await page.click('#confirm-ok');
@@ -227,6 +279,7 @@ for (const name of ['溶接装置D', '検査装置A']) {
   await page.waitForTimeout(600);
 }
 check(await page.evaluate(() => window.__ls('models/設計1課')) === null, 'empty owner and department folders cleaned up too');
+check(await page.evaluate(() => window.__ls('models/設計1課/山田')) === null, 'the split entry folder is gone with its units');
 check(await page.evaluate(() => window.__ls('models')) !== null, 'models/ itself is kept');
 await page.screenshot({ path: outDir + '/shot-18-after-delete.png' });
 

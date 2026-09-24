@@ -152,6 +152,63 @@ def catalog_codes(root):
     return codes, works, customers
 
 
+# ---- ユニットごとの分割書き出し -------------------------------------------------
+# 大きいアセンブリを 1 本の STEP にすると、ビューアの変換がメモリと時間で詰む
+# (実測: 19MB 102 秒 / 59MB 12.7 分 / 373MB は失敗)。ルート直下のオカレンスごとに
+# 分けて書き出し、組立位置は meta.json に持たせてビューア側で戻す。
+#
+# 注意: createSTEPExportOptions に渡すのは **Occurrence ではなく Component**。
+# Component は自分の原点に置かれた形で書き出されるので、位置の扱いが曖昧にならない。
+# (Occurrence を渡した場合に配置が保たれるかは Fusion の版によって当てにならない)
+CM_TO_MM = 10.0   # Fusion API の長さは cm、STEP と meta.json は mm
+
+
+def split_units(design):
+    """分割して書き出せるならルート直下のオカレンス一覧、できないなら None。
+
+    ルート直下に直接ボディがあるデザインは分割すると取りこぼすので None を返す。
+    オカレンスが 1 つしかないときも分ける意味がないので None。
+    """
+    root = design.rootComponent
+    if root.bRepBodies.count > 0:
+        return None
+    out = []
+    for i in range(root.occurrences.count):
+        occ = root.occurrences.item(i)
+        comp = occ.component
+        if comp.bRepBodies.count == 0 and comp.occurrences.count == 0:
+            continue                      # 中身の無いオカレンスは書き出さない
+        out.append(occ)
+    return out if len(out) >= 2 else None
+
+
+def placement_of(occ):
+    """組立位置を「原点 + 3 軸」で返す (mm)。
+
+    行列を 16 要素で渡すと行優先/列優先の取り違えが起きるので、
+    getAsCoordinateSystem() で軸として取り出して明示的に書く。
+    ビューア側 (GLB.place) は p' = origin + x*px + y*py + z*pz で戻す。
+    """
+    m = getattr(occ, 'transform2', None) or occ.transform
+    res = m.getAsCoordinateSystem()
+    vals = [v for v in res if not isinstance(v, bool)]   # 版によって先頭に成否が付く
+    o, xa, ya, za = vals[0], vals[1], vals[2], vals[3]
+    return {
+        'origin': [o.x * CM_TO_MM, o.y * CM_TO_MM, o.z * CM_TO_MM],
+        'x': [xa.x, xa.y, xa.z], 'y': [ya.x, ya.y, ya.z], 'z': [za.x, za.y, za.z],
+    }
+
+
+def unit_suffix(occ, used):
+    """ユニットのファイル名に足す名前。"ARM:1" の :1 は落とし、重複は連番で避ける"""
+    name = sanitize(occ.name.split(':')[0]) or 'UNIT'
+    out, k = name, 2
+    while out in used:
+        out = name + '_' + str(k); k += 1
+    used.add(out)
+    return out
+
+
 def component_tree(root_comp):
     """Fusion のオカレンス階層 → index.json 用のフラットな一覧 (名称・階層パス・深さ・ソリッド数)"""
     rows = []
@@ -221,7 +278,13 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             dd3.listItems.add('（名簿にない担当者を入力）', dd3.listItems.count == 0 or last_owner not in [n for _, n in members])
             inputs.addStringValueInput('ownerText', '担当者 (手入力)', last_owner if last_owner not in [n for _, n in members] else '')
 
-            inputs.addTextBoxCommandInput('preview', '保存先  (' + LAYOUT_LABEL + ')', '', 2, True)
+            units = split_units(design) if design else None
+            chk = inputs.addBoolValueInput('split', 'ユニットごとに分けて書き出す', True, '', bool(st.get('lastSplit', False)) and bool(units))
+            chk.isEnabled = bool(units)
+            chk.tooltip = ('大きいアセンブリはこちら。ルート直下のユニットごとに STEP を分け、組立位置は meta.json に残します。\n'
+                           'ライブラリ上は 1 件のままで、ビューアで開くと全ユニットがまとめて読み込まれます。'
+                           if units else 'ルート直下にボディがある / ユニットが 1 つなので分割できません')
+            inputs.addTextBoxCommandInput('preview', '保存先  (' + LAYOUT_LABEL + ')', '', 3, True)
 
             on_change = InputChangedHandler(); cmd.inputChanged.add(on_change); _handlers.append(on_change)
             on_exec = ExecuteHandler(); cmd.execute.add(on_exec); _handlers.append(on_exec)
@@ -242,13 +305,20 @@ def get_params(inputs):
         'deptRaw': dept.strip(), 'ownerRaw': owner.strip(),
         'code': sanitize(inputs.itemById('projectCode').value), 'dev': sanitize(inputs.itemById('deviceName').value),
         'work': sanitize(inputs.itemById('workpiece').value), 'dept': sanitize(dept), 'owner': sanitize(owner),
+        'split': bool(inputs.itemById('split').value) if inputs.itemById('split') else False,
     }
 
 
 def update_preview(inputs):
     p = get_params(inputs)
     segs = layout_segments(p)
-    inputs.itemById('preview').text = (p['root'] or '（ライブラリ未設定）') + '\n' + '/'.join(segs) + '/'
+    design = adsk.fusion.Design.cast(_app.activeProduct)
+    units = split_units(design) if design else None
+    if p['split'] and units:
+        note = 'ユニット %d 件に分けて書き出します（ライブラリ上は 1 件）' % len(units)
+    else:
+        note = '1 ファイルで書き出します'
+    inputs.itemById('preview').text = (p['root'] or '（ライブラリ未設定）') + '\n' + '/'.join(segs) + '/\n' + note
 
 
 class InputChangedHandler(adsk.core.InputChangedEventHandler):
@@ -312,11 +382,23 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
             # STEP のファイル名はネーミングルールに従わせる (ビューアに直接ドロップしても案件情報が復元できる)
             base = naming_format({'projectCode': p['codeRaw'], 'deviceName': p['devRaw'], 'workpiece': p['workRaw'],
                                   'customer': p['customerRaw'], 'department': p['deptRaw'], 'owner': p['ownerRaw']}, naming_rule(p['root']))
-            step_path = os.path.join(target, 'step', base + '.step')
             em = design.exportManager
-            opts = em.createSTEPExportOptions(step_path, design.rootComponent)
-            if not em.execute(opts):
-                _ui.messageBox('STEP の書き出しに失敗しました。'); return
+            units = split_units(design) if p['split'] else None
+            exported = []            # [(ファイル名, STEP のパス, 位置 or None, ルート名)]
+            if units:
+                used = set()
+                for occ in units:
+                    fname = base + '_' + unit_suffix(occ, used)
+                    sp = os.path.join(target, 'step', fname + '.step')
+                    # Occurrence ではなく Component を渡す (自分の原点に置かれた形で出る)
+                    if not em.execute(em.createSTEPExportOptions(sp, occ.component)):
+                        _ui.messageBox('STEP の書き出しに失敗しました:\n' + occ.name); return
+                    exported.append((fname, sp, placement_of(occ), occ.component.name))
+            else:
+                sp = os.path.join(target, 'step', base + '.step')
+                if not em.execute(em.createSTEPExportOptions(sp, design.rootComponent)):
+                    _ui.messageBox('STEP の書き出しに失敗しました。'); return
+                exported.append((base, sp, None, design.rootComponent.name))
 
             # Fusion 側の出所情報 (ビューアの「Fusion で開く」リンクになる)
             source = {'cad': 'fusion', 'app': 'fusion-library-export', 'document': doc.name, 'exportedBy': '', 'fusionVersion': _app.version}
@@ -334,18 +416,29 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
                 pass
 
             tree = component_tree(design.rootComponent)
+            files_meta = []
+            for fname, sp, placement, root_name in exported:
+                fm = {'name': fname, 'step': 'step/' + fname + '.step', 'glb': fname + '.glb',
+                      'stepSize': os.path.getsize(sp), 'glbSize': None, 'triangles': None,
+                      'solids': (tree[0]['solids'] if tree else None) if placement is None else None,
+                      'rootName': root_name}
+                if placement is not None:
+                    fm['placement'] = placement      # ビューアが組立位置を戻すのに使う
+                files_meta.append(fm)
             meta = {
                 'schema': 'library-viewer/1', 'projectCode': p['codeRaw'], 'deviceName': p['devRaw'], 'workpiece': p['workRaw'],
                 'customer': p['customerRaw'], 'department': p['deptRaw'], 'owner': p['ownerRaw'], 'savedAt': now_iso(),
                 'precision': None,   # glb はビューアが初回に開いたときに生成する
-                'files': [{'name': base, 'step': 'step/' + base + '.step', 'glb': base + '.glb', 'stepSize': os.path.getsize(step_path), 'glbSize': None,
-                           'triangles': None, 'solids': tree[0]['solids'] if tree else None, 'rootName': design.rootComponent.name}],
+                'split': bool(units),
+                'files': files_meta,
                 'source': source,
             }
             with open(os.path.join(target, 'meta.json'), 'w', encoding='utf-8') as f:
                 json.dump(meta, f, ensure_ascii=False, indent=2)
             with open(os.path.join(target, 'index.json'), 'w', encoding='utf-8') as f:
-                json.dump({'schema': 'library-viewer/index/1', 'devices': [{'file': base, 'rootName': design.rootComponent.name, 'tree': tree}]}, f, ensure_ascii=False, indent=2)
+                json.dump({'schema': 'library-viewer/index/1',
+                           'devices': [{'file': fm['name'], 'rootName': fm['rootName'],
+                                        'tree': tree if not units else []} for fm in files_meta]}, f, ensure_ascii=False, indent=2)
 
             # 名簿にない人はその場で追加 (管理者レス)
             members = library_members(p['root'])
@@ -357,9 +450,12 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
 
             st = load_settings()
             st.update({'libraryRoot': p['root'], 'lastProjectCode': p['codeRaw'], 'lastWorkpiece': p['workRaw'],
-                       'lastCustomer': p['customerRaw'], 'lastDept': p['deptRaw'], 'lastOwner': p['ownerRaw']})
+                       'lastCustomer': p['customerRaw'], 'lastDept': p['deptRaw'], 'lastOwner': p['ownerRaw'],
+                       'lastSplit': bool(p['split'])})
             save_settings(st)
-            _ui.messageBox('格納しました:\n' + target + '\n\nLibrary Viewer の「ライブラリ」タブに表示されます（初回に開いたとき glb が生成されます）。')
+            _ui.messageBox('格納しました:\n' + target +
+                           ('\n\nユニット %d 件に分けて書き出しました（ライブラリ上は 1 件です）。' % len(exported) if units else '') +
+                           '\n\nLibrary Viewer の「ライブラリ」タブに表示されます（初回に開いたとき glb が生成されます）。')
         except Exception:
             _ui.messageBox('LibraryExport:\n' + traceback.format_exc())
 

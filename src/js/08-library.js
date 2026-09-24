@@ -231,7 +231,7 @@ var Library = (function () {
       var files = [];
       for (var i = 0; i < (meta.files || []).length; i++) {
         var f = meta.files[i];
-        files.push({ name: f.name, glb: f.glb && await hasFile(dir, f.glb) ? f.glb : null, step: f.step && await hasStepFile(dir, f.step) ? f.step : null, meta: f });
+        files.push({ name: f.name, glb: f.glb && await hasFile(dir, f.glb) ? f.glb : null, step: f.step && await hasStepFile(dir, f.step) ? f.step : null, placement: f.placement || null, meta: f });
       }
       entries.push({ id: rel.join('/'), rel: rel, dir: dir, meta: meta, files: files });
       return; // 装置フォルダの下は辿らない
@@ -326,6 +326,9 @@ var Library = (function () {
           App.showOverlay('変換中', (i + 1) + ' / ' + e.files.length + '  ' + f.step.split('/').pop());
           await nextFrames(2);
           var model = await Occt.convert(sb, App.precision(), f.name);
+          // ユニットごとに分けて書き出された STEP は「自分の原点」に置かれている。
+          // 組立位置は meta.json の placement から戻す (glb には焼いた状態で書き戻すので 1 回だけ)
+          if (f.placement) GLB.place(model, f.placement);
           var dev = { model: model, fileName: f.step.split('/').pop(), stepBytes: sb, source: { kind: 'library', entry: e, file: f } };
           devices.push(dev);
           try { await writeFile(e.dir, f.name + '.glb', GLB.write(model)); f.glb = f.name + '.glb'; } catch (werr) { /* 書けなくても表示は続ける */ }
