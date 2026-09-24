@@ -416,7 +416,9 @@ label.sm-label { cursor: pointer; }
 .field em { font-style: normal; color: var(--primary); font-size: 11px; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: var(--sp-xs); margin-top: var(--sp-xs); }
 .path-preview { background: var(--surface-card); border-radius: var(--r-md); padding: 8px 12px; font-size: 13px; color: var(--ink); word-break: break-all; }
-.msg-body { font-size: 14px; line-height: 1.7; white-space: pre-wrap; word-break: break-all; }
+/* break-all だと「373 M / B」「S / TEP」のように語の途中で折れる。
+ * overflow-wrap: anywhere なら、長いパスなど折る場所が無いときだけ折る */
+.msg-body { font-size: 14px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
 .roster-tree { border: 1px solid var(--hairline); border-radius: var(--r-md); max-height: 180px; overflow: auto; padding: 4px 0; }
 .roster-tree .dept { display: flex; align-items: center; height: 28px; padding: 0 8px; gap: 6px; width: 100%; border: 0; background: none; font: 500 13px/1 var(--font-sans); color: var(--ink); cursor: pointer; text-align: left; }
 .roster-tree .dept:hover { background: var(--surface-soft); }

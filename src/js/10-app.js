@@ -195,7 +195,8 @@ var App = (function () {
         Viewer3D.fitAll();
       }
       showOverlay('変換中  0 / ' + misses.length,
-        misses.length > 1 ? '並列 ' + Math.min(Occt.maxWorkers, misses.length) + ' 本で処理します' : misses[0].rel.concat([misses[0].name]).join(' / '));
+        misses.length > 1 ? '並列 ' + Math.min(Occt.maxWorkers, misses.length) + ' 本で処理します'
+          : misses[0].rel.concat([misses[0].name]).join(' / ') + sizeNote(misses[0].file));
       await Occt.load().catch(function () { });
       await nextFrames(2);   // メインスレッドを止める前にオーバーレイを描画させる
       await Promise.all(misses.map(async function (e) {
@@ -207,7 +208,7 @@ var App = (function () {
           pending.push(await toDevice(e, model, bytes));
           if (!timer) timer = setTimeout(flush, 250);     // 連続で来ても描き直しは間引く
         } catch (err) {
-          failed.push(label + ': ' + (err && err.message || err));
+          failed.push(label + '\n' + (err && err.message || err));
         }
         done++;
         $('#overlay-title').textContent = '変換中  ' + done + ' / ' + misses.length;
@@ -219,7 +220,7 @@ var App = (function () {
       hideOverlay();
     }
 
-    if (failed.length) showMessage('変換できなかったファイルがあります', failed.join('\n'));
+    if (failed.length) showMessage('変換できなかったファイルがあります', failed.join('\n\n'));
     if (cachedCount) reportCache(cachedCount, total);
     return total - failed.length;
   }
@@ -228,6 +229,13 @@ var App = (function () {
     return { model: model, fileName: e.name, stepBytes: bytes || new Uint8Array(await e.file.arrayBuffer()),
              source: { kind: 'folder' }, groupPath: e.rel };
   }
+  /* 大きい STEP は時間がかかる。待たされる理由が分かるようにサイズを出す
+   * (変換時間はほぼファイルサイズに比例する。実測 1.4MB 3 秒 / 19MB 102 秒) */
+  function sizeNote(file) {
+    var mb = (file && file.size || 0) / 1048576;
+    return mb >= Occt.BIG_MB ? '\n大きいファイルです（' + mb.toFixed(0) + ' MB）。時間がかかります' : '';
+  }
+
   /* 変換キャッシュを消す (設定パネルと、読み込み後の案内の両方から呼ぶ) */
   async function clearCache(after) {
     var st = await ConvCache.stats();

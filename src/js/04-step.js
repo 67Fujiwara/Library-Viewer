@@ -21,6 +21,10 @@ var Occt = (function () {
    * OCC の B-rep 構築がメモリ帯域・アロケータ律速で並列に伸びない。
    * 本数を増やすと「最初の 1 件が出るまで」が遅くなるだけなので 2 本に抑える。 */
   var MAX_WORKERS = Math.max(1, Math.min(2, (navigator.hardwareConcurrency || 2) - 1));
+  /* 実測 (この PC・標準精度): 1.4MB 3 秒 / 19MB 102 秒。時間はほぼファイルサイズに比例し、
+   * メモリは STEP の何倍にもなる。BIG_MB を超えるものは「大きい」として扱い、
+   * 変換前に所要時間を知らせる / 失敗したらメモリ不足として説明する。 */
+  var BIG_MB = 30;
   var loading = null, wasmModule = null, workerURL = null;
   var pool = [], queue = [], nextId = 1;
 
@@ -51,7 +55,12 @@ var Occt = (function () {
     '      });',
     '      self.postMessage({ type: "done", id: msg.id, root: r.root, meshes: meshes }, transfer);',
     '    } catch (err) {',
-    '      self.postMessage({ type: "error", id: msg.id, message: String(err && err.message || err) });',
+    // WebAssembly.Exception は message を持たない ([object WebAssembly.Exception] としか出ない)。
+    // 何が起きたか分かるように、種別と入力サイズを添えて返す
+    '      var m = (err && err.message) ? String(err.message) : "";',
+    '      if (!m) m = (typeof WebAssembly.Exception === "function" && err instanceof WebAssembly.Exception)',
+    '        ? "occt-exception" : String(err);',
+    '      self.postMessage({ type: "error", id: msg.id, message: m, bytes: (msg.bytes && msg.bytes.byteLength) || 0 });',
     '    }',
     '  }',
     '};'
@@ -87,7 +96,7 @@ var Occt = (function () {
       if (!job || job.id !== m.id) return;
       rec.job = null;
       if (m.type === 'done') job.resolve(buildModel(m, job.fallbackName));
-      else job.reject(new Error(m.message));
+      else job.reject(new Error(explain(m.message, m.bytes)));
       pump();
     };
     rec.w.onerror = function (ev) { failAll(new Error('変換ワーカーでエラーが発生しました: ' + (ev.message || ''))); };
@@ -112,6 +121,26 @@ var Occt = (function () {
     if (queue.length && pool.length < MAX_WORKERS) spawn();
   }
 
+  /* 変換の失敗を、読んで分かる文にする。
+   * occt (OpenCASCADE) の C++ 例外は JS 側に message が出てこないことがあり、
+   * そのままだと「[object WebAssembly.Exception]」としか表示されない。
+   * 大きい STEP でこれが出るのはたいていメモリ不足 (wasm32 は 4GB が上限で、
+   * B-rep はファイルの何倍にもなる)。 */
+  function explain(message, bytes) {
+    var mb = bytes ? (bytes / 1048576) : 0;
+    var size = mb ? '（' + (mb >= 10 ? mb.toFixed(0) : mb.toFixed(1)) + ' MB）' : '';
+    var low = String(message || '').toLowerCase();
+    var oom = !message || message === 'occt-exception' ||
+      low.indexOf('memory') >= 0 || low.indexOf('allocation') >= 0 || low.indexOf('nomem') >= 0;
+    if (oom && mb >= BIG_MB) {
+      return 'ファイルが大きすぎて変換できませんでした' + size + '。\n' +
+        'ブラウザが 1 ファイルに使えるメモリを超えています（STEP は読み込むとファイルの何倍にもふくらみます）。\n' +
+        'Fusion でアセンブリを分けて書き出すか、いらないコンポーネントを外してから試してください。';
+    }
+    if (oom) return '変換中にエラーが発生しました' + size + '。STEP が壊れているか、対応していない形式の可能性があります。';
+    return message + size;
+  }
+
   /* occt の root (name, meshes[], children[]) → ビューア内部ツリー */
   function toTree(node, meshes) {
     var t = { name: node.name || '', meshIndex: null, children: [] };
@@ -134,13 +163,17 @@ var Occt = (function () {
     return { name: root.name, root: root, meshes: meshes };
   }
 
-  /* bytes はワーカーへコピーで渡す (呼び出し側が再変換・格納のために原本を持ち続けるため) */
+  /* bytes はワーカーへコピーで渡す (呼び出し側が再変換・格納のために原本を持ち続けるため)。
+   * ビュー全体がバッファ全体なら slice を挟まない。slice はその場でもう 1 本コピーを作るので、
+   * 大きい STEP では「原本 + slice + ワーカー側のコピー」と 3 倍のメモリを踏む */
   async function convert(bytes, presetKey, fallbackName) {
     await load();
     var p = PRESETS[presetKey] || PRESETS.standard;
     return new Promise(function (resolve, reject) {
       queue.push({
-        id: nextId++, bytes: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+        id: nextId++,
+        bytes: (bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength)
+          ? bytes.buffer : bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
         params: { linearUnit: 'millimeter', linearDeflectionType: 'bounding_box_ratio', linearDeflection: p.linearDeflection, angularDeflection: p.angularDeflection },
         fallbackName: fallbackName, resolve: resolve, reject: reject
       });
@@ -148,5 +181,6 @@ var Occt = (function () {
     });
   }
 
-  return { load: load, convert: convert, PRESETS: PRESETS, workers: function () { return pool.length; }, maxWorkers: MAX_WORKERS };
+  return { load: load, convert: convert, PRESETS: PRESETS, BIG_MB: BIG_MB, explain: explain,
+    workers: function () { return pool.length; }, maxWorkers: MAX_WORKERS };
 })();
