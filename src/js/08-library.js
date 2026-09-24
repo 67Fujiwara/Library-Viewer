@@ -113,35 +113,74 @@ var Library = (function () {
     for (var i = 0; i < segments.length; i++) d = await d.getDirectoryHandle(segments[i], { create: true });
     return d;
   }
-  async function hasFile(dir, name) { try { await dir.getFileHandle(name); return true; } catch (e) { return false; } }
 
-  async function scan() {
+  /* 走査は 1 本だけ走らせる (自動読み込みと「開く」が重なると entries に二重に積まれる) */
+  var scanning = null;
+  function scan() {
+    if (scanning) return scanning;
+    scanning = doScan().finally(function () { scanning = null; });
+    return scanning;
+  }
+  async function doScan() {
     if (!handle) return;
     statusEl.textContent = '読み込み中…'; statusEl.className = 'status muted';
-    entries = [];
     config = (await readJson(handle, 'library.json')) || null;
     var mj = await readJson(handle, 'members.json');
     members = Array.isArray(mj) ? mj : (mj && Array.isArray(mj.members) ? mj.members : null);
     var modelsDir = null;
     try { modelsDir = await handle.getDirectoryHandle('models'); } catch (e) { modelsDir = null; }
     await loadCatCache();
+    // 1 回目は走査を待たない。前回の走査結果 (catalog.json) を 1 本読んで一覧を先に出し、
+    // 裏で走査して違っていたら差し替える (往復 3 回 vs 装置数 × 3 回)
+    var quick = !entries.length && await quickList();
     scanStats = { read: 0, reused: 0 };
-    var seen = {}, t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-    await walk(modelsDir || handle, modelsDir ? ['models'] : [], 0, seen);
+    var seen = {}, found = [], t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    await walk(modelsDir || handle, modelsDir ? ['models'] : [], 0, seen, found);
     await saveCatCache(seen);
     scanStats.ms = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0);
-    entries.sort(function (a, b) { return String(b.meta.savedAt || '').localeCompare(String(a.meta.savedAt || '')); });
+    found.sort(function (a, b) { return String(b.meta.savedAt || '').localeCompare(String(a.meta.savedAt || '')); });
+    var changed = signature(found) !== signature(entries);
+    entries = found;
     statusEl.textContent = handle.name + ' · ' + entries.length + ' 件'; statusEl.className = 'status ok';
-    statusEl.title = '読み直し ' + scanStats.read + ' 件 / 前回のまま ' + scanStats.reused + ' 件 (' + scanStats.ms + ' ms)';
+    statusEl.title = '読み直し ' + scanStats.read + ' 件 / 前回のまま ' + scanStats.reused + ' 件 (' + scanStats.ms + ' ms)' + (quick ? ' / catalog.json で先出し' : '');
     pathEl.textContent = handle.name + '/';
     $('#btn-rescan').disabled = false;
     countEl.hidden = false; countEl.textContent = String(entries.length);
     renderHome('granted');
-    renderList();
-    App.onLibraryChanged();
+    if (changed || !quick) { renderList(); App.onLibraryChanged(); }   // 先出しと同じなら描き直さない
     writeCatalog();
     await scanInbox();
     if (config && config.inboxAuto && inbox.some(function (f) { return f.fields; })) await processInbox();
+  }
+  /* 一覧の中身を 1 本の文字列に。先出しした一覧と走査結果が同じかを見る */
+  function signature(list) {
+    return list.map(function (e) {
+      return e.id + '|' + (e.meta.savedAt || '') + '|' + e.files.map(function (f) { return f.name + ':' + (f.glb || '') + ':' + (f.step || ''); }).join(',');
+    }).join('\n');
+  }
+  /* catalog.json (前回の走査結果) から一覧を組む。フォルダのハンドルは開くときに引く (dir: null)。
+   * 無い・古い形式なら何もしない (走査を待つ)。 */
+  async function quickList() {
+    var cat = await readJson(handle, 'catalog.json');
+    if (!cat || cat.schema !== CATALOG_SCHEMA || !Array.isArray(cat.entries)) return false;
+    var list = [];
+    cat.entries.forEach(function (c) {
+      if (!c || !c.path || !c.meta) return;
+      var has = {};
+      (c.files || []).forEach(function (f) { has[f.name] = f; });
+      list.push({ id: c.path, rel: c.path.split('/'), dir: null, meta: c.meta, files: (c.meta.files || []).map(function (f) {
+        var h = has[f.name] || {};
+        return { name: f.name, glb: h.glb || null, step: h.step || null, placement: f.placement || null, meta: f };
+      }) });
+    });
+    if (!list.length) return false;
+    entries = list;
+    statusEl.textContent = handle.name + ' · ' + entries.length + ' 件 · 確認中…';
+    pathEl.textContent = handle.name + '/';
+    countEl.hidden = false; countEl.textContent = String(entries.length);
+    renderList();
+    App.onLibraryChanged();
+    return true;
   }
 
   /* ---- 受信箱: inbox/ に置かれた STEP を、ファイル名のルールで決まる階層へ格納する ---- */
@@ -244,17 +283,17 @@ var Library = (function () {
   async function saveCatCache(seen) {
     if (!catDirty) return;
     try {
-      var keys = Object.keys(catCache);
-      for (var i = 0; i < keys.length; i++) {
-        if (seen[keys[i]]) await IDB.put('cat', keys[i], catCache[keys[i]]);
-        else { delete catCache[keys[i]]; await IDB.del('cat', keys[i]); }   // 消えた装置は控えも捨てる
-      }
+      var puts = [], dels = [];
+      Object.keys(catCache).forEach(function (k) {
+        if (seen[k]) puts.push({ key: k, value: catCache[k] });
+        else { dels.push(k); delete catCache[k]; }   // 消えた装置は控えも捨てる
+      });
+      await IDB.batch('cat', puts, dels);            // 1 本のトランザクションで書く
     } catch (e) { }
   }
-  async function readMeta(dir, key) {
-    var fh;
-    try { fh = await dir.getFileHandle('meta.json'); } catch (e) { return null; }
-    var f = await fh.getFile();
+  async function readMeta(fh, key) {
+    var f;
+    try { f = await fh.getFile(); } catch (e) { return null; }
     var c = catCache[key];
     if (c && c.size === f.size && c.mtime === (f.lastModified || 0)) { scanStats.reused++; return c.meta; }
     var meta = null;
@@ -265,28 +304,50 @@ var Library = (function () {
   }
   var scanStats = { read: 0, reused: 0 };
 
-  async function walk(dir, rel, depth, seen) {
+  /* 走査の往復は「フォルダの一覧 1 回 + meta.json の日時 1 回」だけにする。
+   * meta.json も glb も、その場の一覧 (entries) に載っているかで判断し、getFileHandle で
+   * 探しに行かない (空振りが階層の数だけ積み上がる)。これで往復は ディレクトリ数 + 装置数 =
+   * フォルダを全部確かめる方式の下限。さらにフォルダは PAR 本ずつ同時に降りる。
+   * 実測 (1000 装置・往復 2ms): 直列 14.2 秒 → 0.32 秒 / 手元の同期済みフォルダで 1.1 秒 → 0.35 秒 */
+  var PAR = 8;
+  async function pool(items, n, fn) {
+    var i = 0;
+    async function run() { while (i < items.length) { var k = i++; await fn(items[k]); } }
+    var runners = [];
+    for (var r = 0; r < Math.min(n, items.length); r++) runners.push(run());
+    await Promise.all(runners);
+  }
+  async function walk(dir, rel, depth, seen, found) {
     if (depth > 6) return;
+    var files = {}, dirs = {}, kids = [];
+    for await (var [name, h] of dir.entries()) {
+      if (h.kind === 'file') { files[name] = h; continue; }
+      dirs[name] = h;
+      if (!SKIP_DIRS[name.toLowerCase()] && name[0] !== '.') kids.push([name, h]);
+    }
     var key = rel.join('/');
-    var meta = await readMeta(dir, key);
+    var meta = files['meta.json'] ? await readMeta(files['meta.json'], key) : null;
     if (meta && meta.schema && String(meta.schema).indexOf('library-viewer') === 0) {
       seen[key] = 1;
-      var files = [];
+      var list = [];
       for (var i = 0; i < (meta.files || []).length; i++) {
         var f = meta.files[i];
-        files.push({ name: f.name, glb: f.glb && await hasFile(dir, f.glb) ? f.glb : null, step: f.step && await hasStepFile(dir, f.step) ? f.step : null, placement: f.placement || null, meta: f });
+        list.push({ name: f.name, glb: f.glb && files[f.glb] ? f.glb : null, step: f.step && await hasStepFile(f.step, files, dirs) ? f.step : null, placement: f.placement || null, meta: f });
       }
-      entries.push({ id: rel.join('/'), rel: rel, dir: dir, meta: meta, files: files });
+      found.push({ id: key, rel: rel, dir: dir, meta: meta, files: list });
       return; // 装置フォルダの下は辿らない
     }
-    for await (var [name, h] of dir.entries()) {
-      if (h.kind !== 'directory' || SKIP_DIRS[name.toLowerCase()] || name[0] === '.') continue;
-      await walk(h, rel.concat([name]), depth + 1, seen);
-    }
+    await pool(kids, PAR, function (kv) {
+      return walk(kv[1], rel.concat([kv[0]]), depth + 1, seen, found).catch(function () { /* 読めないフォルダは飛ばす */ });
+    });
   }
-  async function hasStepFile(dir, relPath) {
-    var parts = relPath.split('/'), d = dir;
-    try { for (var i = 0; i < parts.length - 1; i++) d = await d.getDirectoryHandle(parts[i]); await d.getFileHandle(parts[parts.length - 1]); return true; } catch (e) { return false; }
+  /* STEP は step/ の下にある。まだ STEP が残っている装置でだけ 1 往復する */
+  async function hasStepFile(relPath, files, dirs) {
+    var parts = relPath.split('/');
+    if (parts.length === 1) return !!files[relPath];
+    var d = dirs[parts[0]];
+    if (!d) return false;
+    try { for (var i = 1; i < parts.length - 1; i++) d = await d.getDirectoryHandle(parts[i]); await d.getFileHandle(parts[parts.length - 1]); return true; } catch (e) { return false; }
   }
   async function readFileBytes(dir, relPath) {
     return new Uint8Array(await (await fileOf(dir, relPath)).arrayBuffer());
@@ -310,11 +371,15 @@ var Library = (function () {
     return model;
   }
 
-  /* 一覧用のキャッシュ。Fusion スクリプト等が案件コードの候補に使う。失敗しても無視 */
+  /* 一覧のキャッシュ。次に開いたとき走査を待たずに一覧を出すのに使う (quickList)。
+   * Fusion スクリプトも案件コードの候補に読む。ビューアが毎回書き直すので人は触らない。失敗しても無視 */
+  var CATALOG_SCHEMA = 'library-viewer/catalog/2';
   async function writeCatalog() {
     try {
-      var cat = { schema: 'library-viewer/catalog/1', generatedAt: isoNowLocal(), count: entries.length, entries: entries.map(function (e) {
-        var m = e.meta; return { path: e.rel.join('/'), projectCode: m.projectCode, deviceName: m.deviceName, workpiece: m.workpiece, customer: m.customer || '', department: m.department, owner: m.owner, savedAt: m.savedAt, files: e.files.map(function (f) { return { name: f.name, glb: !!f.glb, step: !!f.step }; }) };
+      var cat = { schema: CATALOG_SCHEMA, generatedAt: isoNowLocal(), count: entries.length, entries: entries.map(function (e) {
+        var m = e.meta;
+        return { path: e.rel.join('/'), projectCode: m.projectCode, deviceName: m.deviceName, workpiece: m.workpiece, customer: m.customer || '', department: m.department, owner: m.owner, savedAt: m.savedAt,
+          files: e.files.map(function (f) { return { name: f.name, glb: f.glb || null, step: f.step || null }; }), meta: m };
       }) };
       await writeFile(handle, 'catalog.json', JSON.stringify(cat, null, 2));
     } catch (e) { /* 読み取り専用など */ }
@@ -371,6 +436,10 @@ var Library = (function () {
 
   /* エントリを開く: glb があればそれを、なければ STEP を変換して glb を書き戻す */
   async function openEntry(e, append) {
+    if (!e.dir) {   // catalog.json から先出しした一覧のエントリ
+      try { e.dir = await dirAt(e.rel); }
+      catch (err) { showMessage('読み込みに失敗しました', e.rel.join('/') + '\nフォルダが見つかりません。一覧を読み直します。'); scan(); return; }
+    }
     if (!append) App.clearDevices();
     var devices = [];
     for (var i = 0; i < e.files.length; i++) {

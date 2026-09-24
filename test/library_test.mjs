@@ -48,6 +48,12 @@ const seed = {
   'inbox/P2026-004_溶接装置D_ワークY_設計1課_田中.step': b64('test/out/box.step'),
   'inbox/フォルダ/P2026-005_組立_ライン_E__設計2課_鈴木 v2.stp': b64('test/out/assembly.step'),
   'inbox/名前が違う.step': b64('test/out/box.step'),
+  // 前回の走査結果。1 件 (幽霊装置) はもうフォルダに無い → 先出しの一覧には出るが、走査で消える
+  'catalog.json': Buffer.from(JSON.stringify({ schema: 'library-viewer/catalog/2', count: 2, entries: [
+    { path: 'models/設計1課/山田/P2026-001_検査装置A/ワークX', files: [{ name: 'assembly', glb: 'assembly.glb', step: 'step/assembly.step' }, { name: 'assembly_b', glb: 'assembly_b.glb', step: 'step/assembly_b.step' }], meta: oldMeta },
+    { path: 'models/設計9課/幽霊/P2000-000_幽霊装置/_', files: [{ name: 'ghost', glb: 'ghost.glb.gz', step: null }],
+      meta: { schema: 'library-viewer/1', projectCode: 'P2000-000', deviceName: '幽霊装置', department: '設計9課', owner: '幽霊', savedAt: '2020-01-01T00:00:00+09:00', files: [{ name: 'ghost', glb: 'ghost.glb.gz' }] } }
+  ] })).toString('base64'),
   'members.json': Buffer.from(JSON.stringify({ members: [{ department: '設計1課', name: '山田' }, { department: '設計2課', name: '鈴木' }] })).toString('base64'),
 };
 
@@ -62,13 +68,15 @@ await page.addInitScript((seed) => {
   // 本物の File System Access API と同じく、更新日時は書き込んだときだけ変わる
   // (毎回 new File() すると lastModified が現在時刻になり、差分スキャンもキャッシュも当たらない)
   let __mtime = 1758600000000;
+  window.__ops = { getFileHandle: 0, entries: 0, getFile: 0 };
+  window.__resetOps = () => { window.__ops = { getFileHandle: 0, entries: 0, getFile: 0 }; };
   class FileH { constructor(name, bytes) { this.kind = 'file'; this.name = name; this._d = bytes; this._m = ++__mtime; }
-    async getFile() { return new File([this._d], this.name, { lastModified: this._m }); }
+    async getFile() { window.__ops.getFile++; return new File([this._d], this.name, { lastModified: this._m }); }
     async createWritable() { const self = this; let buf = []; return { async write(d) { buf.push(typeof d === 'string' ? new TextEncoder().encode(d) : new Uint8Array(d)); }, async close() { const n = buf.reduce((s, b) => s + b.length, 0); const o = new Uint8Array(n); let p = 0; buf.forEach(b => { o.set(b, p); p += b.length; }); self._d = o; self._m = ++__mtime; } }; } }
   class DirH { constructor(name) { this.kind = 'directory'; this.name = name; this._e = new Map(); }
-    async getFileHandle(n, o) { const h = this._e.get(n); if (h && h.kind === 'file') return h; if (o && o.create) { const f = new FileH(n, new Uint8Array()); this._e.set(n, f); return f; } throw Object.assign(new Error('NotFound ' + n), { name: 'NotFoundError' }); }
+    async getFileHandle(n, o) { window.__ops.getFileHandle++; const h = this._e.get(n); if (h && h.kind === 'file') return h; if (o && o.create) { const f = new FileH(n, new Uint8Array()); this._e.set(n, f); return f; } throw Object.assign(new Error('NotFound ' + n), { name: 'NotFoundError' }); }
     async getDirectoryHandle(n, o) { const h = this._e.get(n); if (h && h.kind === 'directory') return h; if (o && o.create) { const d = new DirH(n); this._e.set(n, d); return d; } throw Object.assign(new Error('NotFound ' + n), { name: 'NotFoundError' }); }
-    async *entries() { for (const kv of [...this._e]) yield kv; }
+    async *entries() { window.__ops.entries++; for (const kv of [...this._e]) yield kv; }
     async removeEntry(n, o) {
       const h = this._e.get(n);
       if (!h) throw Object.assign(new Error('NotFound ' + n), { name: 'NotFoundError' });
@@ -92,6 +100,9 @@ await page.waitForTimeout(1500);
 await page.click('#btn-open-lib');
 await page.waitForFunction(() => document.querySelector('#lib-status').textContent.includes('件'), null, { timeout: 15000 });
 check((await page.textContent('#lib-status')).includes('3 件'), 'library scan found 3 entries');
+check(/catalog\.json で先出し/.test(await page.getAttribute('#lib-status', 'title')), 'the first open showed the list from catalog.json before walking: ' + await page.getAttribute('#lib-status', 'title'));
+check(!(await page.evaluate(() => Library.entries().some(e => e.meta.deviceName === '幽霊装置'))), 'a device that is no longer in the folder is dropped once the walk finishes');
+check(await page.evaluate(() => Library.entries().every(e => e.dir)), 'every entry has a real folder handle after the walk');
 
 // ---- 保存先パスの語で検索できる (担当者の名前で、その人が担当した装置が出る) ----
 const hitTitles = () => page.$$eval('#search-list .hit-card .dev > span:first-of-type', ss => ss.map(s => s.textContent.trim()));
@@ -218,6 +229,7 @@ check((await page.evaluate(() => window.__ls('members.json'))).text.includes('�
 // 1 回目は meta.json を全部読む。2 回目は更新日時とサイズが同じものを読み直さない
 const scanStats = () => page.evaluate(() => document.querySelector('#lib-status').title);
 console.log('    1 回目のスキャン:', await scanStats());
+await page.evaluate(() => window.__resetOps());
 await page.click('#btn-rescan');
 await page.waitForFunction(() => document.querySelector('#lib-status').className.includes('ok'), null, { timeout: 15000 });
 await page.waitForTimeout(300);
@@ -225,6 +237,14 @@ const s2 = await scanStats();
 console.log('    2 回目のスキャン:', s2);
 check(/読み直し 0 件/.test(s2), 'the second scan re-reads no meta.json: ' + s2);
 check(/前回のまま [1-9]/.test(s2), 'and reuses the cached entries: ' + s2);
+const ops2 = await page.evaluate(() => window.__ops);
+console.log('    2 回目の往復:', JSON.stringify(ops2));
+// getFileHandle は library.json / members.json / catalog.json の読み書きと、まだ STEP が残る装置の分だけ。
+// 装置フォルダで meta.json や glb を探しに行かない (一覧に載っているかで判断する)
+const nDev = await page.evaluate(() => Library.entries().length);
+const nStep = await page.evaluate(() => Library.entries().reduce((n, e) => n + e.files.filter(f => f.step).length, 0));
+check(ops2.getFileHandle <= 4 + nStep, 'a rescan does not probe meta.json / glb with getFileHandle (' + ops2.getFileHandle + ' calls for ' + nDev + ' devices, ' + nStep + ' with STEP)');
+check(ops2.getFile === nDev + 2, 'a rescan reads one timestamp per device (' + ops2.getFile + ' getFile for ' + nDev + ' devices + library.json + members.json)');
 // meta.json を書き換えたものだけ読み直す
 await page.evaluate(() => {
   const p = 'models/設計2課/鈴木/P2026-002_搬送装置B/_/meta.json'.split('/');
