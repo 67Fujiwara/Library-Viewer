@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
+import { execFileSync } from 'node:child_process';
 import { chromium } from 'playwright';
 
 const html = path.resolve('dist/library-viewer.html');
@@ -15,7 +16,16 @@ const stored = outDir + '/browser-unz/models/設計1課/山田/P2026-001_検査�
 const unzip = p => zlib.gunzipSync(fs.readFileSync(p)).toString('base64');
 const oldMeta = JSON.parse(fs.readFileSync(stored + '/meta.json', 'utf8'));
 oldMeta.files.forEach(f => { f.glb = f.name + '.glb'; f.step = 'step/' + f.name + '.step'; });
+// Fusion スクリプトが「メッシュで格納」した想定: glb.gz が最初からあり STEP は無い (glbwrite.py が書いたもの)
+const meshStat = JSON.parse(execFileSync('python3', ['test/fusion_glb_box.py']).toString());
 const seed = {
+  'models/設計1課/藤原/P2026-007_メッシュ機H/_/fusion_mesh.glb.gz': b64('test/out/fusion_mesh.glb.gz'),
+  'models/設計1課/藤原/P2026-007_メッシュ機H/_/meta.json': Buffer.from(JSON.stringify({
+    schema: 'library-viewer/1', projectCode: 'P2026-007', deviceName: 'メッシュ機H', workpiece: '', department: '設計1課', owner: '藤原',
+    savedAt: '2026-09-25T10:00:00+09:00', precision: { preset: 'normal', by: 'fusion-mesh' }, split: false,
+    files: [{ name: 'fusion_mesh', step: null, glb: 'fusion_mesh.glb.gz', stepSize: null, glbSize: meshStat.gz, rawGlbSize: meshStat.raw, triangles: meshStat.triangles, solids: meshStat.solids, rootName: 'MESH_MACHINE' }],
+    source: { cad: 'fusion', app: 'fusion-library-export', document: 'MESH_MACHINE v2' }
+  })).toString('base64'),
   'models/設計1課/山田/P2026-001_検査装置A/ワークX/assembly.glb': unzip(stored + '/assembly.glb.gz'),
   'models/設計1課/山田/P2026-001_検査装置A/ワークX/step/assembly.step': b64('test/out/assembly.step'),
   'models/設計1課/山田/P2026-001_検査装置A/ワークX/assembly_b.glb': unzip(stored + '/assembly_b.glb.gz'),
@@ -99,7 +109,7 @@ await page.goto('file://' + html);
 await page.waitForTimeout(1500);
 await page.click('#btn-open-lib');
 await page.waitForFunction(() => document.querySelector('#lib-status').textContent.includes('件'), null, { timeout: 15000 });
-check((await page.textContent('#lib-status')).includes('3 件'), 'library scan found 3 entries');
+check((await page.textContent('#lib-status')).includes('4 件'), 'library scan found 4 entries');
 check(/catalog\.json で先出し/.test(await page.getAttribute('#lib-status', 'title')), 'the first open showed the list from catalog.json before walking: ' + await page.getAttribute('#lib-status', 'title'));
 check(!(await page.evaluate(() => Library.entries().some(e => e.meta.deviceName === '幽霊装置'))), 'a device that is no longer in the folder is dropped once the walk finishes');
 check(await page.evaluate(() => Library.entries().every(e => e.dir)), 'every entry has a real folder handle after the walk');
@@ -143,7 +153,7 @@ await page.click('#btn-inbox');
 await page.waitForSelector('#msg-dialog[open]', { timeout: 60000 });
 console.log('  ' + (await page.textContent('#msg-body')).split('\n').join(' / '));
 await page.keyboard.press('Escape');
-await page.waitForFunction(() => document.querySelector('#lib-status').textContent.includes('5 件'), null, { timeout: 15000 });
+await page.waitForFunction(() => document.querySelector('#lib-status').textContent.includes('6 件'), null, { timeout: 15000 });
 check(true, 'inbox processed: 5 entries');
 const stored4 = await page.evaluate(() => window.__ls('models/設計1課/田中/P2026-004_溶接装置D/ワークY'));
 check(stored4 && stored4.includes('meta.json') && stored4.includes('P2026-004_溶接装置D_ワークY_設計1課_田中.glb.gz'), 'inbox file stored as gzipped glb at the rule path: ' + stored4);
@@ -173,7 +183,7 @@ await page.click('label[for="tab-lib"]');
 await page.waitForTimeout(200);
 await page.screenshot({ path: outDir + '/shot-6-library.png' });
 const cards = await page.$$('.lib-card');
-check(cards.length === 5, '5 cards rendered (3 seeded + 2 from inbox)');
+check(cards.length === 6, '6 cards rendered (4 seeded + 2 from inbox)');
 check(await page.$('.lib-card .warn') !== null, 'unconverted STEP warns');
 check(await page.$('.lib-card a[href^="https://example.autodesk360.com"]') !== null, 'Fusion で開く link present');
 
@@ -210,8 +220,8 @@ const files = await page.evaluate(() => window.__ls('models/設計2課/鈴木/P2
 check(files && files.includes('meta.json') && files.includes('assembly_b.glb.gz'), 'files written into library: ' + files);
 check(!files.includes('step'), 'no step/ folder is created (the master lives in Fusion cloud): ' + files);
 check((await page.evaluate(() => window.__ls('library.json'))).text.includes('部署 / 担当者 / 案件コード_装置名'), 'library.json records the (fixed) layout');
-await page.waitForFunction(() => document.querySelector('#lib-status').textContent.includes('6 件'), null, { timeout: 15000 });
-check(true, 'library rescanned: 6 entries');
+await page.waitForFunction(() => document.querySelector('#lib-status').textContent.includes('7 件'), null, { timeout: 15000 });
+check(true, 'library rescanned: 7 entries');
 
 check(files.filter(f => f.endsWith('.glb.gz')).length === 3, 'duplicate base names get suffix: ' + files.filter(f => f.endsWith('.glb.gz')));
 
@@ -283,6 +293,24 @@ const glbA = await page.evaluate(() => window.__ls('models/設計1課/山田/P20
 check(glbA && glbA.size > 0, 'a glb was written back for the unit');
 await page.evaluate(() => App.clearDevices());
 await page.click('label[for="tab-lib"]');   // 開くと構成タブへ切り替わるので戻す
+
+// ---- Fusion が「メッシュで格納」したエントリ: 変換なしでそのまま開く ----
+check(await page.locator('.lib-card', { hasText: 'メッシュ機H' }).locator('.warn').count() === 0, 'a mesh-stored entry does not warn about unconverted STEP');
+const meshT0 = Date.now();
+await page.locator('.lib-card', { hasText: 'メッシュ機H' }).locator('button', { hasText: '開く' }).click();
+await page.waitForFunction(() => App.devices().length === 1, null, { timeout: 30000 });
+await page.waitForTimeout(300);
+const meshMs = Date.now() - meshT0;
+const meshNames = await page.$$eval('.tree-row .name', r => r.map(x => x.textContent));
+check(meshNames.includes('BASE_PLATE') && meshNames.includes('UNIT_A:1') && meshNames.includes('POST'), 'Fusion occurrence hierarchy shows in the tree: ' + meshNames.filter(n => /BASE|UNIT|POST|fusion/.test(n)).join(' / '));
+check(meshMs < 3000, 'opened without conversion (' + meshMs + ' ms)');
+const meshGlb = await page.evaluate(() => window.__ls('models/設計1課/藤原/P2026-007_メッシュ機H/_/fusion_mesh.glb.gz'));
+check(meshGlb.size === meshStat.gz, 'the glb.gz written by Fusion is used as-is (not rewritten)');
+check(await page.evaluate(() => window.__ls('models/設計1課/藤原/P2026-007_メッシュ機H/_/step')) === null, 'no step/ folder for a mesh-stored entry');
+const meshBox = await page.evaluate(() => { const b = new THREE.Box3(); Viewer3D.leavesOf(App.devices()[0].root).forEach(n => { if (n.mesh) b.union(n.mesh.geometry.boundingBox); }); return { x: Math.round(b.max.x - b.min.x), z: Math.round(b.max.z - b.min.z) }; });
+check(meshBox.x === 200 && meshBox.z === 110, 'geometry is in mm as Fusion wrote it (200 x ' + meshBox.x + ', 110 x ' + meshBox.z + ')');
+await page.evaluate(() => App.clearDevices());
+await page.click('label[for="tab-lib"]');
 await page.waitForTimeout(200);
 await page.locator('.lib-card', { hasText: '分割機G' }).locator('button', { hasText: '開く' }).click();
 await page.waitForFunction(() => App.devices().length === 2, null, { timeout: 60000 });
@@ -325,8 +353,8 @@ check(await page.evaluate(() => window.__ls('models/設計2課/鈴木/P2026-003_
 check((await page.evaluate(() => window.__ls('models/設計2課/鈴木'))).length === 2, 'sibling folders untouched');
 
 // 部署が空になったら、その部署フォルダも消える
-check((await page.evaluate(() => window.__ls('models/設計1課'))).length === 2, '設計1課 has 2 owner folders (山田 / 田中)');
-for (const name of ['溶接装置D', '検査装置A', '分割機G']) {
+check((await page.evaluate(() => window.__ls('models/設計1課'))).length === 3, '設計1課 has 3 owner folders (山田 / 田中 / 藤原)');
+for (const name of ['溶接装置D', '検査装置A', '分割機G', 'メッシュ機H']) {
   await page.locator('.lib-card', { hasText: name }).locator('button', { hasText: '削除' }).click();
   await page.waitForSelector('#confirm-dialog[open]');
   await page.click('#confirm-ok');

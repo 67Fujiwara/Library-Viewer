@@ -582,3 +582,20 @@ Fusion スクリプト側が予告する名前も `.glb.gz` に揃えた。
 - `scan()` は 1 本だけ走らせる（自動読み込みと「開く」が重なると entries に二重に積まれていた）
 
 **測定の罠**: `setTimeout(2ms)` は入れ子で 4ms に丸められるので、直列の 2 回目が 1 回目より遅く出た。
+
+### Fusion からメッシュで格納（STEP を経由しない）
+373MB の STEP は「分割しても最善で 9〜13 分」（2.1 秒/MB × 373MB が床）なので、変換そのものを無くした。
+- `LibraryExport.py` に「メッシュで格納（推奨）」を既定オンで追加。`body.meshManager.createMeshCalculator()`
+  → `setQuality()` → `calculate()` で三角形を取り、`glbwrite.py`（`02-glb.js` の `write` の Python 移植）で
+  glb.gz を直接書く。`meta.json` は `step: null / glb: 実物 / precision: {preset, by: 'fusion-mesh'}`
+- ボディは **Occurrence 経由**で取る（組立位置が焼き込まれるので `placement` 不要）。非表示は出さない。
+  ツリーは Fusion のオカレンス階層そのまま
+- 選択肢: メッシュの細かさ（粗い / 標準 / 細かい）、STEP も一緒に書き出す（既定オフ）。
+  「ユニットごとに分けて書き出す」は STEP 格納のときだけ有効
+- ビューア側の変更は **なし**（glb.gz を読む経路がもうある）
+- テスト: `test/fusion_glb_test.mjs` が Python の出力を `GLB.read` と gltf-transform で読む。
+  `library_test` に「Fusion がメッシュで格納した装置」を 1 件足し、警告なし・変換なし（387ms）・
+  階層・mm・glb.gz をそのまま使うことを確認
+- **Fusion の API はこの環境で動かせない。** `collect_meshes` / `tessellate` は実機で要確認
+  （ヘルプでは `createMeshCalculator` の戻りは `TriangleMeshCalculator`。`setQuality` / `calculate` /
+  `nodeCoordinatesAsFloat` / `normalVectorsAsFloat` / `nodeIndices` の名前を実機で見る）

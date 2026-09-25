@@ -1,21 +1,33 @@
 # -*- coding: utf-8 -*-
 """Library Export — Fusion 360 スクリプト
 
-開いている設計を STEP で書き出し、Library Viewer の共有フォルダ (ライブラリ) に
-案件情報付きで格納します。ビューア側の「格納する」と同じフォルダ構造・同じ meta.json を
-作るので、格納した直後から誰でも Library Viewer で開けます。
+開いている設計を Library Viewer の共有フォルダ (ライブラリ) に案件情報付きで格納します。
+ビューア側の「格納する」と同じフォルダ構造・同じ meta.json を作るので、
+格納した直後から誰でも Library Viewer で開けます。
 
   設計者の操作: [ユーティリティ] → [スクリプトとアドイン] → LibraryExport → 実行
                 → 案件コード / 装置名 / 対象ワーク / 部署 / 担当者 を入れて OK
 
   管理者の作業: なし。フォルダに置いたものがそのまま一覧になります。
-                glb (表示用) は Library Viewer が初回に開いたときに自動生成して書き戻します。
 
-依存: Fusion 360 標準の Python のみ (外部ライブラリ不要)。
+格納の方式は 2 つ:
+  ・メッシュで格納 (既定・推奨): Fusion が持っている三角形メッシュをそのまま glb.gz に書く。
+    ビューア側の STEP 変換 (サイズの 2 乗で遅くなり、数百 MB では失敗する) を通らないので、
+    どんな大きさでも開くのは一瞬。共有フォルダに置くのも最初から glb.gz だけ (STEP の 1/23)。
+  ・STEP で格納: 従来どおり。ビューアが初回に開いたときに glb を作って書き戻す。
+    大きいときは「ユニットごとに分けて書き出す」で分割する。
+
+依存: Fusion 360 標準の Python のみ (外部ライブラリ不要)。glb の書き出しは同じフォルダの glbwrite.py。
 設定 (ライブラリのパス) は ~/.library-viewer/fusion.json に保存されます。
 """
 import adsk.core, adsk.fusion, traceback
-import os, json, re, datetime
+import os, sys, json, re, datetime
+
+# 同じフォルダの glbwrite.py (純 Python の GLB ライター。Fusion 無しでテスト済み)
+_DIR = os.path.dirname(os.path.abspath(__file__))
+if _DIR not in sys.path:
+    sys.path.insert(0, _DIR)
+import glbwrite
 
 _app = None
 _ui = None
@@ -228,6 +240,79 @@ def component_tree(root_comp):
     return rows
 
 
+# ---- メッシュで格納 ----------------------------------------------------------------
+# STEP を経由せず、Fusion が持つ三角形メッシュを直接 glb にする。
+#   body.meshManager.createMeshCalculator() → setQuality() → calculate() → TriangleMesh
+# ボディは **Occurrence 経由 (occ.bRepBodies)** で取る。プロキシなので座標が組立位置に
+# 置かれた状態で返り、placement の計算がそもそも要らない (occ.component.bRepBodies だと
+# 部品自身の原点になり、同じ部品を 3 個並べても 3 個とも同じ場所に出る)。
+# 座標は cm で返るので mm に直す。節点は元の曲面上に乗っているので計測の精度は落ちない。
+MESH_QUALITY = [   # (id, 表示名, TriangleMeshQualityOptions の名前)。ビューアの精度 3 段と同じ並び
+    ('coarse', '粗い', 'LowQualityTriangleMesh'),
+    ('normal', '標準', 'NormalQualityTriangleMesh'),
+    ('fine', '細かい', 'HighQualityTriangleMesh'),
+]
+
+
+def body_color(body):
+    """外観の色 [r,g,b] (0..1)。取れなければ None (ビューアの既定色になる)"""
+    try:
+        prop = body.appearance.appearanceProperties.itemById('opaque_albedo')
+        c = prop.value
+        return [c.red / 255.0, c.green / 255.0, c.blue / 255.0]
+    except Exception:
+        return None
+
+
+def tessellate(body, quality_id):
+    calc = body.meshManager.createMeshCalculator()
+    opt_name = next(q[2] for q in MESH_QUALITY if q[0] == quality_id)
+    calc.setQuality(getattr(adsk.fusion.TriangleMeshQualityOptions, opt_name))
+    mesh = calc.calculate()
+    if mesh is None:
+        return None
+    return {'name': body.name,
+            'positions': [v * CM_TO_MM for v in mesh.nodeCoordinatesAsFloat],   # cm → mm
+            'normals': list(mesh.normalVectorsAsFloat),
+            'indices': list(mesh.nodeIndices),
+            'color': body_color(body)}
+
+
+def collect_meshes(design, quality_id):
+    """デザイン全体を glbwrite の model 形式に。ツリーは Fusion のオカレンス階層そのまま。
+    戻り: (model, {'bodies', 'hidden', 'failed', 'triangles'})"""
+    root = design.rootComponent
+    meshes = []
+    stat = {'bodies': 0, 'hidden': 0, 'failed': 0, 'triangles': 0}
+
+    def add_bodies(bodies, node):
+        for body in bodies:
+            if not body.isVisible:
+                stat['hidden'] += 1; continue
+            m = tessellate(body, quality_id)
+            if m is None:
+                stat['failed'] += 1; continue
+            meshes.append(m)
+            stat['bodies'] += 1
+            stat['triangles'] += len(m['indices']) // 3
+            node['children'].append({'name': body.name, 'meshIndex': len(meshes) - 1, 'children': []})
+
+    def walk(occs, node):
+        for occ in occs:
+            if not occ.isVisible:
+                continue
+            sub = {'name': occ.name, 'meshIndex': None, 'children': []}
+            add_bodies(occ.bRepBodies, sub)          # 組立位置つきのプロキシ
+            walk(occ.childOccurrences, sub)
+            if sub['children']:
+                node['children'].append(sub)
+
+    tree = {'name': root.name, 'meshIndex': None, 'children': []}
+    add_bodies(root.bRepBodies, tree)
+    walk(root.occurrences, tree)
+    return {'name': root.name, 'root': tree, 'meshes': meshes}, stat
+
+
 class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
     def notify(self, args):
         try:
@@ -242,7 +327,7 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
 
             rule = naming_rule(root)
             parsed = naming_parse(doc_name, rule) or {}
-            info = '共有フォルダ (Library Viewer のライブラリ) に STEP と案件情報を格納します。'
+            info = '共有フォルダ (Library Viewer のライブラリ) に 3D データと案件情報を格納します。'
             if parsed:
                 info += '\nドキュメント名がネーミングルールに一致したので案件情報を自動入力しました。'
             inputs.addTextBoxCommandInput('info', '', info, 3, True)
@@ -278,11 +363,24 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             dd3.listItems.add('（名簿にない担当者を入力）', dd3.listItems.count == 0 or last_owner not in [n for _, n in members])
             inputs.addStringValueInput('ownerText', '担当者 (手入力)', last_owner if last_owner not in [n for _, n in members] else '')
 
+            mesh_on = bool(st.get('lastMesh', True))
+            chk_mesh = inputs.addBoolValueInput('mesh', 'メッシュで格納（推奨）', True, '', mesh_on)
+            chk_mesh.tooltip = ('Fusion のメッシュをそのまま glb.gz に書きます。ビューア側の STEP 変換を通らないので、\n'
+                                'どんな大きさでも開くのは一瞬です。共有フォルダに置くのも glb.gz だけ (STEP の 1/23)。')
+            ddq = inputs.addDropDownCommandInput('quality', 'メッシュの細かさ', adsk.core.DropDownStyles.TextListDropDownStyle)
+            last_q = st.get('lastQuality', 'normal')
+            for qid, label, _ in MESH_QUALITY:
+                ddq.listItems.add(label, qid == last_q)
+            ddq.isEnabled = mesh_on
+            chk_keep = inputs.addBoolValueInput('keepStep', 'STEP も一緒に書き出す', True, '', bool(st.get('lastKeepStep', False)))
+            chk_keep.tooltip = 'メッシュで格納するときに STEP も step/ に置きます (後で細かさを変えて再変換したいとき)。容量は 23 倍になります。'
+            chk_keep.isEnabled = mesh_on
             units = split_units(design) if design else None
-            chk = inputs.addBoolValueInput('split', 'ユニットごとに分けて書き出す', True, '', bool(st.get('lastSplit', False)) and bool(units))
-            chk.isEnabled = bool(units)
-            chk.tooltip = ('大きいアセンブリはこちら。ルート直下のユニットごとに STEP を分け、組立位置は meta.json に残します。\n'
-                           'ライブラリ上は 1 件のままで、ビューアで開くと全ユニットがまとめて読み込まれます。'
+            chk = inputs.addBoolValueInput('split', 'ユニットごとに分けて書き出す', True, '', bool(st.get('lastSplit', False)) and bool(units) and not mesh_on)
+            chk.isEnabled = bool(units) and not mesh_on
+            chk.tooltip = ('STEP で格納するとき、大きいアセンブリはこちら。ルート直下のユニットごとに STEP を分け、組立位置は meta.json に残します。\n'
+                           'ライブラリ上は 1 件のままで、ビューアで開くと全ユニットがまとめて読み込まれます。\n'
+                           '(メッシュで格納するときは分割の必要がありません)'
                            if units else 'ルート直下にボディがある / ユニットが 1 つなので分割できません')
             inputs.addTextBoxCommandInput('preview', '保存先  (' + LAYOUT_LABEL + ')', '', 3, True)
 
@@ -306,7 +404,19 @@ def get_params(inputs):
         'code': sanitize(inputs.itemById('projectCode').value), 'dev': sanitize(inputs.itemById('deviceName').value),
         'work': sanitize(inputs.itemById('workpiece').value), 'dept': sanitize(dept), 'owner': sanitize(owner),
         'split': bool(inputs.itemById('split').value) if inputs.itemById('split') else False,
+        'mesh': bool(inputs.itemById('mesh').value) if inputs.itemById('mesh') else False,
+        'keepStep': bool(inputs.itemById('keepStep').value) if inputs.itemById('keepStep') else False,
+        'quality': _quality_id(inputs),
     }
+
+
+def _quality_id(inputs):
+    dd = inputs.itemById('quality')
+    sel = dd.selectedItem if dd else None
+    for qid, label, _ in MESH_QUALITY:
+        if sel and sel.name == label:
+            return qid
+    return 'normal'
 
 
 def update_preview(inputs):
@@ -314,10 +424,12 @@ def update_preview(inputs):
     segs = layout_segments(p)
     design = adsk.fusion.Design.cast(_app.activeProduct)
     units = split_units(design) if design else None
-    if p['split'] and units:
-        note = 'ユニット %d 件に分けて書き出します（ライブラリ上は 1 件）' % len(units)
+    if p['mesh']:
+        note = 'メッシュ (glb.gz) で格納します。ビューアで開くのは一瞬です' + ('。STEP も step/ に置きます' if p['keepStep'] else '')
+    elif p['split'] and units:
+        note = 'STEP をユニット %d 件に分けて書き出します（ライブラリ上は 1 件）' % len(units)
     else:
-        note = '1 ファイルで書き出します'
+        note = 'STEP 1 ファイルで書き出します（ビューアが初回に glb を作ります）'
     inputs.itemById('preview').text = (p['root'] or '（ライブラリ未設定）') + '\n' + '/'.join(segs) + '/\n' + note
 
 
@@ -334,6 +446,15 @@ class InputChangedHandler(adsk.core.InputChangedEventHandler):
                     st = load_settings(); st['libraryRoot'] = dlg.folder; save_settings(st)
                     _ui.messageBox('ライブラリを設定しました。名簿・案件候補を反映するため、もう一度スクリプトを実行してください。')
                 ch.value = False
+            elif ch.id == 'mesh':
+                on = bool(ch.value)
+                inputs.itemById('quality').isEnabled = on
+                inputs.itemById('keepStep').isEnabled = on
+                sp = inputs.itemById('split')
+                design = adsk.fusion.Design.cast(_app.activeProduct)
+                sp.isEnabled = (not on) and bool(split_units(design) if design else None)
+                if on:
+                    sp.value = False
             elif ch.id == 'codePick':
                 sel = ch.selectedItem
                 if sel and not sel.name.startswith('（'):
@@ -376,16 +497,33 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
                                'note': 'このファイルはライブラリの保存階層とネーミングルールを記録します。編集はビューアの「ネーミングルール」から。'}, f, ensure_ascii=False, indent=2)
             segs = layout_segments(p)
             target = os.path.join(p['root'], *segs)
-            os.makedirs(os.path.join(target, 'step'), exist_ok=True)
+            write_step = (not p['mesh']) or p['keepStep']
+            os.makedirs(os.path.join(target, 'step') if write_step else target, exist_ok=True)
 
             doc = _app.activeDocument
             # STEP のファイル名はネーミングルールに従わせる (ビューアに直接ドロップしても案件情報が復元できる)
             base = naming_format({'projectCode': p['codeRaw'], 'deviceName': p['devRaw'], 'workpiece': p['workRaw'],
                                   'customer': p['customerRaw'], 'department': p['deptRaw'], 'owner': p['ownerRaw']}, naming_rule(p['root']))
             em = design.exportManager
-            units = split_units(design) if p['split'] else None
-            exported = []            # [(ファイル名, STEP のパス, 位置 or None, ルート名)]
-            if units:
+            units = split_units(design) if (p['split'] and not p['mesh']) else None
+            exported = []            # [(ファイル名, STEP のパス or None, 位置 or None, ルート名)]
+            mesh_stat = None
+            if p['mesh']:
+                # メッシュで格納: glb.gz を直接書く。STEP は「一緒に書き出す」のときだけ
+                model, mesh_stat = collect_meshes(design, p['quality'])
+                if not model['meshes']:
+                    _ui.messageBox('表示されているボディがありません（非表示 %d / 失敗 %d）。' % (mesh_stat['hidden'], mesh_stat['failed'])); return
+                gz, raw_size = glbwrite.write_gz(model)
+                with open(os.path.join(target, base + '.glb.gz'), 'wb') as f:
+                    f.write(gz)
+                mesh_stat['glbSize'] = len(gz); mesh_stat['rawGlbSize'] = raw_size
+                sp = None
+                if p['keepStep']:
+                    sp = os.path.join(target, 'step', base + '.step')
+                    if not em.execute(em.createSTEPExportOptions(sp, design.rootComponent)):
+                        _ui.messageBox('STEP の書き出しに失敗しました（glb は格納済み）。'); sp = None
+                exported.append((base, sp, None, design.rootComponent.name))
+            elif units:
                 used = set()
                 for occ in units:
                     fname = base + '_' + unit_suffix(occ, used)
@@ -418,10 +556,14 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
             tree = component_tree(design.rootComponent)
             files_meta = []
             for fname, sp, placement, root_name in exported:
-                # glb はビューアが初回に作る。gzip して置くので名前は .glb.gz (09-store.js と揃える)
-                fm = {'name': fname, 'step': 'step/' + fname + '.step', 'glb': fname + '.glb.gz',
-                      'stepSize': os.path.getsize(sp), 'glbSize': None, 'triangles': None,
-                      'solids': (tree[0]['solids'] if tree else None) if placement is None else None,
+                # glb の名前は .glb.gz (09-store.js と揃える)。STEP 格納ではビューアが初回に作る「予告」、
+                # メッシュ格納では実物 (glbSize / triangles が入る)
+                fm = {'name': fname, 'step': ('step/' + fname + '.step') if sp else None, 'glb': fname + '.glb.gz',
+                      'stepSize': os.path.getsize(sp) if sp else None,
+                      'glbSize': mesh_stat['glbSize'] if mesh_stat else None,
+                      'rawGlbSize': mesh_stat['rawGlbSize'] if mesh_stat else None,
+                      'triangles': mesh_stat['triangles'] if mesh_stat else None,
+                      'solids': mesh_stat['bodies'] if mesh_stat else ((tree[0]['solids'] if tree else None) if placement is None else None),
                       'rootName': root_name}
                 if placement is not None:
                     fm['placement'] = placement      # ビューアが組立位置を戻すのに使う
@@ -429,7 +571,8 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
             meta = {
                 'schema': 'library-viewer/1', 'projectCode': p['codeRaw'], 'deviceName': p['devRaw'], 'workpiece': p['workRaw'],
                 'customer': p['customerRaw'], 'department': p['deptRaw'], 'owner': p['ownerRaw'], 'savedAt': now_iso(),
-                'precision': None,   # glb はビューアが初回に開いたときに生成する
+                # メッシュ格納: Fusion 側で決めた細かさ。STEP 格納: ビューアが初回に開いたときに決める (None)
+                'precision': {'preset': p['quality'], 'by': 'fusion-mesh'} if p['mesh'] else None,
                 'split': bool(units),
                 'files': files_meta,
                 'source': source,
@@ -452,11 +595,19 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
             st = load_settings()
             st.update({'libraryRoot': p['root'], 'lastProjectCode': p['codeRaw'], 'lastWorkpiece': p['workRaw'],
                        'lastCustomer': p['customerRaw'], 'lastDept': p['deptRaw'], 'lastOwner': p['ownerRaw'],
-                       'lastSplit': bool(p['split'])})
+                       'lastSplit': bool(p['split']), 'lastMesh': bool(p['mesh']), 'lastKeepStep': bool(p['keepStep']),
+                       'lastQuality': p['quality']})
             save_settings(st)
-            _ui.messageBox('格納しました:\n' + target +
-                           ('\n\nユニット %d 件に分けて書き出しました（ライブラリ上は 1 件です）。' % len(exported) if units else '') +
-                           '\n\nLibrary Viewer の「ライブラリ」タブに表示されます（初回に開いたとき glb が生成されます）。')
+            if mesh_stat:
+                detail = ('\n\nメッシュで格納: ボディ %d 件 / 三角形 %s / glb.gz %.1f MB' % (
+                    mesh_stat['bodies'], format(mesh_stat['triangles'], ','), mesh_stat['glbSize'] / 1048576.0) +
+                    ('  (非表示 %d 件は含めていません)' % mesh_stat['hidden'] if mesh_stat['hidden'] else '') +
+                    ('  ※ %d 件はメッシュにできませんでした' % mesh_stat['failed'] if mesh_stat['failed'] else '') +
+                    '\n\nLibrary Viewer の「ライブラリ」タブに表示され、そのまま開けます。')
+            else:
+                detail = (('\n\nユニット %d 件に分けて書き出しました（ライブラリ上は 1 件です）。' % len(exported) if units else '') +
+                          '\n\nLibrary Viewer の「ライブラリ」タブに表示されます（初回に開いたとき glb が生成されます）。')
+            _ui.messageBox('格納しました:\n' + target + detail)
         except Exception:
             _ui.messageBox('LibraryExport:\n' + traceback.format_exc())
 

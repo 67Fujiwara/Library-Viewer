@@ -3,8 +3,8 @@
   "type": "script",
   "author": "Library Viewer",
   "description": {
-    "": "Export the active design as STEP into the shared Library Viewer folder with meta.json / index.json.",
-    "ja": "開いている設計を STEP で Library Viewer の共有フォルダに格納します (meta.json / index.json 付き)。"
+    "": "Store the active design in the shared Library Viewer folder as a mesh (glb.gz) or STEP, with meta.json / index.json.",
+    "ja": "開いている設計を Library Viewer の共有フォルダに格納します。メッシュ (glb.gz) で格納すればビューアの変換なしで開けます (meta.json / index.json 付き)。"
   },
   "supportedOS": "windows|mac",
   "editEnabled": true

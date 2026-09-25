@@ -23,6 +23,9 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
 - **共有フォルダに置くのは gzip した glb だけ**（`<名前>.glb.gz`）。STEP のマスターは Fusion のクラウドにあり、
   共有フォルダには残さない（設定「共有フォルダに STEP も残す」を入れたときだけ置く）。
   実測: STEP 20,667B + 素の glb 4,804B = 25,471B → gzip した glb 1,105B = **23 分の 1**
+- **Fusion からは STEP ではなくメッシュで格納する**（`LibraryExport.py` の「メッシュで格納」、既定オン）。
+  Fusion が持つ三角形を `glbwrite.py` で glb.gz に書くので、ビューアの STEP 変換（サイズの 2 乗で遅く、
+  数百 MB で失敗する）を通らない。STEP 経由は「取引先支給の STEP」と「後で再変換したい」ときの経路として残す
 
 ## やってはいけないこと
 
@@ -48,9 +51,12 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
   **原点 + 3 軸**（`origin` / `x` / `y` / `z`、mm）で持つ。行優先・列優先の取り違えが起きないため。
   Fusion 側は `Matrix3D.getAsCoordinateSystem()`、ビューア側は `GLB.place()` が
   `p' = origin + x*px + y*py + z*pz` で戻す。この 2 つは必ず同時に直す
-- Fusion スクリプト (`fusion/LibraryExport/`) とビューアで、**保存階層**・`meta.json` のスキーマ・**ネーミングルールの解析規則**を別々に変えない。必ず両方を同時に直す
+- Fusion スクリプト (`fusion/LibraryExport/`) とビューアで、**保存階層**・`meta.json` のスキーマ・**ネーミングルールの解析規則**・
+  **GLB の書き方**を別々に変えない。必ず両方を同時に直す
   （`src/js/03b-naming.js` の `parse`/`format` と `LibraryExport.py` の `naming_parse`/`naming_format` は同じ規則。
-  階層は `09-store.js` の `LAYOUT` と `LibraryExport.py` の `layout_segments()`）
+  階層は `09-store.js` の `LAYOUT` と `LibraryExport.py` の `layout_segments()`。
+  GLB は `src/js/02-glb.js` の `write` と `fusion/LibraryExport/glbwrite.py` の `write` が同じもの。
+  `test/fusion_glb_test.mjs` が Python の出力をビューアの `GLB.read` で読んで確かめる）
 - **保存階層を選ばせない。** `models / 部署 / 担当者 / 案件コード_装置名 / 対象ワーク` の 1 つに固定する。
   ライブラリ全体が同じ形でないとフォルダを辿って探せない。プリセットを増やす提案はしない
 - 格納するファイル群の組み立ては `Store.buildPackage()` に集約する。格納ダイアログと受信箱で別々に作らない
@@ -135,6 +141,13 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
   - 測るときは偽ハンドルの 1 操作に `setTimeout` で遅延を入れる。**ただし 2ms 以下は 4ms に丸められる**
     （入れ子のタイマーのクランプ）ので、直列の 2 回目が 1 回目より遅く出る。実力ではなく測定の癖
 - **開いた装置は変換キャッシュに入れる** (`ConvCache` の preset `'lib'`)。2 回目は共有フォルダを読みに行かない
+- **Fusion のメッシュは Occurrence 経由 (`occ.bRepBodies`) で取る。** プロキシなので座標が組立位置に置かれた
+  状態で返り、`placement` が要らない。`occ.component.bRepBodies` だと部品自身の原点になり、同じ部品を
+  3 個並べても 3 個とも同じ場所に出る。API は `body.meshManager.createMeshCalculator()` → `setQuality()` →
+  `calculate()` → `TriangleMesh`（`nodeCoordinatesAsFloat` は **cm**、× 10 で mm）。
+  非表示のボディ・オカレンスは出さない。ツリーは Fusion のオカレンス階層そのまま（glb のノード階層に入れる）
+- Fusion の API は **この環境では動かせない**。`glbwrite.py`（純 Python）はここでテストし、
+  `collect_meshes` / `tessellate` の薄い層だけ実機で確かめてもらう。Fusion で確かめる前に「動いた」と言わない
 - **偽ハンドルのテストでは `lastModified` を固定する。** 毎回 `new File()` すると更新日時が現在時刻になり、
   差分スキャンもキャッシュも永久に当たらない（書き込んだときだけ進める）
 - **STEP の変換が遅いのは解析と B-rep 構築で、メッシュ精度を落としても速くならない。**
@@ -309,11 +322,14 @@ src/js/07b-search.js     検索結果の一覧 (名称・タグ → 右パネル
 src/js/08-library.js     ライブラリ (既定の場所の記憶と自動読み込み / フォルダ走査 / 受信箱 inbox / ルール / 書き込み / members.json / catalog.json)
 src/js/09-store.js       格納ダイアログ (FS Access API または ZIP)
 src/js/10-app.js         配線
-fusion/LibraryExport/    Fusion 360 スクリプト (STEP + meta.json をライブラリに直接格納)
+fusion/LibraryExport/    Fusion 360 スクリプト (メッシュ glb.gz または STEP + meta.json をライブラリに直接格納)
+fusion/LibraryExport/glbwrite.py  純 Python の GLB ライター (02-glb.js の write と同じ出力。Fusion 無しでテスト)
 tools/gen_test_step.py   AP214 STEP テストデータ生成 (箱 / 階層アセンブリ / 穴あき板 / 遮蔽 / 裏面 / 面の向き / 重い)
 tools/make_sample_library.mjs  サンプルライブラリ生成 (models / inbox / 名簿まで一式)
 test/read_step.mjs       occt が階層を返すか
 test/test_glb_zip.mjs    GLB を gltf-transform で / ZIP を unzip で
+test/fusion_glb_test.mjs Fusion スクリプトの GLB ライター (glbwrite.py) の出力をビューアの GLB.read と gltf-transform で読む
+test/fusion_glb_box.py   その入力 (Fusion の TriangleMesh と同じ形の箱 2 つをオカレンス階層に入れて glb.gz を書く)
 test/browser_test.mjs    file:// 通しテスト (読み込み→ツリー→横断→格納→再変換→ルール事前入力)
 test/library_test.mjs    FS Access API を偽ハンドルにして 走査→受信箱→格納→ルール→名簿
 test/autolib_test.mjs    既定ライブラリの自動読み込み (権限あり / 設定オフ / 再接続 1 クリック / 未設定 / 解除)
