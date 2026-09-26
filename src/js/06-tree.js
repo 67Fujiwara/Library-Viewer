@@ -262,14 +262,17 @@ var Tree = (function () {
   /* 名称かタグに当たるか (タグはフォルダ・装置・部品のどの行にも付けられる) */
   function nodeMatches(n) {
     if (!filter) return false;
+    if (window.SearchFilters && !SearchFilters.nodePasses(n)) return false;   // 右のフィルターと同じ条件
     if (Tags.fold(n.name).indexOf(filter) >= 0) return true;
     if (Tags.hit(tagKey(n), filter)) return true;
     return false;
   }
+  /* フィルターを変えたときに、問い合わせはそのままで行の表示だけ引き直す */
+  function refilter() { if (filter) applyRowVisibility(); }
   function rowVisibility(n) {
     var hidden = false;
     if (filter) {
-      var match = nodeMatches(n) || n.leaves.some(function (l) { return Tags.fold(l.name).indexOf(filter) >= 0; });
+      var match = nodeMatches(n) || n.leaves.some(nodeMatches);
       // 当たったフォルダの中身は、名前が違っても出す (タグで探して中を見るため)
       hidden = !match && !hasMatchingDescendant(n) && !hasMatchingAncestor(n);
     } else {
@@ -543,7 +546,7 @@ var Tree = (function () {
     focused: function () { return focusedId ? nodesById[focusedId] : null; }, setFocused: setFocused,
     picked: pickedNodes, setPicked: setPicked, isPicked: isPicked, moveNodes: moveNodes, selectable: selectable,
     nodeById: function (id) { return nodesById[id]; }, allNodes: allNodes, tagKey: tagKey,
-    isolate: isolate, reveal: reveal, setSearch: setSearch, query: function () { return filter; },
+    isolate: isolate, reveal: reveal, setSearch: setSearch, refilter: refilter, query: function () { return filter; },
     rerender: function () { render(devices); }, container: function () { return container; }
   };
 })();

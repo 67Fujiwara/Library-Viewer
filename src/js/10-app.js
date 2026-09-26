@@ -59,6 +59,7 @@ var App = (function () {
     window.addEventListener('keydown', function (e) {
       // 設定パネルが開いていれば Esc はまずそれを閉じる (選択まで外さない)。入力欄の中でも効かせる
       if (e.key === 'Escape' && Settings.isOpen()) { Settings.close(); e.preventDefault(); return; }
+      if (e.key === 'Escape' && SearchFilters.closePopover()) { e.preventDefault(); return; }
       var t = e.target; if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.closest('dialog'))) return;
       if (e.key === '/' || ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F'))) { Search.focus(); e.preventDefault(); }
       else if (e.key === 'm' || e.key === 'M') { Measure.toggle(); e.preventDefault(); }

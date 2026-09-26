@@ -186,6 +186,7 @@
       <section id="search-panel" class="right-section" hidden>
         <h2 class="panel-title">検索結果</h2>
         <p id="search-sum" class="muted small"></p>
+        <div id="search-filters" class="filter-bar" aria-label="結果のフィルター"></div>
         <div id="search-list" class="xref-list"></div>
         <div class="sp-actions">
           <button type="button" id="search-showall" class="btn small secondary">すべて表示に戻す</button>
@@ -249,6 +250,15 @@
     <button type="button" id="btn-clear-cache" class="sm-item" title="保存してある変換結果を消します">
       <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg>
       <span>変換キャッシュを消す</span>
+      <svg class="sm-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+    </button>
+  </div>
+
+  <h3>検索</h3>
+  <div class="sm-group">
+    <button type="button" id="btn-filters" class="sm-item" title="検索結果の下に出すフィルターを選びます">
+      <svg viewBox="0 0 24 24"><path d="M4 5h16l-6 7v5l-4 2v-7z"/></svg>
+      <span>検索結果のフィルター</span>
       <svg class="sm-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
     </button>
   </div>
@@ -367,6 +377,17 @@
     <div class="dialog-actions">
       <button type="button" id="tag-cancel" class="btn secondary">キャンセル</button>
       <button type="submit" id="tag-save" class="btn primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="filters-dialog" class="dialog small-dialog">
+  <form method="dialog">
+    <h2>検索結果のフィルター</h2>
+    <p class="muted small">検索結果の下に出すフィルターを選びます。タグと名称のほか、種類・装置・部署・担当者・案件コード・取引先で絞り込めます。</p>
+    <div id="filters-list" class="sm-group"></div>
+    <div class="dialog-actions">
+      <button type="submit" class="btn primary">閉じる</button>
     </div>
   </form>
 </dialog>

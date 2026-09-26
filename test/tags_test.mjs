@@ -268,6 +268,63 @@ const fit = await page.evaluate((t) => {
 check(fit.found && !fit.clipped && fit.inside, 'a long tag badge is shown in full inside the card (wrapped, not clipped): ' + JSON.stringify(fit));
 await search('');
 
+// ---- 8b. 検索結果のフィルター (タグ / 名称。設定で facet を足せる) ----
+await search('客先A');
+check(await page.locator('#search-filters').isVisible() && await page.locator('#search-filters .fpill[data-facet="tag"]').count() === 1 && await page.locator('#search-filters input[data-facet="name"]').count() === 1, 'the filter bar shows the default facets: タグ and 名称');
+check((await hitTitles()).length === 2, 'both tagged folders are listed before filtering: ' + await hitTitles());
+await page.fill('#search-filters input[data-facet="name"]', '搬送');
+await page.waitForTimeout(300);
+check(JSON.stringify(await hitTitles()) === JSON.stringify(['搬送ユニット']), 'the 名称 filter narrows the results: ' + await hitTitles());
+check((await page.textContent('#search-sum')).includes('絞り込み 1 件'), 'the summary shows the filtered count: ' + await page.textContent('#search-sum'));
+// 左のツリーにも同じ条件が効く。検査ユニット2 は 搬送ユニット の中にあるので (当たったフォルダの中身は出す)、
+// 名称を「検査」にすると 搬送ユニット は当たらなくなり、その中の アーム が隠れる
+await page.fill('#search-filters input[data-facet="name"]', '検査');
+await page.waitForTimeout(300);
+check(JSON.stringify(await hitTitles()) === JSON.stringify(['検査ユニット2']), 'the 名称 filter picks the other folder: ' + await hitTitles());
+check(await page.locator('.tree-row.device', { hasText: 'アーム' }).first().isHidden() && await page.locator('.tree-row.device', { hasText: 'ブラケット' }).first().isVisible(), 'the same filter narrows the tree on the left (アーム hidden, ブラケット inside the matching folder shown)');
+check(await page.locator('#search-filters .fpill.text.on').count() === 1, 'an active text facet is filled');
+await page.fill('#search-filters input[data-facet="name"]', '');
+await page.waitForTimeout(300);
+check((await hitTitles()).length === 2 && await folderRow('検査ユニット').isVisible(), 'clearing the text brings everything back');
+await page.click('#search-filters .fpill[data-facet="tag"]');
+await page.waitForSelector('#search-filters .fpop');
+const opts = await page.$$eval('#search-filters .fpop .fopt', ls => ls.map(l => l.querySelector('.n').textContent + ':' + l.querySelector('.c').textContent));
+check(opts.includes('客先A:2') && opts.includes('検査:1') && opts.includes('搬送:2'), 'the tag popover lists candidates with counts (検査ユニット2 inherits 搬送 from its parent folder): ' + opts);
+await page.locator('#search-filters .fpop .fopt', { hasText: '検査' }).first().click();
+await page.waitForTimeout(250);
+check(JSON.stringify(await hitTitles()) === JSON.stringify(['検査ユニット2']), 'choosing a tag keeps only the rows carrying it: ' + await hitTitles());
+check((await page.textContent('#search-filters .fpill[data-facet="tag"].on .v')) === '検査', 'the active pill shows the chosen value');
+check(await page.locator('#search-filters .fpop').count() === 1, 'the popover stays open for more choices');
+await page.screenshot({ path: outDir + '/shot-38-filter-popover.png' });
+await page.keyboard.press('Escape');
+await page.waitForTimeout(150);
+check(await page.locator('#search-filters .fpop').count() === 0 && (await page.textContent('#sel-info')).length > 0, 'Esc closes the popover first');
+await page.screenshot({ path: outDir + '/shot-37-filters.png' });
+await page.click('#search-filters .fclear');
+await page.waitForTimeout(250);
+check((await hitTitles()).length === 2 && await page.locator('#search-filters .fpill.on').count() === 0, 'クリア removes every filter');
+// 設定から facet を足す
+await page.evaluate(() => SearchFilters.openDialog());
+await page.waitForSelector('#filters-dialog[open]');
+check(await page.locator('#filters-list .sm-row').count() === 8 && await page.isChecked('#flt-tag') && !(await page.isChecked('#flt-kind')), 'the settings dialog lists every facet with the defaults on');
+await page.click('label.switch-label[for="flt-kind"]');
+await page.waitForTimeout(200);
+check(await page.locator('#search-filters .fpill[data-facet="kind"]').count() === 1, 'switching a facet on adds its pill right away');
+check(JSON.stringify(await page.evaluate(() => Storage.get('lv.searchFilters', null))) === JSON.stringify(['tag', 'name', 'kind']), 'the choice is stored');
+await page.click('label.switch-label[for="flt-tag"]');
+await page.waitForTimeout(200);
+check(await page.locator('#search-filters .fpill[data-facet="tag"]').count() === 0, 'switching a facet off removes its pill');
+await page.click('label.switch-label[for="flt-tag"]');
+await page.click('label.switch-label[for="flt-kind"]');
+await page.keyboard.press('Escape');
+await page.waitForTimeout(200);
+await page.fill('#search-filters input[data-facet="name"]', '搬送');
+await page.waitForTimeout(300);
+await search('');
+await search('客先A');
+check(await page.locator('#search-filters .fpill.on').count() === 0 && (await hitTitles()).length === 2, 'filters reset when the search is cleared');
+await search('');
+
 // ---- 9. 読み込み直してもタグは残る ----
 if (canStore) {
   await page.reload();

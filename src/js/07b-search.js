@@ -18,6 +18,8 @@ var Search = (function () {
     inputEl = $('#tree-search');
     clearBtn = $('#search-clear'); allBtn = $('#search-showall');
     clearBtn.addEventListener('click', function () { Tree.setSearch(''); inputEl.focus(); });
+    // フィルター (結果の見出しの下)。変えたら一覧を描き直し、左のツリーにも同じ条件を掛ける
+    SearchFilters.init({ onChange: function () { if (query) { render(); Tree.refilter(); } } });
     allBtn.addEventListener('click', function () { $('#btn-show-all').click(); currentId = null; mark(); });
   }
 
@@ -31,6 +33,7 @@ var Search = (function () {
     query = String(raw == null ? '' : raw).trim();
     if (!query) {
       hits = EMPTY; currentId = null;
+      SearchFilters.reset();                               // 次の検索に前のフィルターを持ち越さない
       listEl.textContent = ''; sumEl.textContent = '';   // 消し忘れた結果を DOM に残さない
       panelEl.hidden = true; xrefEl.hidden = false;
       CrossRef.show(App.selected());
@@ -86,21 +89,28 @@ var Search = (function () {
   function render() {
     listEl.textContent = '';
     var total = count();
+    SearchFilters.render(hits);
+    var shown = SearchFilters.apply(hits), left = shown.folders.length + shown.devices.length + shown.parts.length + shown.lib.length;
     sumEl.textContent = total
       ? '「' + query + '」に ' + total + ' 件（フォルダ ' + hits.folders.length + ' / 装置 ' + hits.devices.length + ' / 部品 ' + hits.parts.length + (hits.lib.length ? ' / ライブラリ ' + hits.lib.length : '') + '）'
+        + (SearchFilters.anyActive() ? ' → 絞り込み ' + left + ' 件' : '')
       : '「' + query + '」に当たるものはありません。';
     if (!total) {
       listEl.appendChild(el('p.muted.small', { text: '行を右クリック →「タグを付ける」でフォルダ・装置・部品にタグを付けると、ここから探せます。ライブラリは部署・担当者・案件コード・装置名・対象ワーク・中の部品名・以前付けたタグで探せます（読み込んでいない装置も当たります）。' }));
       return;
     }
-    section('フォルダ', hits.folders);
-    section('装置', hits.devices);
-    section('部品', hits.parts.slice(0, MAX_PARTS));
-    if (hits.parts.length > MAX_PARTS) listEl.appendChild(el('p.muted.small', { text: '部品は先頭 ' + MAX_PARTS + ' 件だけ出しています。' }));
-    if (hits.lib.length) {
-      listEl.appendChild(el('h3', { text: 'ライブラリ（未読み込み） ' + hits.lib.length }));
-      hits.lib.slice(0, MAX_LIB).forEach(function (h) { listEl.appendChild(libCard(h)); });
-      if (hits.lib.length > MAX_LIB) listEl.appendChild(el('p.muted.small', { text: 'ライブラリは先頭 ' + MAX_LIB + ' 件だけ出しています。' }));
+    if (!left) {
+      listEl.appendChild(el('p.muted.small', { text: 'フィルターに当たるものがありません。「クリア」で外せます。' }));
+      return;
+    }
+    section('フォルダ', shown.folders);
+    section('装置', shown.devices);
+    section('部品', shown.parts.slice(0, MAX_PARTS));
+    if (shown.parts.length > MAX_PARTS) listEl.appendChild(el('p.muted.small', { text: '部品は先頭 ' + MAX_PARTS + ' 件だけ出しています。' }));
+    if (shown.lib.length) {
+      listEl.appendChild(el('h3', { text: 'ライブラリ（未読み込み） ' + shown.lib.length }));
+      shown.lib.slice(0, MAX_LIB).forEach(function (h) { listEl.appendChild(libCard(h)); });
+      if (shown.lib.length > MAX_LIB) listEl.appendChild(el('p.muted.small', { text: 'ライブラリは先頭 ' + MAX_LIB + ' 件だけ出しています。' }));
     }
     mark();
   }
@@ -165,5 +175,5 @@ var Search = (function () {
   /* 装置を消した・読み込んだ後に一覧を作り直す (消えたノードを指したままにしない) */
   function refresh() { if (query) run(query); }
 
-  return { init: init, run: run, refresh: refresh, focus: focus, query: function () { return query; }, hits: function () { return hits; } };
+  return { init: init, run: run, refresh: refresh, focus: focus, query: function () { return query; }, hits: function () { return hits; }, shown: function () { return SearchFilters.apply(hits); } };
 })();

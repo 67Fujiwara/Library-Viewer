@@ -63,10 +63,16 @@ var CrossRef = (function () {
     function add(tags, from) {
       tags.forEach(function (t) { var f = Tags.fold(t); if (!set[f]) { set[f] = 1; list.push({ tag: t, from: from }); } });
     }
+    if (n.isGroup) {   // フォルダの行: 自分と上のフォルダ
+      for (var i = n.path.length; i >= 1; i--) add(Tags.get(n.path.slice(0, i).join('/')), i === n.path.length ? '' : 'フォルダ ' + n.path[i - 1]);
+      return { list: list, set: set, any: list.length > 0 };
+    }
     for (var p = n; p; p = p.parent) add(Tags.get(Tree.tagKey(p)), p === n ? '' : (p.depth === 0 ? '装置' : p.name));
     folderKeys(n.device).forEach(function (fk) { add(Tags.get(fk.key), 'フォルダ ' + fk.name); });
     return { list: list, set: set, any: list.length > 0 };
   }
+  /* 行に効いているタグの一覧 (自分 + 上の階層)。検索のフィルターも同じ定義で数える */
+  function tagsOf(n) { return foldedTags(n).list.map(function (t) { return t.tag; }); }
   function sharedTag(set, key) {
     var list = Tags.get(key);
     for (var i = 0; i < list.length; i++) if (set[Tags.fold(list[i])]) return list[i];
@@ -200,5 +206,5 @@ var CrossRef = (function () {
   function markCurrent(n) {
     $$('.xref-card', listEl).forEach(function (c) { c.classList.toggle('current', c.dataset.id === (n && n.id)); });
   }
-  return { init: init, normalize: normalize, rebuild: rebuild, show: show, refresh: refresh, step: step, markCurrent: markCurrent };
+  return { init: init, normalize: normalize, rebuild: rebuild, show: show, refresh: refresh, tagsOf: tagsOf, step: step, markCurrent: markCurrent };
 })();

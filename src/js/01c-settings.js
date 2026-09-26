@@ -15,7 +15,7 @@ var Settings = (function () {
       set(false);
     });
     // ダイアログを開くものは、開いたら設定パネルを畳む
-    ['#btn-roster', '#btn-rules', '#btn-clear-cache'].forEach(function (sel) {
+    ['#btn-roster', '#btn-rules', '#btn-clear-cache', '#btn-filters'].forEach(function (sel) {
       $(sel).addEventListener('click', function () { set(false); });
     });
     $('#btn-clear-cache').addEventListener('click', function () { App.clearCache(); });
