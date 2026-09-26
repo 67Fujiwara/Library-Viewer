@@ -142,6 +142,12 @@ await page.waitForFunction(() => Search.query() === 'BASE_PLATE' && Search.hits(
 check((await hitTitles()).includes('メッシュ機H'), 'a part name finds an unloaded library device: ' + await hitTitles());
 check(await page.locator('#search-list .hit-card', { hasText: 'メッシュ機H' }).locator('.badge', { hasText: 'BASE_PLATE' }).count() === 1, 'the card shows which part matched');
 check((await page.evaluate(() => App.devices().length)) === 0, 'without loading it');
+await page.fill('#tree-search', '設計1課, POST');   // カンマで AND: 設計1課 の中で POST を持つものだけ
+await page.waitForFunction(() => Search.query() === '設計1課, POST', null, { timeout: 5000 });
+await page.waitForTimeout(300);
+check((await hitTitles()).includes('メッシュ機H') && !(await hitTitles()).includes('検査装置A'), 'comma-separated words narrow the library hits with AND: ' + await hitTitles());
+await page.fill('#tree-search', 'BASE_PLATE');
+await page.waitForFunction(() => Search.query() === 'BASE_PLATE' && Search.hits().lib.some(h => h.part === 'BASE_PLATE'), null, { timeout: 10000 });
 const namesCached = await page.evaluate(() => Library.entries().filter(e => Array.isArray(e.partList)).length);
 check(namesCached === (await page.evaluate(() => Library.entries().length)), 'part names were read for every unloaded entry (' + namesCached + ')');
 // 結果を押すとライブラリから読み込まれる (glb 済みの 検査装置A で試す。未変換のものは後の検証に残す)

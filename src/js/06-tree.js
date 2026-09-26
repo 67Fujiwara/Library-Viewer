@@ -2,7 +2,7 @@
  * チェック操作でカメラは動かさない。 */
 var Tree = (function () {
   var container, counterEl, searchEl;
-  var devices = [], nodesById = {}, rows = {}, soloNode = null, selectedNode = null, filter = '';
+  var devices = [], nodesById = {}, rows = {}, soloNode = null, selectedNode = null, filter = '', terms = [];
   var groups = [], groupIds = [], collapsedGroups = {};   // フォルダ階層 (元のフォルダ構成をそのまま出す)
   var folderPaths = {};      // ユーザーが作ったフォルダ。中身が空でも残す ("装置A/ユニット1" → true)
   var focusedId = null;      // 最後にクリックした行 (新規フォルダの作成先)。再描画で作り直されるので id で持つ
@@ -263,9 +263,9 @@ var Tree = (function () {
   function nodeMatches(n) {
     if (!filter) return false;
     if (window.SearchFilters && !SearchFilters.nodePasses(n)) return false;   // 右のフィルターと同じ条件
-    if (Tags.fold(n.name).indexOf(filter) >= 0) return true;
-    if (Tags.hit(tagKey(n), filter)) return true;
-    return false;
+    // カンマ区切りの語はすべて当たること (語ごとに 名称 か タグ のどちらかで)
+    var name = Tags.fold(n.name), key = tagKey(n);
+    return terms.every(function (t) { return name.indexOf(t) >= 0 || !!Tags.hit(key, t); });
   }
   /* フィルターを変えたときに、問い合わせはそのままで行の表示だけ引き直す */
   function refilter() { if (filter) applyRowVisibility(); }
@@ -298,7 +298,8 @@ var Tree = (function () {
 
   /* ---- 検索 (左の絞り込みと右の結果一覧はひとつの問い合わせで動く) ---- */
   function applySearch(raw) {
-    filter = Tags.fold(String(raw || '').trim());
+    filter = Tags.fold(String(raw || '').trim()); terms = Tags.terms(raw);
+    if (!terms.length) filter = '';   // カンマだけなら検索していないのと同じ
     applyRowVisibility();
     if (window.Search) Search.run(raw);
   }

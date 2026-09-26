@@ -270,7 +270,7 @@ await search('');
 
 // ---- 8b. 検索結果のフィルター (タグ / 名称。設定で facet を足せる) ----
 await search('客先A');
-check(await page.locator('#search-filters').isVisible() && await page.locator('#search-filters .fpill[data-facet="tag"]').count() === 1 && await page.locator('#search-filters input[data-facet="name"]').count() === 1, 'the filter bar shows the default facets: タグ and 名称');
+check(await page.locator('#search-filters').isVisible() && await page.locator('#search-filters .fpill[data-facet="by"]').count() === 1 && await page.locator('#search-filters .fpill[data-facet="tag"]').count() === 1 && await page.locator('#search-filters input[data-facet="name"]').count() === 1, 'the filter bar shows the default facets: 一致, タグ and 名称');
 check((await hitTitles()).length === 2, 'both tagged folders are listed before filtering: ' + await hitTitles());
 await page.fill('#search-filters input[data-facet="name"]', '搬送');
 await page.waitForTimeout(300);
@@ -306,11 +306,11 @@ check((await hitTitles()).length === 2 && await page.locator('#search-filters .f
 // 設定から facet を足す
 await page.evaluate(() => SearchFilters.openDialog());
 await page.waitForSelector('#filters-dialog[open]');
-check(await page.locator('#filters-list .sm-row').count() === 8 && await page.isChecked('#flt-tag') && !(await page.isChecked('#flt-kind')), 'the settings dialog lists every facet with the defaults on');
+check(await page.locator('#filters-list .sm-row').count() === 9 && await page.isChecked('#flt-tag') && await page.isChecked('#flt-by') && !(await page.isChecked('#flt-kind')), 'the settings dialog lists every facet with the defaults on');
 await page.click('label.switch-label[for="flt-kind"]');
 await page.waitForTimeout(200);
 check(await page.locator('#search-filters .fpill[data-facet="kind"]').count() === 1, 'switching a facet on adds its pill right away');
-check(JSON.stringify(await page.evaluate(() => Storage.get('lv.searchFilters', null))) === JSON.stringify(['tag', 'name', 'kind']), 'the choice is stored');
+check(JSON.stringify(await page.evaluate(() => Storage.get('lv.searchFilters', null))) === JSON.stringify(['by', 'tag', 'name', 'kind']), 'the choice is stored');
 await page.click('label.switch-label[for="flt-tag"]');
 await page.waitForTimeout(200);
 check(await page.locator('#search-filters .fpill[data-facet="tag"]').count() === 0, 'switching a facet off removes its pill');
@@ -323,6 +323,30 @@ await page.waitForTimeout(300);
 await search('');
 await search('客先A');
 check(await page.locator('#search-filters .fpill.on').count() === 0 && (await hitTitles()).length === 2, 'filters reset when the search is cleared');
+await search('');
+
+// ---- 8c. カンマ区切りで AND / 「一致」で 名称で当たった・タグで当たった を分ける ----
+await search('ユニット');   // 名称: 搬送ユニット・検査ユニット2 / タグ: (無し)
+check((await hitTitles()).length === 3, 'a plain word hits both folders by name and ベース板 by its long tag: ' + await hitTitles());
+await search('ユニット, 検査');   // 検査ユニット2 は 名称 (ユニット) + 名称 (検査)。搬送ユニット は 検査 が名称にもタグにも無い
+check(JSON.stringify(await hitTitles()) === JSON.stringify(['検査ユニット2']), 'comma-separated words narrow with AND: ' + await hitTitles());
+check(await folderRow('搬送ユニット').isVisible() && await page.locator('.tree-row.device', { hasText: 'アーム' }).first().isHidden(), 'the tree applies the same AND (搬送ユニット stays as the parent of a match, アーム is hidden)');
+await search('ユニット, 客先A');   // 両フォルダとも 名称 (ユニット) + タグ (客先A) → 名称とタグ
+const byOpts = async () => { await page.click('#search-filters .fpill[data-facet="by"]'); await page.waitForSelector('#search-filters .fpop'); const o = await page.$$eval('#search-filters .fpop .fopt', ls => ls.map(l => l.querySelector('.n').textContent + ':' + l.querySelector('.c').textContent)); return o; };
+let by = await byOpts();
+check(JSON.stringify(by) === JSON.stringify(['名称とタグ:2']), 'a word by name plus a word by tag counts as 名称とタグ: ' + by);
+await page.keyboard.press('Escape');
+await search('要確認');   // COLUMN (タグ) と ベース板 (タグ)
+by = await byOpts();
+check(JSON.stringify(by) === JSON.stringify(['タグで当たった:1']), 'hits by tag only are labelled タグで当たった (COLUMN): ' + by);
+await page.keyboard.press('Escape');
+await search('検査');   // 検査ユニット2: 名称にも含み、タグにもある → 名称で当たった (名称を優先)
+by = await byOpts();
+check(JSON.stringify(by) === JSON.stringify(['名称で当たった:1']), 'a hit whose name matches is labelled 名称で当たった even if a tag also matches: ' + by);
+await page.locator('#search-filters .fpop .fopt', { hasText: '名称で当たった' }).first().click();
+await page.waitForTimeout(250);
+check(JSON.stringify(await hitTitles()) === JSON.stringify(['検査ユニット2']) && await folderRow('検査ユニット2').isVisible(), 'choosing 一致 keeps the hit and the tree row');
+await page.keyboard.press('Escape');
 await search('');
 
 // ---- 9. 読み込み直してもタグは残る ----

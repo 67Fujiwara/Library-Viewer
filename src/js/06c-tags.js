@@ -39,6 +39,11 @@ var Tags = (function () {
   }
   function has(key) { return !!(map[key] && map[key].length); }
 
+  /* 検索の問い合わせ → 語の配列 (畳み済み)。カンマ・読点で区切ると AND で絞れる ("コンベヤ, 1.5m") */
+  function terms(raw) {
+    return fold(raw).split(/[,、]/).map(function (t) { return t.trim(); }).filter(Boolean);
+  }
+  /* どれか 1 語でも当たるタグ (複数語のときは every で使う) */
   /* 畳んだ問い合わせ文字列に当たるタグを 1 つ返す (当たらなければ null) */
   function hit(key, folded) {
     if (!folded) return null;
@@ -107,5 +112,5 @@ var Tags = (function () {
   }
   function clear() { map = {}; save(); }
 
-  return { fold: fold, parse: parse, get: get, set: set, has: has, hit: hit, hitUnder: hitUnder, under: under, withAny: withAny, all: all, repath: repath, removeUnder: removeUnder, clear: clear };
+  return { fold: fold, terms: terms, parse: parse, get: get, set: set, has: has, hit: hit, hitUnder: hitUnder, under: under, withAny: withAny, all: all, repath: repath, removeUnder: removeUnder, clear: clear };
 })();

@@ -437,18 +437,30 @@ var Library = (function () {
     var m = e.meta || {};
     return Tags.fold([m.projectCode, m.deviceName, m.workpiece, m.customer, m.department, m.owner, e.rel.join('/')].join(' '));
   }
-  function matches(e, folded) { return !folded || haystack(e).indexOf(folded) >= 0 || !!matchedPart(e, folded) || !!matchedTag(e, folded); }
+  /* 問い合わせはカンマ区切りで複数語 (AND)。語ごとに 保存先・案件情報 / 部品名 / 以前付けたタグ のどれかで当たればよい */
+  function matches(e, folded) {
+    var terms = Tags.terms(folded);
+    if (!terms.length) return true;
+    var hay = haystack(e);
+    return terms.every(function (t) { return hay.indexOf(t) >= 0 || !!matchedPart(e, t) || !!matchedTag(e, t); });
+  }
   /* 読み込んでいない装置も、以前読み込んだときに付けたタグで当たる。
    * タグは行の鍵 '@<保存先>/<階層>' でブラウザに残っている (閉じても消さない) */
   function tagPrefix(e) { return '@' + e.rel.join('/') + '/'; }
-  function matchedTag(e, folded) { return Tags.hitUnder(tagPrefix(e), folded); }
+  function matchedTag(e, folded) {
+    var terms = Tags.terms(folded);
+    for (var k = 0; k < terms.length; k++) { var t = Tags.hitUnder(tagPrefix(e), terms[k]); if (t) return t; }
+    return null;
+  }
   function tagsOf(e) { return Tags.under(tagPrefix(e)); }
   /* 読み込んでいない装置でも部品名で当たるように、index.json (格納時に書かれる階層一覧) の名前を
    * 検索のときだけまとめて読む。読んだ結果は IndexedDB の控え ('names:' + 装置) に置き、
    * index.json の更新日時とサイズが同じなら次回は読まない。無い装置は '' (案件情報だけで当てる) */
   function matchedPart(e, folded) {
     if (!folded || !e.partList) return null;
-    for (var i = 0; i < e.partList.length; i++) if (Tags.fold(e.partList[i]).indexOf(folded) >= 0) return e.partList[i];
+    var terms = Tags.terms(folded);
+    for (var k = 0; k < terms.length; k++)
+      for (var i = 0; i < e.partList.length; i++) if (Tags.fold(e.partList[i]).indexOf(terms[k]) >= 0) return e.partList[i];
     return null;
   }
   function needsNames() { return entries.some(function (e) { return e.partList === undefined; }); }

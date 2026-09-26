@@ -11,7 +11,7 @@
  */
 var SearchFilters = (function () {
   var KEY = 'lv.searchFilters';
-  var DEFAULT = ['tag', 'name'];
+  var DEFAULT = ['by', 'tag', 'name'];
   var barEl = null, dialogEl = null, listEl = null;
   var active = {};          // facet id → { '畳んだ値': '表示名' } (text は文字列)
   var openId = null;        // 開いているポップオーバーの facet
@@ -35,7 +35,13 @@ var SearchFilters = (function () {
   function metaField(k) { return function (h) { var v = metaOf(h)[k]; return v ? [String(v)] : []; }; }
   var KIND_LABEL = { folder: 'フォルダ', device: '装置', part: '部品', lib: 'ライブラリ（未読み込み）' };
 
+  var BY_LABEL = { name: '名称で当たった', tag: 'タグで当たった', mixed: '名称とタグ' };
+  function byOf(h) {
+    if (h.kind === 'lib') return [h.part ? '部品名で当たった' : h.tag ? 'タグで当たった' : '案件情報で当たった'];
+    return [BY_LABEL[h.by] || h.by || ''];
+  }
   var FACETS = [
+    { id: 'by', label: '一致', type: 'set', values: byOf },
     { id: 'tag', label: 'タグ', type: 'set', values: tagsOf },
     { id: 'name', label: '名称', type: 'text', placeholder: '名称に含む文字', values: function (h) { return [nameOf(h)]; } },
     { id: 'kind', label: '種類', type: 'set', values: function (h) { return [KIND_LABEL[h.kind] || h.kind]; } },
@@ -98,7 +104,9 @@ var SearchFilters = (function () {
   /* 左のツリーの行にも同じ条件を掛ける (Tree.nodeMatches から) */
   function nodePasses(n) {
     if (!anyActive()) return true;
-    return passes({ node: n, kind: n.isGroup ? 'folder' : n.depth === 0 ? 'device' : 'part' });
+    // 右の一覧と同じヒット (当たり方 by も持つ) で判定する。一覧に無い行 (当たっていない行) はそのまま
+    var h = (window.Search && Search.hitOfNode(n)) || { node: n, kind: n.isGroup ? 'folder' : n.depth === 0 ? 'device' : 'part' };
+    return passes(h);
   }
   function all(hits) { return hits.folders.concat(hits.devices, hits.parts, hits.lib); }
 

@@ -10,7 +10,7 @@ var Search = (function () {
   var panelEl, xrefEl, listEl, sumEl, inputEl, clearBtn, allBtn;
   var MAX_PARTS = 50, MAX_LIB = 30;
   var EMPTY = { folders: [], devices: [], parts: [], lib: [] };
-  var hits = EMPTY, query = '', currentId = null;
+  var hits = EMPTY, query = '', currentId = null, byNode = {};   // byNode: ノード id → ヒット (左のツリーのフィルター判定に使う)
 
   function init() {
     panelEl = $('#search-panel'); xrefEl = $('#xref-panel');
@@ -32,7 +32,7 @@ var Search = (function () {
   function run(raw) {
     query = String(raw == null ? '' : raw).trim();
     if (!query) {
-      hits = EMPTY; currentId = null;
+      hits = EMPTY; currentId = null; byNode = {};
       SearchFilters.reset();                               // 次の検索に前のフィルターを持ち越さない
       listEl.textContent = ''; sumEl.textContent = '';   // 消し忘れた結果を DOM に残さない
       panelEl.hidden = true; xrefEl.hidden = false;
@@ -57,33 +57,38 @@ var Search = (function () {
     return Tags.fold([d.name, d.fileName, m.projectCode, m.deviceName, m.workpiece, m.customer, m.department, m.owner, rel.join('/')].join(' '));
   }
 
-  /* フォルダ → 装置 → 部品 → ライブラリ の順。タグで当たったフォルダを先頭に出す */
+  /* フォルダ → 装置 → 部品 → ライブラリ の順。タグで当たったものを先頭に出す。
+   * 問い合わせはカンマ区切りで複数語 (AND)。語ごとに 名称 か タグ のどちらかで当たればよい。
+   * by: 'name' (全語が名称) / 'tag' (全語がタグ) / 'mixed' (名称とタグの組み合わせ)。フィルターの「一致」がこれで分ける */
+  function hitOf(n, kind, words, key, terms) {
+    var byName = terms.every(function (t) { return words.indexOf(t) >= 0; });
+    var tag = null, byTag = terms.every(function (t) { var h = Tags.hit(key, t); if (h && !tag) tag = h; return !!h; });
+    if (byName) return { node: n, kind: kind, by: 'name', tag: byTag ? tag : null };   // タグでも当たっていればバッジは出す
+    if (byTag) return { node: n, kind: kind, by: 'tag', tag: tag };
+    var both = terms.every(function (t) { var h = Tags.hit(key, t); if (h && !tag) tag = h; return words.indexOf(t) >= 0 || !!h; });
+    return both ? { node: n, kind: kind, by: 'mixed', tag: tag } : null;
+  }
   function collect(f) {
-    var folders = [], devices = [], parts = [];
+    var terms = Tags.terms(f), folders = [], devices = [], parts = [];
+    if (!terms.length) return EMPTY;
+    function put(list, h) { if (h) { if (h.by === 'tag') list.unshift(h); else list.push(h); } }
     Tree.allNodes().forEach(function (n) {
-      if (n.isGroup) {
-        var tag = Tags.hit(n.path.join('/'), f);
-        if (tag) folders.unshift({ node: n, kind: 'folder', by: 'tag', tag: tag });
-        else if (Tags.fold(n.name).indexOf(f) >= 0) folders.push({ node: n, kind: 'folder', by: 'name' });
-      } else if (n.depth === 0) {
-        var dtag = Tags.hit(Tree.tagKey(n), f);
-        if (dtag) devices.unshift({ node: n, kind: 'device', by: 'tag', tag: dtag });
-        else if (deviceWords(n.device).indexOf(f) >= 0) devices.push({ node: n, kind: 'device', by: 'name' });
-      } else {
-        var ptag = Tags.hit(Tree.tagKey(n), f);
-        if (ptag) parts.unshift({ node: n, kind: 'part', by: 'tag', tag: ptag });
-        else if (Tags.fold(n.name).indexOf(f) >= 0) parts.push({ node: n, kind: 'part', by: 'name' });
-      }
+      if (n.isGroup) put(folders, hitOf(n, 'folder', Tags.fold(n.name), n.path.join('/'), terms));
+      else if (n.depth === 0) put(devices, hitOf(n, 'device', deviceWords(n.device), Tree.tagKey(n), terms));
+      else put(parts, hitOf(n, 'part', Tags.fold(n.name), Tree.tagKey(n), terms));
     });
-    // ライブラリ: 保存先パスの語 (部署・担当者・案件コード・装置名・対象ワーク) に当たるもの。
+    // ライブラリ: 保存先パスの語 (部署・担当者・案件コード・装置名・対象ワーク)・部品名・以前付けたタグに当たるもの。
     // すでに読み込んである装置と同じものは出さない
     var open = {};
     App.devices().forEach(function (d) { if (d.source && d.source.entry) open[d.source.entry.rel.join('/')] = 1; });
     var lib = Library.entries().filter(function (e) {
       return Library.matches(e, f) && !open[e.rel.join('/')];
     }).map(function (e) { var part = Library.matchedPart(e, f); return { entry: e, kind: 'lib', part: part, tag: part ? null : Library.matchedTag(e, f) }; });
+    byNode = {};
+    folders.concat(devices, parts).forEach(function (h) { byNode[h.node.id] = h; });
     return { folders: folders, devices: devices, parts: parts, lib: lib };
   }
+  function hitOfNode(n) { return (n && byNode[n.id]) || null; }
   function count() { return hits.folders.length + hits.devices.length + hits.parts.length + hits.lib.length; }
 
   function render() {
@@ -128,7 +133,7 @@ var Search = (function () {
     var head = el('div.dev', {}, [
       n.isGroup ? svgIcon(ICON.folder) : null,
       el('span', { text: n.name }),
-      h.by === 'tag' ? el('span.badge.coral', { text: h.tag }) : null
+      h.tag ? el('span.badge.coral', { text: h.tag, title: h.by === 'tag' ? 'タグで当たりました' : '名称とタグで当たりました' }) : null
     ]);
     var stats = el('div.stats', {}, [
       n.isGroup ? el('span', { text: '装置 ' + Tree.devicesUnder(n).length }) : null,
@@ -175,5 +180,5 @@ var Search = (function () {
   /* 装置を消した・読み込んだ後に一覧を作り直す (消えたノードを指したままにしない) */
   function refresh() { if (query) run(query); }
 
-  return { init: init, run: run, refresh: refresh, focus: focus, query: function () { return query; }, hits: function () { return hits; }, shown: function () { return SearchFilters.apply(hits); } };
+  return { init: init, run: run, refresh: refresh, focus: focus, query: function () { return query; }, hits: function () { return hits; }, hitOfNode: hitOfNode, shown: function () { return SearchFilters.apply(hits); } };
 })();
