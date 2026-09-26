@@ -11,7 +11,7 @@
  */
 var SearchFilters = (function () {
   var KEY = 'lv.searchFilters';
-  var DEFAULT = ['by', 'tag', 'name'];
+  var DEFAULT = ['tagonly', 'by', 'tag', 'name'];
   var barEl = null, dialogEl = null, listEl = null;
   var active = {};          // facet id → { '畳んだ値': '表示名' } (text は文字列)
   var openId = null;        // 開いているポップオーバーの facet
@@ -41,6 +41,8 @@ var SearchFilters = (function () {
     return [BY_LABEL[h.by] || h.by || ''];
   }
   var FACETS = [
+    // toggle: 押すだけで効く 1 ビットの facet (候補は無い)。タグのバッジが付いた行だけ残す
+    { id: 'tagonly', label: 'タグのみ', type: 'toggle', title: 'タグで当たった行だけ残す（バッジの付いた行）', test: function (h) { return !!h.tag; }, values: function () { return []; } },
     { id: 'by', label: '一致', type: 'set', values: byOf },
     { id: 'tag', label: 'タグ', type: 'set', values: tagsOf },
     { id: 'name', label: '名称', type: 'text', placeholder: '名称に含む文字', values: function (h) { return [nameOf(h)]; } },
@@ -77,11 +79,13 @@ var SearchFilters = (function () {
   function isActive(id) {
     var a = active[id];
     if (a == null) return false;
+    if (typeof a === 'boolean') return a;
     return typeof a === 'string' ? a.length > 0 : Object.keys(a).length > 0;
   }
   function anyActive() { return Object.keys(active).some(isActive); }
   function passesFacet(f, h) {
     if (!isActive(f.id)) return true;
+    if (f.type === 'toggle') return !!f.test(h);
     var vals = f.values(h);
     if (f.type === 'text') {
       var q = Tags.fold(active[f.id]);
@@ -118,7 +122,7 @@ var SearchFilters = (function () {
     var fs = enabled();
     barEl.hidden = !fs.length;
     if (!fs.length) return;
-    fs.forEach(function (f) { barEl.appendChild(f.type === 'text' ? textPill(f) : setPill(f, hits)); });
+    fs.forEach(function (f) { barEl.appendChild(f.type === 'text' ? textPill(f) : f.type === 'toggle' ? togglePill(f) : setPill(f, hits)); });
     if (anyActive()) {
       barEl.appendChild(el('button.fclear', { type: 'button', title: 'フィルターをすべて外す', onclick: function () { active = {}; openId = null; changed(); } }, [svgIcon('M6 6l12 12M18 6L6 18'), 'クリア']));
     }
@@ -138,6 +142,14 @@ var SearchFilters = (function () {
       chevron()
     ]);
     b.addEventListener('click', function (e) { e.stopPropagation(); openId = openId === f.id ? null : f.id; render(lastHits); });
+    return b;
+  }
+  function togglePill(f) {
+    var on = active[f.id] === true;
+    var b = el('button.fpill.flag' + (on ? '.on' : ''), { type: 'button', dataset: { facet: f.id }, 'aria-pressed': String(on), title: f.title || f.label }, [
+      svgIcon(on ? 'M5 12l5 5L20 7' : 'M20 12H4'), el('span.l', { text: f.label })
+    ]);
+    b.addEventListener('click', function (e) { e.stopPropagation(); if (on) delete active[f.id]; else active[f.id] = true; changed(); });
     return b;
   }
   function textPill(f) {

@@ -306,11 +306,11 @@ check((await hitTitles()).length === 2 && await page.locator('#search-filters .f
 // 設定から facet を足す
 await page.evaluate(() => SearchFilters.openDialog());
 await page.waitForSelector('#filters-dialog[open]');
-check(await page.locator('#filters-list .sm-row').count() === 9 && await page.isChecked('#flt-tag') && await page.isChecked('#flt-by') && !(await page.isChecked('#flt-kind')), 'the settings dialog lists every facet with the defaults on');
+check(await page.locator('#filters-list .sm-row').count() === 10 && await page.isChecked('#flt-tag') && await page.isChecked('#flt-by') && await page.isChecked('#flt-tagonly') && !(await page.isChecked('#flt-kind')), 'the settings dialog lists every facet with the defaults on');
 await page.click('label.switch-label[for="flt-kind"]');
 await page.waitForTimeout(200);
 check(await page.locator('#search-filters .fpill[data-facet="kind"]').count() === 1, 'switching a facet on adds its pill right away');
-check(JSON.stringify(await page.evaluate(() => Storage.get('lv.searchFilters', null))) === JSON.stringify(['by', 'tag', 'name', 'kind']), 'the choice is stored');
+check(JSON.stringify(await page.evaluate(() => Storage.get('lv.searchFilters', null))) === JSON.stringify(['tagonly', 'by', 'tag', 'name', 'kind']), 'the choice is stored');
 await page.click('label.switch-label[for="flt-tag"]');
 await page.waitForTimeout(200);
 check(await page.locator('#search-filters .fpill[data-facet="tag"]').count() === 0, 'switching a facet off removes its pill');
@@ -328,6 +328,14 @@ await search('');
 // ---- 8c. カンマ区切りで AND / 「一致」で 名称で当たった・タグで当たった を分ける ----
 await search('ユニット');   // 名称: 搬送ユニット・検査ユニット2 / タグ: (無し)
 check((await hitTitles()).length === 3, 'a plain word hits both folders by name and ベース板 by its long tag: ' + await hitTitles());
+// 「タグのみ」: 押すだけで、タグのバッジが付いた行 (ベース板) だけ残る
+await page.click('#search-filters .fpill[data-facet="tagonly"]');
+await page.waitForTimeout(250);
+check(JSON.stringify(await hitTitles()) === JSON.stringify(['ベース板']) && await page.locator('#search-filters .fpill[data-facet="tagonly"].on').count() === 1, 'タグのみ keeps only the rows carrying a matching tag: ' + await hitTitles());
+check(await folderRow('搬送ユニット').isHidden() && await page.locator('.tree-row.device', { hasText: 'ベース板' }).first().isVisible(), 'the tree follows タグのみ too');
+await page.click('#search-filters .fpill[data-facet="tagonly"]');
+await page.waitForTimeout(250);
+check((await hitTitles()).length === 3, 'pressing タグのみ again turns it off');
 await search('ユニット, 検査');   // 検査ユニット2 は 名称 (ユニット) + 名称 (検査)。搬送ユニット は 検査 が名称にもタグにも無い
 check(JSON.stringify(await hitTitles()) === JSON.stringify(['検査ユニット2']), 'comma-separated words narrow with AND: ' + await hitTitles());
 check(await folderRow('搬送ユニット').isVisible() && await page.locator('.tree-row.device', { hasText: 'アーム' }).first().isHidden(), 'the tree applies the same AND (搬送ユニット stays as the parent of a match, アーム is hidden)');
