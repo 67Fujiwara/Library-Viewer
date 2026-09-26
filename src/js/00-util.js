@@ -52,7 +52,8 @@ function cssVar(name) { return getComputedStyle(document.documentElement).getPro
 /* localStorage は file:// で失敗しうるので必ず try/catch */
 var Storage = {
   get: function (k, def) { try { var v = localStorage.getItem(k); return v == null ? def : JSON.parse(v); } catch (e) { return def; } },
-  set: function (k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+  set: function (k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } },
+  remove: function (k) { try { localStorage.removeItem(k); } catch (e) { } }
 };
 
 /* gzip 圧縮 / 展開 (ブラウザ標準。WASM の展開でも同じ API を使っている)。

@@ -60,6 +60,9 @@ def main():
     js_files = sorted(glob.glob(os.path.join(ROOT, 'src', 'js', '*.js')))
     app_js = '\n'.join(f'// ---- {os.path.basename(p)} ----\n' + read(p) for p in js_files)
 
+    # 「私が作りました」マークの元絵 (tools/make_mark_asset.mjs で縮小した webp、透明つき)
+    mark_b64 = base64.b64encode(read(os.path.join(ROOT, 'src', 'assets', 'made-by-me.webp'), 'rb')).decode('ascii')
+
     version = build_version()
     for name, body in (('three', three), ('occt', occt_js), ('app', app_js)):
         if '</script' in body.lower():
@@ -72,6 +75,7 @@ def main():
         ('{{THREE_JS}}', three),
         ('{{OCCT_JS}}', occt_js),
         ('{{WASM_GZ_B64}}', wasm_b64),
+        ('{{MARK_IMG_B64}}', mark_b64),
         ('{{APP_JS}}', app_js),
     ):
         if key not in html:

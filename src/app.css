@@ -110,6 +110,12 @@ select { padding-right: 28px; appearance: none; background-image: linear-gradien
 .brand .mark { width: 18px; height: 18px; stroke-width: 2.2; flex: none; }
 .brand h1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .brand .ver { font-size: 11px; color: var(--muted-soft); white-space: nowrap; }
+/* 「私が作りました」マーク: 版の代わりにヘッダーへ。押すと大きく出て顔の画像を選べる */
+.made-by { border: 0; background: none; padding: 2px; width: 44px; height: 44px; border-radius: var(--r-md); cursor: pointer; flex: none; }
+.made-by:hover { background: var(--surface-soft); }
+.made-by canvas { width: 40px; height: 40px; display: block; }
+.made-by-big { display: flex; justify-content: center; padding: 4px 0; }
+.made-by-big canvas { width: min(320px, 70vw); height: auto; }
 .header-actions { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; flex: 0 1 auto; min-width: 0; }
 .header-actions .btn { flex: none; }
 .status { font-size: 12px; max-width: 200px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

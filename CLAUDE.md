@@ -275,7 +275,7 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
 ヘッダー（開く / 格納する だけ） / 左パネル 310px（構成ツリー | ライブラリ の 2 タブ） / 中央 3D ビュー /
 右パネル 288px（検索） / フッター（左端に設定の歯車、右へ選択部品の情報バー）
 
-**設定は左下の歯車 1 か所** (`#btn-settings` → `#settings-menu`)。表示（テーマ・非表示の薄さ）/
+**設定は左下の歯車 1 か所** (`#btn-settings` → `#settings-menu`)。表示（テーマ・非表示の薄さ・私が作りましたマーク）/
 STEP の変換（メッシュ精度・再変換・変換キャッシュ）/ 検索（検索結果のフィルター）/ ライブラリ（名簿・ネーミングルール・既定のライブラリ）。
 - 歯車はフッターに置く。左パネルを畳んでも消えないため
 - **並べ方はどの節も同じ形にする**: 見出し (`h3`) + 枠で囲んだまとまり (`.sm-group`)。
@@ -288,6 +288,16 @@ STEP の変換（メッシュ精度・再変換・変換キャッシュ）/ 検�
   閉じるのと同時に 3D の選択まで外れる（実際にそうなって browser_test が落ちた）
 - 小さくした `select` は padding と矢印の位置も一緒に詰める（既定は 36px・上下 8px 前提で、
   高さだけ縮めると文字が潰れる）
+- **「私が作りました」マーク**（`01d-madeby.js`、表示 → 私が作りましたマーク、`lv.madeBy`、既定オフ）: オンのとき
+  ヘッダーの版の文字 (`#ver-text`) の代わりに黒板を持った絵 (`#made-by`) を出す。黒板には `APP_VERSION` を描き、
+  顔の穴にはユーザーが選んだ画像を敷く（縮小して `lv.face` に JPEG の data URL。この PC のブラウザにだけ残る。外には送らない）。
+  押すと大きい絵のダイアログ（顔の画像を選ぶ / 顔を消す）
+  - 元絵は `src/assets/made-by-me.webp`。**`tools/make_mark_asset.mjs` で作る**（PIL も cwebp も無いので Chromium の
+    キャンバスで縮小・再エンコード）。元絵の顔は「白い半透明のぼかし」が焼き込まれた半透明領域（中心 α≈11、縁で α≈200）
+    なので、ツールが楕円 (`HOLE`) の中の半透明画素を完全に透明に抜く。ビューアは 顔画像（楕円でクリップ）→ 絵 の順に重ねるだけ
+  - 元絵 (260KB) をそのまま埋め込むと 5MB を超える。512px・q0.82 の webp で 37KB。**dist は 4.96MB で上限に近い**。
+    これ以上絵を足すときは要相談
+  - `build.py` の `{{MARK_IMG_B64}}` と `APP_VERSION` / `MARK_IMG_SRC` は `WASM_GZ_B64` と同じ script に置く
 
 ツリーは編集できる (VS Code のエクスプローラに合わせた操作)。
 ドロップした STEP は最初みな同じ階層に並ぶので、フォルダを作って好きな構成に組み替えられる。
@@ -394,6 +404,7 @@ src/js/00-util.js        DOM ヘルパ, Storage, nextFrames, cssVar, gzip 圧縮
 src/js/01-theme.js       時刻によるライト/ダーク
 src/js/01b-panels.js     左右サイドバーの開閉
 src/js/01c-settings.js   設定パネル (左下の歯車。置き場所と開け閉めだけ持つ)
+src/js/01d-madeby.js     「私が作りました」マーク (版の代わりの絵。黒板に版、顔に自分の画像。設定でオンオフ)
 src/js/02-glb.js         GLB ライター/リーダー + 組立位置の焼き込み (node でも require 可)
 src/js/03-zip.js         ZIP ライター (格納方式, UTF-8 フラグ)
 src/js/03b-naming.js     ネーミングルール (ファイル名 ⇔ 案件情報。取引先も項目に持つ)
@@ -416,6 +427,7 @@ fusion/LibraryExport/    Fusion 360 スクリプト (メッシュ glb.gz また�
 fusion/LibraryExport/glbwrite.py  純 Python の GLB ライター (02-glb.js の write と同じ出力。Fusion 無しでテスト)
 tools/gen_test_step.py   AP214 STEP テストデータ生成 (箱 / 階層アセンブリ / 穴あき板 / 遮蔽 / 裏面 / 面の向き / 重い)
 tools/make_sample_library.mjs  サンプルライブラリ生成 (models / inbox / 名簿まで一式)
+tools/make_mark_asset.mjs  「私が作りました」の元絵を縮小 webp にして顔の穴を抜く (→ src/assets/made-by-me.webp)
 test/read_step.mjs       occt が階層を返すか
 test/test_glb_zip.mjs    GLB を gltf-transform で / ZIP を unzip で
 test/naming_test.mjs     ネーミングルール (03b-naming.js と LibraryExport.py の parse/format が一致するか / 取引先の無い古い名前)
@@ -432,6 +444,7 @@ test/focus_test.mjs      「この部品に寄る」(隠れている部品へ回
 test/folder_test.mjs     フォルダ読み込み (STEP だけ拾う / 階層をツリーに再現 / ドロップ 2 経路)
 test/treeedit_test.mjs   ツリーの編集 (フォルダ作成 / ドラッグ移動 / F2 改名 / 右クリック / 解除)
 test/tags_test.mjs       タグと検索 (フォルダ・部品・装置へのタグ付け / 名称・タグでヒット / 選ぶと絞られる / 案件横断のタグ / 結果のフィルター / 改名・移動・再読込)
+test/madeby_test.mjs     「私が作りました」マーク (設定でオンオフ / 黒板の版 / 顔の画像を貼る・消す / 再読み込みで残る)
 test/perf_test.mjs       重い STEP の性能 (キャッシュ / 並列 / 変換中の描画 / 逐次表示)
 test/env_check.mjs       file:// / localhost で使える API の確認
 ```

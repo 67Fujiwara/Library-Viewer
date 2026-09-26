@@ -16,7 +16,8 @@
     </button>
     <svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v20M2 12h20M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg>
     <h1>Library Viewer</h1>
-    <span class="ver mono">v{{VERSION}}</span>
+    <span class="ver mono" id="ver-text">v{{VERSION}}</span>
+    <button type="button" id="made-by" class="made-by" hidden title="私が作りました v{{VERSION}}（押すと大きく表示。顔の画像を選べます）"><canvas width="88" height="88" aria-hidden="true"></canvas></button>
   </div>
   <div class="header-actions">
     <button type="button" id="btn-open-lib" class="btn secondary" title="共有ライブラリのフォルダ (DirectCloud 同期フォルダ) を開きます">
@@ -180,7 +181,7 @@
   <aside id="right">
     <div class="search-row">
       <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
-      <input type="search" id="tree-search" placeholder="名称・タグで検索（, で絞り込み）" autocomplete="off">
+      <input type="search" id="tree-search" placeholder="名称・タグで検索（,で絞る）" autocomplete="off">
     </div>
     <div id="right-body" class="right-body">
       <section id="search-panel" class="right-section" hidden>
@@ -226,6 +227,10 @@
     <div class="sm-row">
       <label class="sm-label" for="chk-ghost">非表示の部品を薄く残す</label>
       <input type="checkbox" id="chk-ghost" class="switch"><label for="chk-ghost" class="switch-label" aria-hidden="true"></label>
+    </div>
+    <div class="sm-row">
+      <label class="sm-label" for="chk-made-by" title="ヘッダーの版の表示を「私が作りました」の絵にします。オフのときは v の番号だけ">私が作りましたマーク</label>
+      <input type="checkbox" id="chk-made-by" class="switch"><label for="chk-made-by" class="switch-label" aria-hidden="true"></label>
     </div>
   </div>
 
@@ -392,6 +397,21 @@
   </form>
 </dialog>
 
+<dialog id="made-by-dialog" class="dialog small-dialog">
+  <form method="dialog">
+    <h2>私が作りました</h2>
+    <p class="muted small">顔の部分に好きな画像を貼れます。画像はこの PC のブラウザにだけ保存され、外には送りません。黒板にはこのビューアの版が出ます。</p>
+    <div class="made-by-big"><canvas id="made-by-big" width="640" height="640" aria-label="私が作りました"></canvas></div>
+    <input type="file" id="made-by-file" accept="image/*" hidden>
+    <div class="dialog-actions">
+      <button type="button" id="made-by-pick" class="btn secondary">顔の画像を選ぶ…</button>
+      <button type="button" id="made-by-clear" class="btn secondary">顔を消す</button>
+      <span class="spacer"></span>
+      <button type="submit" class="btn primary">閉じる</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="confirm-dialog" class="dialog small-dialog">
   <form method="dialog">
     <h2 id="confirm-title"></h2>
@@ -419,6 +439,8 @@
 </script>
 <script>
 var WASM_GZ_B64 = "{{WASM_GZ_B64}}";
+var APP_VERSION = "{{VERSION}}";
+var MARK_IMG_SRC = "data:image/webp;base64,{{MARK_IMG_B64}}";
 </script>
 <script>
 {{APP_JS}}
