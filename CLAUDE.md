@@ -151,6 +151,22 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
     122 万三角形だと 400MB を超える（1 回目の実機テストで Fusion が落ちた）。`array` なら 1/8
   - 進捗は `ui.createProgressDialog()`、25 ボディごとに `adsk.doEvents()`（固まったままだと落ちたように見える）、
     キャンセルは `Cancelled` 例外で抜ける
+  - **ファイルサイズは三角形の数 × 7.5 バイト (gzip 後) で決まり、符号化の工夫では 2 割しか減らない。**
+    実測 (曲面の多い 2000 ボディ / 137 万三角形): float32 のまま 9.8MB / 法線なし 9.0 / int16 量子化 8.2 /
+    **同じ部品を 1 回だけ持つ (インスタンス化) 1.3MB**。効くのは (1) 同じコンポーネントのメッシュを 1 回だけ書いて
+    配置はノードの `matrix` で持つ (2) 三角形を減らす（部品の大きさに応じた `surfaceTolerance`）の 2 つ。
+    符号化 (int16 量子化・法線なし・uint16 index) は上乗せの 2 割
+  - インスタンス化は `occ.component.bRepBodies` を部品の原点でメッシュ化し、`occ.transform2` (ルート基準。
+    `transform` は誤る場合があり退役) を glTF の列優先に転置して渡す。**行列は B-rep の頂点で自己検査**
+    (`matrix_ok`: 部品座標 × 行列 とプロキシの頂点を比べ、10µm 超なら焼き込みに退避)。
+    向き・単位の取り違えがあっても形は壊れず、ファイルが大きくなるだけ
+  - int16 量子化はメッシュの大きさが `QUANT_MAX_EXTENT` = 196mm 以下のときだけ (刻み 3µm 以下)。
+    大きい部品は float32 のまま。**計測精度の上限は 3µm** になる (前は float32 の 3e-6mm)
+  - 法線は書かず `GLB.read` の `computeNormals` で作る。Fusion のメッシュは面の境で節点が分かれているので
+    面ごとに滑らかに出る。ビューア側 (`02-glb.js`) はノードの `matrix` / TRS / 5122 / 共有メッシュを
+    **読み込み時に配置ごとへ焼き込む**。ビューアの他の部分は「1 ノード = 1 メッシュ = ワールド座標」のまま
+  - `run()` で `autoTerminate(False)` にしたら、`destroy` で `adsk.terminate()` を呼ぶ。
+    呼ばないと「スクリプトとアドイン」に実行中 (■) のまま残る
   - **色は外観の種類ごとにプロパティ id が違う**（塗装 `opaque_albedo` / 金属 `metal_f0` / 積層 `layered_diffuse` …）。
     1 つの id だけ見ると塗装以外が既定色に落ちる（実機で起きた）。`COLOR_PROP_IDS` の優先順 → 最初の `ColorProperty`。
     値は sRGB 0..255 なので **リニアに直して** glb に入れる（ビューアは `outputEncoding = sRGB`、occt の色もリニア）。
@@ -350,7 +366,8 @@ test/read_step.mjs       occt が階層を返すか
 test/test_glb_zip.mjs    GLB を gltf-transform で / ZIP を unzip で
 test/naming_test.mjs     ネーミングルール (03b-naming.js と LibraryExport.py の parse/format が一致するか / 取引先の無い古い名前)
 test/fusion_glb_test.mjs Fusion スクリプトの GLB ライター (glbwrite.py) の出力をビューアの GLB.read と gltf-transform で読む
-test/fusion_glb_box.py   その入力 (Fusion の TriangleMesh と同じ形の箱 2 つをオカレンス階層に入れて glb.gz を書く)
+test/fusion_glb_box.py   その入力 (箱 2 種: 200mm は float32、20mm は int16 量子化 + 2 か所にインスタンス化)
+test/fusion_collect_test.py  Fusion の API を偽オブジェクトにして collect_meshes を通す (使い回し / 行列の自己検査と退避 / 非表示 / 色違い)
 test/browser_test.mjs    file:// 通しテスト (読み込み→ツリー→横断→格納→再変換→ルール事前入力)
 test/library_test.mjs    FS Access API を偽ハンドルにして 走査→受信箱→格納→ルール→名簿
 test/autolib_test.mjs    既定ライブラリの自動読み込み (権限あり / 設定オフ / 再接続 1 クリック / 未設定 / 解除)

@@ -324,13 +324,13 @@ await page.waitForFunction(() => App.devices().length === 1, null, { timeout: 30
 await page.waitForTimeout(300);
 const meshMs = Date.now() - meshT0;
 const meshNames = await page.$$eval('.tree-row .name', r => r.map(x => x.textContent));
-check(meshNames.includes('BASE_PLATE') && meshNames.includes('UNIT_A:1') && meshNames.includes('POST'), 'Fusion occurrence hierarchy shows in the tree: ' + meshNames.filter(n => /BASE|UNIT|POST|fusion/.test(n)).join(' / '));
+check(meshNames.includes('BASE_PLATE') && meshNames.includes('UNIT_A:1') && meshNames.includes('UNIT_A:2') && meshNames.filter(n => n === 'POST').length === 2, 'Fusion occurrence hierarchy shows in the tree (POST instanced twice): ' + meshNames.filter(n => /BASE|UNIT|POST|fusion/.test(n)).join(' / '));
 check(meshMs < 3000, 'opened without conversion (' + meshMs + ' ms)');
 const meshGlb = await page.evaluate(() => window.__ls('models/設計1課/藤原/P2026-007_メッシュ機H/_/fusion_mesh.glb.gz'));
 check(meshGlb.size === meshStat.gz, 'the glb.gz written by Fusion is used as-is (not rewritten)');
 check(await page.evaluate(() => window.__ls('models/設計1課/藤原/P2026-007_メッシュ機H/_/step')) === null, 'no step/ folder for a mesh-stored entry');
 const meshBox = await page.evaluate(() => { const b = new THREE.Box3(); Viewer3D.leavesOf(App.devices()[0].root).forEach(n => { if (n.mesh) b.union(n.mesh.geometry.boundingBox); }); return { x: Math.round(b.max.x - b.min.x), z: Math.round(b.max.z - b.min.z) }; });
-check(meshBox.x === 200 && meshBox.z === 110, 'geometry is in mm as Fusion wrote it (200 x ' + meshBox.x + ', 110 x ' + meshBox.z + ')');
+check(meshBox.x === 260 && meshBox.z === 110, 'geometry is in mm, instances placed by their matrices (x 260 = ' + meshBox.x + ', z 110 = ' + meshBox.z + ')');
 await page.evaluate(() => App.clearDevices());
 await page.click('label[for="tab-lib"]');
 await page.waitForTimeout(200);

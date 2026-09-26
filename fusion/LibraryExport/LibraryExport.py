@@ -251,11 +251,26 @@ def component_tree(root_comp):
 # 置かれた状態で返り、placement の計算がそもそも要らない (occ.component.bRepBodies だと
 # 部品自身の原点になり、同じ部品を 3 個並べても 3 個とも同じ場所に出る)。
 # 座標は cm で返るので mm に直す。節点は元の曲面上に乗っているので計測の精度は落ちない。
-MESH_QUALITY = [   # (id, 表示名, TriangleMeshQualityOptions の名前)。ビューアの精度 3 段と同じ並び
-    ('coarse', '粗い', 'LowQualityTriangleMesh'),
-    ('normal', '標準', 'NormalQualityTriangleMesh'),
-    ('fine', '細かい', 'HighQualityTriangleMesh'),
+MESH_QUALITY = [   # (id, 表示名, 曲面からのずれ mm, 隣り合う三角形の法線の角度差 度, setQuality の代替)
+    ('coarse', '粗い', 0.20, 30.0, 'LowQualityTriangleMesh'),
+    ('normal', '標準', 0.05, 15.0, 'NormalQualityTriangleMesh'),
+    ('fine', '細かい', 0.01, 8.0, 'HighQualityTriangleMesh'),
 ]
+# 三角形の数がそのままファイルサイズ (実測 7.5 バイト/三角形、gzip 後)。
+# 小さい部品 (ねじ等) は同じ「ずれ」でも半径が小さいぶん分割が細かくなるので、部品の大きさに応じて
+# ずれを緩める: tol = min(基準, max(0.01mm, 大きさ × 0.002))。20mm のねじなら 0.04mm (円周 14 分割)
+
+
+def adaptive_tolerance(extent_mm, base_mm):
+    return min(base_mm, max(0.01, extent_mm * 0.002))
+
+
+def body_extent_mm(body):
+    try:
+        bb = body.boundingBox
+        return max(bb.maxPoint.x - bb.minPoint.x, bb.maxPoint.y - bb.minPoint.y, bb.maxPoint.z - bb.minPoint.z) * CM_TO_MM
+    except Exception:
+        return 1000.0
 
 
 # 外観の色。Fusion の Appearance は種類ごとに色のプロパティ id が違う
@@ -354,10 +369,17 @@ def body_color(body, occ=None):
     return None
 
 
-def tessellate(body, quality_id, occ=None):
+def tessellate(body, quality_id, color):
+    """ボディ → glbwrite の mesh。座標は **そのボディの文脈のまま** (コンポーネントのボディなら部品の原点)。
+    法線は書かない (ビューアが計算する。ファイルが 8% 小さい)"""
+    q = next(x for x in MESH_QUALITY if x[0] == quality_id)
     calc = body.meshManager.createMeshCalculator()
-    opt_name = next(q[2] for q in MESH_QUALITY if q[0] == quality_id)
-    calc.setQuality(getattr(adsk.fusion.TriangleMeshQualityOptions, opt_name))
+    try:
+        tol = adaptive_tolerance(body_extent_mm(body), q[2])
+        calc.surfaceTolerance = tol / CM_TO_MM        # cm
+        calc.normalDeviation = q[3]
+    except Exception:
+        calc.setQuality(getattr(adsk.fusion.TriangleMeshQualityOptions, q[4]))
     mesh = calc.calculate()
     if mesh is None:
         return None
@@ -365,9 +387,9 @@ def tessellate(body, quality_id, occ=None):
     # 実測 2053 ボディ / 122 万三角形のアセンブリでは 400MB を超える (array なら 1/8)
     m = {'name': body.name,
          'positions': array('f', (v * CM_TO_MM for v in mesh.nodeCoordinatesAsFloat)),   # cm → mm
-         'normals': array('f', mesh.normalVectorsAsFloat),
+         'normals': None,
          'indices': array('I', mesh.nodeIndices),
-         'color': body_color(body, occ)}
+         'color': color}
     del mesh, calc
     return m
 
@@ -395,14 +417,48 @@ class Cancelled(Exception):
     pass
 
 
+def occurrence_matrix(occ):
+    """オカレンスのワールド変換 (ルート基準) を glTF の列優先 16 要素 (mm) で。
+    transform2 が正 (transform は誤った値を返す場合があり退役)。Matrix3D.asArray() は行優先なので転置する"""
+    m = getattr(occ, 'transform2', None) or occ.transform
+    a = m.asArray()                                 # 行優先 16 要素、平行移動は a[3], a[7], a[11] (cm)
+    return [a[0], a[4], a[8], 0.0,
+            a[1], a[5], a[9], 0.0,
+            a[2], a[6], a[10], 0.0,
+            a[3] * CM_TO_MM, a[7] * CM_TO_MM, a[11] * CM_TO_MM, 1.0]
+
+
+def matrix_ok(occ, mtx):
+    """行列の向き・単位の自己検査: B-rep の頂点 1 つを「部品の座標 × 行列」と「組立座標のプロキシ」で比べる。
+    比べられるものが無ければ True (信じる)。ずれていれば False → その配置は焼き込みに退避する"""
+    try:
+        comp = occ.component
+        for i in range(min(comp.bRepBodies.count, 3)):
+            lb, pb = comp.bRepBodies.item(i), occ.bRepBodies.item(i)
+            if lb.vertices.count == 0:
+                continue
+            lp, pp = lb.vertices.item(0).geometry, pb.vertices.item(0).geometry
+            x, y, z = lp.x * CM_TO_MM, lp.y * CM_TO_MM, lp.z * CM_TO_MM
+            wx = mtx[0] * x + mtx[4] * y + mtx[8] * z + mtx[12]
+            wy = mtx[1] * x + mtx[5] * y + mtx[9] * z + mtx[13]
+            wz = mtx[2] * x + mtx[6] * y + mtx[10] * z + mtx[14]
+            d = ((wx - pp.x * CM_TO_MM) ** 2 + (wy - pp.y * CM_TO_MM) ** 2 + (wz - pp.z * CM_TO_MM) ** 2) ** 0.5
+            return d < 0.01                         # 10µm
+        return True
+    except Exception:
+        return True
+
+
 def collect_meshes(design, quality_id, progress=None):
     """デザイン全体を glbwrite の model 形式に。ツリーは Fusion のオカレンス階層そのまま。
+    **同じコンポーネントのボディは 1 回だけメッシュ化し** (部品の原点で)、配置はノードの行列で持つ
+    (インスタンス化。ねじ・ローラーなど同じ部品が何十個も並ぶので、ファイルが桁で小さくなる)。
+    行列の自己検査に落ちた配置だけ、組立座標のプロキシから焼き込む (fallback)。
     progress: adsk.core.ProgressDialog (省略可)。キャンセルされたら Cancelled を投げる。
-    戻り: (model, {'bodies', 'hidden', 'failed', 'triangles'})
-    実測 (2053 ボディ / 122 万三角形 / 標準): 60 秒"""
+    戻り: (model, {'bodies', 'unique', 'hidden', 'failed', 'triangles', 'colored', 'fallback'})"""
     root = design.rootComponent
-    meshes = []
-    stat = {'bodies': 0, 'hidden': 0, 'failed': 0, 'triangles': 0, 'seen': 0, 'colored': 0}
+    meshes, cache = [], {}          # cache: (コンポーネント id, ボディ番号, 色) → メッシュ番号
+    stat = {'bodies': 0, 'unique': 0, 'hidden': 0, 'failed': 0, 'triangles': 0, 'seen': 0, 'colored': 0, 'fallback': 0}
     _color_cache.clear(); del _uncolored_samples[:]
 
     def tick():
@@ -416,34 +472,82 @@ def collect_meshes(design, quality_id, progress=None):
         if stat['seen'] % 200 == 0:
             gc.collect()
 
-    def add_bodies(bodies, node, occ=None):
-        for body in bodies:
+    def color_key(c):
+        return None if not c else (round(c[0], 3), round(c[1], 3), round(c[2], 3))
+
+    def comp_key(comp):
+        try:
+            return comp.id
+        except Exception:
+            return comp.name
+
+    def place(node, name, mi, mtx, tris):
+        node['children'].append({'name': name, 'meshIndex': mi, 'matrix': mtx, 'children': []})
+        stat['bodies'] += 1
+        stat['triangles'] += tris
+
+    def add_root_bodies(node):
+        for body in root.bRepBodies:
             if not body.isVisible:
                 stat['hidden'] += 1; continue
-            m = tessellate(body, quality_id, occ)
+            m = tessellate(body, quality_id, body_color(body))
             tick()
             if m is None:
                 stat['failed'] += 1; continue
             meshes.append(m)
-            stat['bodies'] += 1
             if m['color']:
                 stat['colored'] += 1
-            stat['triangles'] += len(m['indices']) // 3
-            node['children'].append({'name': body.name, 'meshIndex': len(meshes) - 1, 'children': []})
+            place(node, body.name, len(meshes) - 1, None, len(m['indices']) // 3)
+
+    def add_occ_bodies(occ, node):
+        comp = occ.component
+        ck = comp_key(comp)
+        mtx = occurrence_matrix(occ)
+        shared = matrix_ok(occ, mtx)
+        if not shared:
+            stat['fallback'] += 1
+        n = comp.bRepBodies.count
+        for i in range(n):
+            pb = occ.bRepBodies.item(i)              # 組立座標のプロキシ (表示 / 色はこちらで見る)
+            if not pb.isVisible:
+                stat['hidden'] += 1; continue
+            color = body_color(pb, occ)
+            if shared:
+                key = (ck, i, color_key(color))
+                mi = cache.get(key)
+                if mi is None:
+                    m = tessellate(comp.bRepBodies.item(i), quality_id, color)   # 部品の原点で 1 回だけ
+                    if m is None:
+                        stat['failed'] += 1; tick(); continue
+                    meshes.append(m); mi = len(meshes) - 1; cache[key] = mi
+                    if color:
+                        stat['colored'] += 1
+                tick()
+                place(node, pb.name, mi, mtx, len(meshes[mi]['indices']) // 3)
+            else:
+                m = tessellate(pb, quality_id, color)                                # 焼き込み (共有しない)
+                tick()
+                if m is None:
+                    stat['failed'] += 1; continue
+                meshes.append(m)
+                if color:
+                    stat['colored'] += 1
+                place(node, pb.name, len(meshes) - 1, None, len(m['indices']) // 3)
 
     def walk(occs, node):
         for occ in occs:
             if not occ.isVisible:
                 continue
-            sub = {'name': occ.name, 'meshIndex': None, 'children': []}
-            add_bodies(occ.bRepBodies, sub, occ)     # 組立位置つきのプロキシ
+            sub = {'name': occ.name, 'meshIndex': None, 'matrix': None, 'children': []}
+            add_occ_bodies(occ, sub)
             walk(occ.childOccurrences, sub)
             if sub['children']:
                 node['children'].append(sub)
 
-    tree = {'name': root.name, 'meshIndex': None, 'children': []}
-    add_bodies(root.bRepBodies, tree)
+    tree = {'name': root.name, 'meshIndex': None, 'matrix': None, 'children': []}
+    add_root_bodies(tree)
     walk(root.occurrences, tree)
+    stat['unique'] = len(meshes)
     return {'name': root.name, 'root': tree, 'meshes': meshes}, stat
 
 
@@ -524,6 +628,7 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
 
             on_change = InputChangedHandler(); cmd.inputChanged.add(on_change); _handlers.append(on_change)
             on_exec = ExecuteHandler(); cmd.execute.add(on_exec); _handlers.append(on_exec)
+            on_destroy = DestroyHandler(); cmd.destroy.add(on_destroy); _handlers.append(on_destroy)
             update_preview(inputs)
         except Exception:
             _ui.messageBox('LibraryExport:\n' + traceback.format_exc())
@@ -623,6 +728,17 @@ class InputChangedHandler(adsk.core.InputChangedEventHandler):
             update_preview(inputs)
         except Exception:
             _ui.messageBox('LibraryExport:\n' + traceback.format_exc())
+
+
+class DestroyHandler(adsk.core.CommandEventHandler):
+    """格納 / キャンセルでダイアログが閉じたらスクリプトを終える。
+    run() で autoTerminate(False) にしている (ダイアログが生きている間はハンドラを動かす必要がある) ので、
+    ここで terminate() を呼ばないと「スクリプトとアドイン」に実行中 (■) のまま残る"""
+    def notify(self, args):
+        try:
+            adsk.terminate()
+        except Exception:
+            pass
 
 
 class ExecuteHandler(adsk.core.CommandEventHandler):
@@ -726,6 +842,7 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
                       'rawGlbSize': mesh_stat['rawGlbSize'] if mesh_stat else None,
                       'triangles': mesh_stat['triangles'] if mesh_stat else None,
                       'solids': mesh_stat['bodies'] if mesh_stat else ((tree[0]['solids'] if tree else None) if placement is None else None),
+                      'uniqueMeshes': mesh_stat['unique'] if mesh_stat else None,
                       'rootName': root_name}
                 if placement is not None:
                     fm['placement'] = placement      # ビューアが組立位置を戻すのに使う
@@ -761,8 +878,9 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
                        'lastQuality': p['quality']})
             save_settings(st)
             if mesh_stat:
-                detail = ('\n\nメッシュで格納: ボディ %d 件 / 三角形 %s / glb.gz %.1f MB' % (
-                    mesh_stat['bodies'], format(mesh_stat['triangles'], ','), mesh_stat['glbSize'] / 1048576.0) +
+                detail = ('\n\nメッシュで格納: ボディ %d 件 (種類 %d) / 三角形 %s / glb.gz %.1f MB' % (
+                    mesh_stat['bodies'], mesh_stat['unique'], format(mesh_stat['triangles'], ','), mesh_stat['glbSize'] / 1048576.0) +
+                    ('  ※ 行列の検査に落ちた配置 %d 件は焼き込み' % mesh_stat['fallback'] if mesh_stat['fallback'] else '') +
                     ('  (非表示 %d 件は含めていません)' % mesh_stat['hidden'] if mesh_stat['hidden'] else '') +
                     ('  ※ %d 件はメッシュにできませんでした' % mesh_stat['failed'] if mesh_stat['failed'] else '') +
                     '\n色: %d / %d 件' % (mesh_stat['colored'], mesh_stat['bodies']) +
