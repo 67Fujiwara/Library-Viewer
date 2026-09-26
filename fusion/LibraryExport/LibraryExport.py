@@ -310,8 +310,10 @@ def appearance_color(app):
         return None
     key = None
     try:
-        key = app.id
-        if key in _color_cache:
+        key = (app.name, app.id)          # id だけだと同じ値を返す版があり、全部が最初の色になった (実機)
+        if not app.name or not app.id:
+            key = None
+        elif key in _color_cache:
             return _color_cache[key]
     except Exception:
         key = None
@@ -462,7 +464,8 @@ def collect_meshes(design, quality_id, progress=None):
     戻り: (model, {'bodies', 'unique', 'hidden', 'failed', 'triangles', 'colored', 'fallback'})"""
     root = design.rootComponent
     meshes, cache = [], {}          # cache: (コンポーネント id, ボディ番号, 色) → メッシュ番号
-    stat = {'bodies': 0, 'unique': 0, 'hidden': 0, 'failed': 0, 'triangles': 0, 'seen': 0, 'colored': 0, 'fallback': 0}
+    stat = {'bodies': 0, 'unique': 0, 'hidden': 0, 'failed': 0, 'triangles': 0, 'seen': 0, 'colored': 0, 'fallback': 0,
+            'small_tris': 0, 'top': [], 'colors': set()}
     _color_cache.clear(); del _uncolored_samples[:]
 
     def tick():
@@ -485,10 +488,16 @@ def collect_meshes(design, quality_id, progress=None):
         except Exception:
             return comp.name
 
-    def place(node, name, mi, mtx, tris):
+    def place(node, name, mi, mtx, tris, extent):
         node['children'].append({'name': name, 'meshIndex': mi, 'matrix': mtx, 'children': []})
         stat['bodies'] += 1
         stat['triangles'] += tris
+        if extent < 30.0:
+            stat['small_tris'] += tris
+        c = meshes[mi].get('color')
+        if c:
+            stat['colors'].add((round(c[0], 2), round(c[1], 2), round(c[2], 2)))
+        top = stat['top']; top.append((tris, name)); top.sort(reverse=True); del top[8:]
 
     def add_root_bodies(node):
         for body in root.bRepBodies:
@@ -501,7 +510,7 @@ def collect_meshes(design, quality_id, progress=None):
             meshes.append(m)
             if m['color']:
                 stat['colored'] += 1
-            place(node, body.name, len(meshes) - 1, None, len(m['indices']) // 3)
+            place(node, body.name, len(meshes) - 1, None, len(m['indices']) // 3, body_extent_mm(body))
 
     def add_occ_bodies(occ, node):
         comp = occ.component
@@ -527,7 +536,7 @@ def collect_meshes(design, quality_id, progress=None):
                     if color:
                         stat['colored'] += 1
                 tick()
-                place(node, pb.name, mi, mtx, len(meshes[mi]['indices']) // 3)
+                place(node, pb.name, mi, mtx, len(meshes[mi]['indices']) // 3, body_extent_mm(pb))
             else:
                 m = tessellate(pb, quality_id, color)                                # 焼き込み (共有しない)
                 tick()
@@ -536,7 +545,7 @@ def collect_meshes(design, quality_id, progress=None):
                 meshes.append(m)
                 if color:
                     stat['colored'] += 1
-                place(node, pb.name, len(meshes) - 1, None, len(m['indices']) // 3)
+                place(node, pb.name, len(meshes) - 1, None, len(m['indices']) // 3, body_extent_mm(pb))
 
     def walk(occs, node):
         for occ in occs:
@@ -610,9 +619,7 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             chk_mesh.tooltip = ('Fusion のメッシュをそのまま glb.gz に書きます。ビューア側の STEP 変換を通らないので、\n'
                                 'どんな大きさでも開くのは一瞬です。共有フォルダに置くのも glb.gz だけ (STEP の 1/23)。')
             ddq = inputs.addDropDownCommandInput('quality', '細かさ', adsk.core.DropDownStyles.TextListDropDownStyle)
-            last_q = st.get('lastQuality', 'normal')
-            if last_q not in [q[0] for q in MESH_QUALITY]:
-                last_q = 'normal'
+            last_q = 'normal'                  # 初期値は毎回「標準」
             for qid, label, _t, _d, _q in MESH_QUALITY:
                 ddq.listItems.add(label, qid == last_q)
             ddq.isEnabled = mesh_on
@@ -887,7 +894,10 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
                     ('  ※ 行列の検査に落ちた配置 %d 件は焼き込み' % mesh_stat['fallback'] if mesh_stat['fallback'] else '') +
                     ('  (非表示 %d 件は含めていません)' % mesh_stat['hidden'] if mesh_stat['hidden'] else '') +
                     ('  ※ %d 件はメッシュにできませんでした' % mesh_stat['failed'] if mesh_stat['failed'] else '') +
-                    '\n色: %d / %d 件' % (mesh_stat['colored'], mesh_stat['bodies']) +
+                    '\n色: %d / %d 種類 (色の種類 %d)' % (mesh_stat['colored'], mesh_stat['unique'], len(mesh_stat['colors'])) +
+                    '\n三角形の内訳: 30mm 未満の小物 %d%% / 多い順: %s' % (
+                        int(100.0 * mesh_stat['small_tris'] / max(mesh_stat['triangles'], 1)),
+                        ', '.join('%s %s' % (n, format(t, ',')) for t, n in mesh_stat['top'][:5])) +
                     ('\n色が取れなかった外観:\n  ' + '\n  '.join(_uncolored_samples) if _uncolored_samples else ''))
             else:
                 detail = ('\n\nユニット %d 件に分けて書き出しました（ライブラリ上は 1 件です）。' % len(exported) if units else '')
