@@ -128,6 +128,13 @@ check((await page.textContent('#search-sum')).includes('ライブラリ 1'), 'an
 await page.fill('#tree-search', '設計1課');       // 部署でも当たる
 await page.waitForTimeout(350);
 check((await hitTitles()).includes('検査装置A'), 'searching a department finds its devices: ' + await hitTitles());
+// ライブラリタブの絞り込みも部品名で当たる (開かなくてよい)
+await page.click('label[for="tab-lib"]');
+await page.fill('#lib-search', 'POST');
+await page.waitForFunction(() => [...document.querySelectorAll('.lib-card')].some(c => c.textContent.includes('メッシュ機H')) && document.querySelectorAll('.lib-card').length === 1, null, { timeout: 10000 });
+check((await page.$$('.lib-card')).length === 1, 'the library tab filter narrows by part name without opening');
+await page.fill('#lib-search', '');
+await page.waitForTimeout(300);
 // 読み込んでいない装置でも、中の部品名で当たる (index.json を検索時に読む)
 await page.fill('#tree-search', 'BASE_PLATE');
 // 前の検索 (設計1課) の結果にもメッシュ機H は出るので、新しい問い合わせで部品名が当たるまで待つ
@@ -387,8 +394,25 @@ check(await page.evaluate(() => window.__ls('models/設計2課/鈴木/P2026-003_
 check((await page.evaluate(() => window.__ls('models/設計2課/鈴木'))).length === 2, 'sibling folders untouched');
 
 // 部署が空になったら、その部署フォルダも消える
+// Fusion が新しく格納した (= フォルダに増えた) 装置は、ブラウザの窓に戻るだけで一覧に出る
+await page.evaluate(() => {
+  const p = 'models/設計1課/藤原/P2026-008_新着機J/_'.split('/'); let d = window.__root;
+  for (const seg of p) { if (!d._e.has(seg)) d._e.set(seg, new (Object.getPrototypeOf(window.__root).constructor)(seg)); d = d._e.get(seg); }
+  const enc = new TextEncoder();
+  const meta = { schema: 'library-viewer/1', projectCode: 'P2026-008', deviceName: '新着機J', workpiece: '', department: '設計1課', owner: '藤原', savedAt: '2026-09-27T09:00:00+09:00', files: [{ name: 'x', glb: 'x.glb.gz' }] };
+  const FileH = Object.getPrototypeOf(window.__root._e.get('members.json')).constructor;
+  d._e.set('meta.json', new FileH('meta.json', enc.encode(JSON.stringify(meta))));
+  d._e.set('x.glb.gz', new FileH('x.glb.gz', new Uint8Array(10)));
+});
+const nBefore = await page.evaluate(() => Library.entries().length);
+await page.waitForTimeout(2200);   // 直前の走査から 2 秒以内は読み直さない
+await page.evaluate(() => { window.dispatchEvent(new Event('focus')); });
+await page.waitForFunction((n) => Library.entries().length === n + 1, nBefore, { timeout: 15000 });
+check(await page.evaluate(() => Library.entries().some(e => e.meta.deviceName === '新着機J')), 'a device stored while the viewer was in the background appears on window focus, without 再読み込み');
+await page.waitForFunction(() => document.querySelector('#lib-status').className.includes('ok'), null, { timeout: 15000 });
+await page.waitForTimeout(300);
 check((await page.evaluate(() => window.__ls('models/設計1課'))).length === 3, '設計1課 has 3 owner folders (山田 / 田中 / 藤原)');
-for (const name of ['溶接装置D', '検査装置A', '分割機G', 'メッシュ機H']) {
+for (const name of ['溶接装置D', '検査装置A', '分割機G', 'メッシュ機H', '新着機J']) {
   await page.locator('.lib-card', { hasText: name }).locator('button', { hasText: '削除' }).click();
   await page.waitForSelector('#confirm-dialog[open]');
   await page.click('#confirm-ok');

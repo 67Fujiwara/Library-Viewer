@@ -31,6 +31,17 @@ var Library = (function () {
     $('#lh-forget').addEventListener('click', forget);
     $('#lh-auto').addEventListener('change', function (e) { Storage.set(AUTO_KEY, e.target.checked); renderHome(); });
     $('#lh-auto').checked = autoOpen();
+    // Fusion で格納してブラウザに戻ってきたときに、「再読み込み」を押さなくても一覧に出るように。
+    // フォルダの変更通知は File System Access API に無いので、窓が前に来たときに読み直す (2 秒に 1 回まで)
+    var lastScan = 0;
+    function rescanOnReturn() {
+      if (!handle || !entries.length || document.hidden) return;
+      if (Date.now() - lastScan < 2000) return;
+      scan();
+    }
+    window.addEventListener('focus', rescanOnReturn);
+    document.addEventListener('visibilitychange', rescanOnReturn);
+    App.onLibraryScanned = function () { lastScan = Date.now(); };
     if (!supported()) { $('#btn-open-lib').disabled = true; statusEl.textContent = 'このブラウザではフォルダを開けません'; return; }
     restoreHandle().then(async function (h) {
       if (!h) { renderHome(); return; }
@@ -145,6 +156,7 @@ var Library = (function () {
     await walk(modelsDir || handle, modelsDir ? ['models'] : [], 0, seen, found);
     await saveCatCache(seen);
     scanStats.ms = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0);
+    if (App.onLibraryScanned) App.onLibraryScanned();
     found.sort(function (a, b) { return String(b.meta.savedAt || '').localeCompare(String(a.meta.savedAt || '')); });
     var changed = signature(found) !== signature(entries);
     entries = found;
@@ -461,6 +473,7 @@ var Library = (function () {
   function renderList() {
     listEl.textContent = '';
     var q = Tags.fold(searchEl.value.trim());
+    if (q && needsNames()) loadNames().then(function () { if (Tags.fold(searchEl.value.trim()) === q) renderList(); });
     var list = entries.filter(function (e) { return matches(e, q); });
     emptyEl.hidden = entries.length > 0;
     if (entries.length && !list.length) listEl.appendChild(el('p.empty', { text: '一致する装置がありません' }));
