@@ -25,10 +25,14 @@ import os, sys, json, re, datetime, gc
 from array import array
 
 # 同じフォルダの glbwrite.py (純 Python の GLB ライター。Fusion 無しでテスト済み)
+# Fusion はスクリプトの Python を終了せずに使い回すので、一度 import したモジュールは
+# ファイルを差し替えても古いまま残る。必ず reload して、上書きコピーした版を使う
+import importlib
 _DIR = os.path.dirname(os.path.abspath(__file__))
 if _DIR not in sys.path:
     sys.path.insert(0, _DIR)
 import glbwrite
+glbwrite = importlib.reload(glbwrite)
 
 _app = None
 _ui = None

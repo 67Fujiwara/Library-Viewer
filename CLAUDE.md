@@ -165,6 +165,8 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
   - 法線は書かず `GLB.read` の `computeNormals` で作る。Fusion のメッシュは面の境で節点が分かれているので
     面ごとに滑らかに出る。ビューア側 (`02-glb.js`) はノードの `matrix` / TRS / 5122 / 共有メッシュを
     **読み込み時に配置ごとへ焼き込む**。ビューアの他の部分は「1 ノード = 1 メッシュ = ワールド座標」のまま
+  - **Fusion は一度 import した補助モジュール (`glbwrite`) を差し替えても古いまま使う**（Python を終了しない）。
+    `importlib.reload(glbwrite)` を必ず通す。実機で「行番号と文が合わないトレースバック」が出たらこれ
   - `run()` で `autoTerminate(False)` にしたら、`destroy` で `adsk.terminate()` を呼ぶ。
     呼ばないと「スクリプトとアドイン」に実行中 (■) のまま残る
   - **色は外観の種類ごとにプロパティ id が違う**（塗装 `opaque_albedo` / 金属 `metal_f0` / 積層 `layered_diffuse` …）。
