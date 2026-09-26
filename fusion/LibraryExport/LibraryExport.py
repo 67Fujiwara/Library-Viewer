@@ -95,7 +95,7 @@ def library_layout(root):
 # ---- ネーミングルール (ビューアの src/js/03b-naming.js と同じ規則) ----
 NAMING_FIELDS = ('projectCode', 'deviceName', 'workpiece', 'customer', 'department', 'owner')
 NAMING_OPTIONAL = ('workpiece', 'customer')   # 空でもよい項目
-NAMING_DEFAULT = {'pattern': '{projectCode}_{deviceName}_{workpiece}_{department}_{owner}', 'separator': '_'}
+NAMING_DEFAULT = {'pattern': '{projectCode}_{deviceName}_{workpiece}_{department}_{owner}_{customer}', 'separator': '_'}
 NAMING_GREEDY = 'deviceName'
 
 
@@ -116,7 +116,9 @@ def naming_fields(rule):
 
 
 def naming_parse(name, rule):
-    """ファイル名 / ドキュメント名 → dict | None。装置名だけ区切り文字を含んでよい。"""
+    """ファイル名 / ドキュメント名 → dict | None。装置名だけ区切り文字を含んでよい。
+    まず全項目で読み、駄目なら末尾の「空でもよい項目」を 1 つずつ無いものとして読み直す
+    (取引先を足す前の古い名前との互換。03b-naming.js の parse と同じ規則)"""
     fields = naming_fields(rule)
     if not fields:
         return None
@@ -126,6 +128,20 @@ def naming_parse(name, rule):
     if sep == '_':
         base = base.replace('＿', '_')
     parts = [p.strip() for p in base.split(sep)]
+    fields = list(fields)
+    absent = []
+    while True:
+        out = _naming_parse_with(parts, fields, sep)
+        if out is not None:
+            for k in absent:
+                out[k] = ''
+            return out
+        if fields[-1] not in NAMING_OPTIONAL or len(fields) <= 2:
+            return None
+        absent.append(fields.pop())
+
+
+def _naming_parse_with(parts, fields, sep):
     if len(parts) < len(fields):
         return None
     gi = fields.index(NAMING_GREEDY) if NAMING_GREEDY in fields else len(fields) - 1

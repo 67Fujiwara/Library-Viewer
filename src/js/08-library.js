@@ -18,6 +18,13 @@ var Library = (function () {
     $('#rule-cancel').addEventListener('click', function () { $('#rules-dialog').close(); });
     $('#rules-dialog form').addEventListener('submit', function (e) { e.preventDefault(); saveRules(); });
     ['#rule-pattern', '#rule-sep', '#rule-try'].forEach(function (id) { $(id).addEventListener('input', updateRulePreview); });
+    $('#rule-reset').addEventListener('click', function () { $('#rule-pattern').value = Naming.DEFAULT.pattern; $('#rule-sep').value = Naming.DEFAULT.separator; updateRulePreview(); });
+    // 項目のボタン: 押すとパターンの末尾に足す / すでにあれば外す (必須の 2 つは外せない)
+    Object.keys(Naming.FIELDS).forEach(function (k) {
+      var b = el('button.tag.rule-field', { type: 'button', dataset: { field: k }, text: Naming.FIELDS[k], title: '{' + k + '}' });
+      b.addEventListener('click', function () { toggleRuleField(k); });
+      $('#rule-fields').appendChild(b);
+    });
     searchEl.addEventListener('input', debounce(renderList, 120));
     $('#lh-connect').addEventListener('click', reconnect);
     $('#lh-change').addEventListener('click', function () { pick(); });
@@ -247,9 +254,27 @@ var Library = (function () {
     $('#rules-dialog').showModal();
   }
   function ruleFromForm() { return { pattern: $('#rule-pattern').value.trim(), separator: $('#rule-sep').value || '_' }; }
+  var RULE_REQUIRED = { projectCode: 1, deviceName: 1 };
+  function toggleRuleField(k) {
+    var r = ruleFromForm(), sep = r.separator, fields = Naming.fieldsOf(r) || [];
+    if (fields.indexOf(k) >= 0) { if (RULE_REQUIRED[k]) return; fields = fields.filter(function (f) { return f !== k; }); }
+    else fields.push(k);
+    $('#rule-pattern').value = fields.map(function (f) { return '{' + f + '}'; }).join(sep);
+    updateRulePreview();
+    $('#rule-pattern').focus();
+  }
+  function renderRuleFields(r) {
+    var used = Naming.fieldsOf(r) || [];
+    $$('#rule-fields .rule-field').forEach(function (b) {
+      var k = b.dataset.field, on = used.indexOf(k) >= 0;
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      b.title = '{' + k + '}' + (on ? (RULE_REQUIRED[k] ? '（必須）' : '  押すと外す') : '  押すと末尾に足す');
+    });
+  }
   function updateRulePreview() {
     var r = ruleFromForm(), err = Naming.validate(r), errEl = $('#rule-error');
     errEl.hidden = !err; errEl.textContent = err || '';
+    renderRuleFields(r);
     $('#rule-save').disabled = !!err;
     $('#rule-example').textContent = err ? '' : Naming.example(r);
     var t = $('#rule-try').value.trim(), out = $('#rule-try-out');

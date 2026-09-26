@@ -1,12 +1,15 @@
 /* ネーミングルール: ファイル名から案件情報を取り出す / 案件情報からファイル名を作る
- *   既定: {projectCode}_{deviceName}_{workpiece}_{department}_{owner}
- *   例:   P2026-001_検査装置A_ワークX_設計1課_山田.step
+ *   既定: {projectCode}_{deviceName}_{workpiece}_{department}_{owner}_{customer}
+ *   例:   P2026-001_検査装置A_ワークX_設計1課_山田_〇〇工業.step
  * 装置名だけは区切り文字を含んでよい (左右の項目を先に確定し、残りをすべて装置名にする)。
- * ルールは library.json の naming に保存し、ビューアと Fusion スクリプトで共有する。 */
+ * 末尾の「空でもよい項目」(取引先など) は **無くてもよい**: 取引先を足す前に付けた
+ * P2026-001_検査装置A_ワークX_設計1課_山田.step もそのまま読める。
+ * ルールは library.json の naming に保存し、ビューアと Fusion スクリプトで共有する。
+ * **LibraryExport.py の naming_parse / naming_format と同じ規則。必ず同時に直す** */
 var Naming = (function () {
   var FIELDS = { projectCode: '案件コード', deviceName: '装置名', workpiece: '対象ワーク', customer: '取引先', department: '部署', owner: '担当者' };
   var OPTIONAL = { workpiece: 1, customer: 1 };   // 空でもよい項目
-  var DEFAULT = { pattern: '{projectCode}_{deviceName}_{workpiece}_{department}_{owner}', separator: '_' };
+  var DEFAULT = { pattern: '{projectCode}_{deviceName}_{workpiece}_{department}_{owner}_{customer}', separator: '_' };
   var GREEDY = 'deviceName';
   var KEY = 'lv.naming';
 
@@ -28,7 +31,9 @@ var Naming = (function () {
     return null;
   }
 
-  /* ファイル名 → {projectCode, deviceName, workpiece, department, owner} | null */
+  /* ファイル名 → {projectCode, deviceName, workpiece, customer, department, owner} | null
+   * まず全項目で読み、駄目なら末尾の「空でもよい項目」を 1 つずつ無いものとして読み直す
+   * (取引先を足す前の古いファイル名との互換。装置名に区切り文字が入っていても効く) */
   function parse(filename, rule) {
     rule = rule || current();
     var fields = fieldsOf(rule); if (!fields) return null;
@@ -36,6 +41,16 @@ var Naming = (function () {
     var base = String(filename).replace(/\.(step|stp|glb)$/i, '').replace(/\s+v\d+$/i, '').trim();   // Fusion の " v3" は落とす
     if (sep === '_') base = base.replace(/＿/g, '_');
     var parts = base.split(sep).map(function (s) { return s.trim(); });
+    var absent = {};
+    for (;;) {
+      var out = parseWith(parts, fields, sep);
+      if (out) { for (var k in absent) out[k] = ''; return out; }
+      if (!OPTIONAL[fields[fields.length - 1]] || fields.length <= 2) return null;
+      absent[fields[fields.length - 1]] = 1;
+      fields = fields.slice(0, -1);
+    }
+  }
+  function parseWith(parts, fields, sep) {
     if (parts.length < fields.length) return null;
     var gi = fields.indexOf(GREEDY); if (gi < 0) gi = fields.length - 1;
     var out = {}, i;
@@ -68,6 +83,6 @@ var Naming = (function () {
     return DEFAULT;
   }
   function saveLocal(rule) { Storage.set(KEY, rule); }
-  return { FIELDS: FIELDS, DEFAULT: DEFAULT, parse: parse, format: format, example: example, describe: describe, validate: validate, current: current, saveLocal: saveLocal };
+  return { FIELDS: FIELDS, OPTIONAL: OPTIONAL, DEFAULT: DEFAULT, fieldsOf: fieldsOf, parse: parse, format: format, example: example, describe: describe, validate: validate, current: current, saveLocal: saveLocal };
 })();
 if (typeof module !== 'undefined') module.exports = Naming;

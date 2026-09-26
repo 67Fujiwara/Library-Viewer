@@ -6,9 +6,10 @@
   "scripts": {
     "build": "python3 build.py",
     "sample": "node tools/make_sample_library.mjs",
-    "test": "npm run test:step && npm run test:glb && npm run test:browser && npm run test:folder && npm run test:treeedit && npm run test:tags && npm run test:library && npm run test:autolib && npm run test:panels && npm run test:measure && npm run test:focus && npm run test:perf && npm run test:sample",
+    "test": "npm run test:step && npm run test:glb && npm run test:naming && npm run test:browser && npm run test:folder && npm run test:treeedit && npm run test:tags && npm run test:library && npm run test:autolib && npm run test:panels && npm run test:measure && npm run test:focus && npm run test:perf && npm run test:sample",
     "test:step": "python3 tools/gen_test_step.py test/out && node test/read_step.mjs",
     "test:glb": "node test/test_glb_zip.mjs && node test/fusion_glb_test.mjs",
+    "test:naming": "node test/naming_test.mjs",
     "test:browser": "node test/browser_test.mjs",
     "test:library": "node test/library_test.mjs",
     "test:autolib": "node test/autolib_test.mjs",

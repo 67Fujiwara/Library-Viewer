@@ -186,7 +186,10 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
   削除後は空になった親フォルダも `models/` の 1 つ下まで遡って片づける（空フォルダを残さない）
 - ネーミングルールで区切り文字を含んでよいのは **装置名だけ**（左右の項目を先に確定し、残りを装置名にする）。
   空を許すのは **対象ワークと取引先だけ**（`Naming.OPTIONAL` / `NAMING_OPTIONAL`）。
-  取引先 `{customer}` は既定のパターンには入れない（既存のファイル名が全部ルール外になるため）
+  既定は `…_{owner}_{customer}` で **取引先は必ず最後**。**末尾の「空でもよい項目」は無くてもよい**
+  （`parse` は全項目で読めなければ末尾の optional を 1 つずつ落として読み直す）ので、取引先を足す前の
+  ファイル名もそのまま読める。取引先を途中に入れると古い名前が全部ルール外になるので、そこには置かない。
+  `format` は常に全項目を書く（取引先が空なら末尾に `_`）。`test/naming_test.mjs` が JS と Python の一致を見る
 - **版は小数点なしの通し番号**（ヘッダーの `v20`）。`build.py` が `git rev-list --count HEAD` から作り、
   git の無い環境のために `VERSION` に控えを残す。日付にしない（新旧の判別がしづらい）
 - `inbox/` は装置フォルダの走査対象から外す（`SKIP_DIRS`）。取り込めたファイルだけ `removeEntry` で消す
@@ -341,6 +344,7 @@ tools/gen_test_step.py   AP214 STEP テストデータ生成 (箱 / 階層アセ
 tools/make_sample_library.mjs  サンプルライブラリ生成 (models / inbox / 名簿まで一式)
 test/read_step.mjs       occt が階層を返すか
 test/test_glb_zip.mjs    GLB を gltf-transform で / ZIP を unzip で
+test/naming_test.mjs     ネーミングルール (03b-naming.js と LibraryExport.py の parse/format が一致するか / 取引先の無い古い名前)
 test/fusion_glb_test.mjs Fusion スクリプトの GLB ライター (glbwrite.py) の出力をビューアの GLB.read と gltf-transform で読む
 test/fusion_glb_box.py   その入力 (Fusion の TriangleMesh と同じ形の箱 2 つをオカレンス階層に入れて glb.gz を書く)
 test/browser_test.mjs    file:// 通しテスト (読み込み→ツリー→横断→格納→再変換→ルール事前入力)

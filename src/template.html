@@ -339,12 +339,16 @@
       <div class="field"><label for="rule-pattern">パターン</label><input type="text" id="rule-pattern" autocomplete="off" spellcheck="false"></div>
       <div class="field"><label for="rule-sep">区切り文字</label><input type="text" id="rule-sep" maxlength="3" autocomplete="off"></div>
     </div>
-    <div class="field"><span class="label">使える項目</span><div class="muted small mono">{projectCode} 案件コード · {deviceName} 装置名 · {workpiece} 対象ワーク · {customer} 取引先 · {department} 部署 · {owner} 担当者<br>装置名だけは区切り文字を含められます。対象ワークと取引先は空でも可 (区切りを続けて書く)。</div></div>
+    <div class="field"><span class="label">項目（押すと入れる / 外す。パターンは直接書いても構いません）</span>
+      <div id="rule-fields" class="rule-fields"></div>
+      <div class="muted small">装置名だけは区切り文字を含められます。対象ワークと取引先は空でも可（区切りを続けて書く）。取引先を最後に置けば、取引先の無い古いファイル名もそのまま読めます。</div></div>
     <div class="field"><span class="label">例</span><div id="rule-example" class="path-preview mono"></div></div>
     <div class="field"><span class="label">試す</span><input type="text" id="rule-try" placeholder="ファイル名を入れると解析結果を表示" autocomplete="off"><div id="rule-try-out" class="muted small mono"></div></div>
     <div class="field"><label class="device-list"><input type="checkbox" id="rule-inbox-auto"> ライブラリを開いたとき、受信箱を自動で取り込む</label></div>
     <div id="rule-error" class="small" hidden></div>
     <div class="dialog-actions">
+      <button type="button" id="rule-reset" class="btn secondary">既定に戻す</button>
+      <span class="spacer"></span>
       <button type="button" id="rule-cancel" class="btn secondary">キャンセル</button>
       <button type="submit" id="rule-save" class="btn primary">保存</button>
     </div>

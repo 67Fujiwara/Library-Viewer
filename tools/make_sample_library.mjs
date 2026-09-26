@@ -147,7 +147,7 @@ fs.copyFileSync(path.join(TMP, 'std', 'holes.step'), path.join(OUT, 'sample-step
 
 json(path.join(OUT, 'library.json'), {
   schema: 'library-viewer/library/1', layout: 'models / 部署 / 担当者 / 案件コード_装置名 / 対象ワーク',
-  naming: { pattern: '{projectCode}_{deviceName}_{workpiece}_{department}_{owner}', separator: '_' },
+  naming: { pattern: '{projectCode}_{deviceName}_{workpiece}_{department}_{owner}_{customer}', separator: '_' },
   inboxAuto: false, createdAt: new Date().toISOString().replace(/\.\d+Z$/, '+09:00'),
   note: 'このファイルはライブラリの保存階層とネーミングルールを記録します。編集はビューアの「ネーミングルール」から。',
 });

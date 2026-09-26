@@ -176,6 +176,19 @@ await page.fill('#rule-pattern', '{projectCode}-{deviceName}');
 await page.fill('#rule-sep', '-');
 await page.fill('#rule-try', 'Z1-テスト機.step');
 check((await page.textContent('#rule-try-out')).includes('models/_/_/Z1_テスト機'), 'rule try-out shows target path: ' + await page.textContent('#rule-try-out'));
+// 項目のボタンでパターンを組める (押すと末尾に足す / もう一度で外す / 必須は外れない / 既定に戻す)
+const pressed = () => page.$$eval('#rule-fields .rule-field[aria-pressed="true"]', b => b.map(x => x.dataset.field));
+check(JSON.stringify(await pressed()) === JSON.stringify(['projectCode', 'deviceName']), 'field buttons reflect the pattern: ' + await pressed());
+await page.click('#rule-fields .rule-field[data-field="customer"]');
+check(await page.inputValue('#rule-pattern') === '{projectCode}-{deviceName}-{customer}', 'pressing 取引先 appends it: ' + await page.inputValue('#rule-pattern'));
+await page.click('#rule-fields .rule-field[data-field="customer"]');
+check(await page.inputValue('#rule-pattern') === '{projectCode}-{deviceName}', 'pressing it again removes it');
+await page.click('#rule-fields .rule-field[data-field="projectCode"]');
+check(await page.inputValue('#rule-pattern') === '{projectCode}-{deviceName}', 'a required field cannot be removed');
+await page.click('#rule-reset');
+check(await page.inputValue('#rule-pattern') === '{projectCode}_{deviceName}_{workpiece}_{department}_{owner}_{customer}' && await page.inputValue('#rule-sep') === '_', '既定に戻す restores the default (with 取引先 last)');
+await page.fill('#rule-try', 'P2026-009_旧名の装置_ワークZ_設計1課_山田.step');
+check((await page.textContent('#rule-try-out')).includes('取引先=(空)') && (await page.textContent('#rule-try-out')).includes('担当者=山田'), 'a legacy name without 取引先 still parses under the default: ' + await page.textContent('#rule-try-out'));
 await page.click('#rule-cancel');
 
 check((await page.evaluate(() => window.__ls('catalog.json'))).text.includes('P2026-002'), 'catalog.json written to library root');
