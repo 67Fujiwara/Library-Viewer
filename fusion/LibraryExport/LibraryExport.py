@@ -746,11 +746,9 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
                     ('  (非表示 %d 件は含めていません)' % mesh_stat['hidden'] if mesh_stat['hidden'] else '') +
                     ('  ※ %d 件はメッシュにできませんでした' % mesh_stat['failed'] if mesh_stat['failed'] else '') +
                     '\n色: %d / %d 件' % (mesh_stat['colored'], mesh_stat['bodies']) +
-                    ('\n色が取れなかった外観:\n  ' + '\n  '.join(_uncolored_samples) if _uncolored_samples else '') +
-                    '\n\nLibrary Viewer の「ライブラリ」タブに表示され、そのまま開けます。')
+                    ('\n色が取れなかった外観:\n  ' + '\n  '.join(_uncolored_samples) if _uncolored_samples else ''))
             else:
-                detail = (('\n\nユニット %d 件に分けて書き出しました（ライブラリ上は 1 件です）。' % len(exported) if units else '') +
-                          '\n\nLibrary Viewer の「ライブラリ」タブに表示されます（初回に開いたとき glb が生成されます）。')
+                detail = ('\n\nユニット %d 件に分けて書き出しました（ライブラリ上は 1 件です）。' % len(exported) if units else '')
             _ui.messageBox('格納しました:\n' + target + detail)
         except Exception:
             _ui.messageBox('LibraryExport:\n' + traceback.format_exc())
