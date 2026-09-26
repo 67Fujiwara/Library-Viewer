@@ -183,8 +183,17 @@ await page.click('#rule-fields .rule-field[data-field="customer"]');
 check(await page.inputValue('#rule-pattern') === '{projectCode}-{deviceName}-{customer}', 'pressing 取引先 appends it: ' + await page.inputValue('#rule-pattern'));
 await page.click('#rule-fields .rule-field[data-field="customer"]');
 check(await page.inputValue('#rule-pattern') === '{projectCode}-{deviceName}', 'pressing it again removes it');
+// 外して戻した項目は末尾ではなく決まった位置に戻る (順番が崩れない)
+await page.click('#rule-fields .rule-field[data-field="customer"]');
+await page.click('#rule-fields .rule-field[data-field="owner"]');
+await page.click('#rule-fields .rule-field[data-field="workpiece"]');
+check(await page.inputValue('#rule-pattern') === '{projectCode}-{deviceName}-{workpiece}-{owner}-{customer}', 'a re-added item goes back to its fixed position, not the end: ' + await page.inputValue('#rule-pattern'));
+await page.click('#rule-fields .rule-field[data-field="workpiece"]');
+await page.click('#rule-fields .rule-field[data-field="workpiece"]');
+check(await page.inputValue('#rule-pattern') === '{projectCode}-{deviceName}-{workpiece}-{owner}-{customer}', 'toggling an item off and on leaves the order unchanged');
+const beforeReq = await page.inputValue('#rule-pattern');
 await page.click('#rule-fields .rule-field[data-field="projectCode"]');
-check(await page.inputValue('#rule-pattern') === '{projectCode}-{deviceName}', 'a required field cannot be removed');
+check(await page.inputValue('#rule-pattern') === beforeReq, 'a required field cannot be removed');
 await page.click('#rule-reset');
 check(await page.inputValue('#rule-pattern') === '{projectCode}_{deviceName}_{workpiece}_{department}_{owner}_{customer}' && await page.inputValue('#rule-sep') === '_', '既定に戻す restores the default (with 取引先 last)');
 await page.fill('#rule-try', 'P2026-009_旧名の装置_ワークZ_設計1課_山田.step');

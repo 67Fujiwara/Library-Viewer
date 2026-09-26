@@ -287,13 +287,13 @@ def srgb_to_linear(v):
     return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
 
 
-def _color_prop_value(prop):
+def _prop_color(prop):
+    """Property → [r,g,b] リニア | None。型 (objectType) は見ない: value に red/green/blue が
+    あれば色とみなす (FloatProperty などは AttributeError になって None)"""
+    if prop is None:
+        return None
     try:
-        if prop is None or prop.objectType != adsk.core.ColorProperty.classType():
-            return None
         c = prop.value
-        if c is None:
-            return None
         return [srgb_to_linear(c.red), srgb_to_linear(c.green), srgb_to_linear(c.blue)]
     except Exception:
         return None
@@ -308,29 +308,48 @@ def appearance_color(app):
         if key in _color_cache:
             return _color_cache[key]
     except Exception:
-        pass
-    color = None
+        key = None
+    color, last_err, props = None, '', None
     try:
         props = app.appearanceProperties
-        for pid in COLOR_PROP_IDS:
-            color = _color_prop_value(props.itemById(pid))
+    except Exception as e:
+        last_err = repr(e)
+    if props is not None:
+        for pid in COLOR_PROP_IDS:                       # 1 段ずつ守る (無い id で例外になっても次へ)
+            try:
+                color = _prop_color(props.itemById(pid))
+            except Exception as e:
+                color, last_err = None, repr(e)
             if color:
                 break
-        if color is None:
-            for i in range(props.count):
-                color = _color_prop_value(props.item(i))
+        if color is None:                                # どれでもいいので最初の色プロパティ
+            try:
+                n = props.count
+            except Exception as e:
+                n, last_err = 0, repr(e)
+            for i in range(n):
+                try:
+                    color = _prop_color(props.item(i))
+                except Exception as e:
+                    color, last_err = None, repr(e)
                 if color:
                     break
-        if color is None and len(_uncolored_samples) < 6:
-            ids = []
+    if color is None and len(_uncolored_samples) < 6:
+        ids = []
+        try:
             for i in range(props.count):
                 try:
                     ids.append(props.item(i).id)
                 except Exception:
                     pass
-            _uncolored_samples.append('%s: [%s]' % (app.name, ', '.join(ids[:12])))
-    except Exception:
-        color = None
+        except Exception:
+            pass
+        name = ''
+        try:
+            name = app.name
+        except Exception:
+            pass
+        _uncolored_samples.append('%s: [%s]%s' % (name, ', '.join(ids[:12]), ('  err=' + last_err) if last_err else ''))
     if key is not None:
         _color_cache[key] = color
     return color

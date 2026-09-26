@@ -255,10 +255,18 @@ var Library = (function () {
   }
   function ruleFromForm() { return { pattern: $('#rule-pattern').value.trim(), separator: $('#rule-sep').value || '_' }; }
   var RULE_REQUIRED = { projectCode: 1, deviceName: 1 };
+  /* 項目のボタン: 外した項目をもう一度入れるとき、末尾ではなく **決まった位置** に戻す
+   * (既定パターンの並び順。末尾に足すと外して戻すたびに順番が変わり、ファイル名の形が崩れる)。
+   * 手で並べ替えた項目はそのまま、戻す項目だけを「並び順で後ろになる最初の項目」の前に入れる */
+  var RULE_ORDER = Naming.fieldsOf(Naming.DEFAULT);
   function toggleRuleField(k) {
     var r = ruleFromForm(), sep = r.separator, fields = Naming.fieldsOf(r) || [];
     if (fields.indexOf(k) >= 0) { if (RULE_REQUIRED[k]) return; fields = fields.filter(function (f) { return f !== k; }); }
-    else fields.push(k);
+    else {
+      var rank = RULE_ORDER.indexOf(k), at = fields.length;
+      for (var i = 0; i < fields.length; i++) { if (RULE_ORDER.indexOf(fields[i]) > rank) { at = i; break; } }
+      fields.splice(at, 0, k);
+    }
     $('#rule-pattern').value = fields.map(function (f) { return '{' + f + '}'; }).join(sep);
     updateRulePreview();
     $('#rule-pattern').focus();
