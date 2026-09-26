@@ -168,19 +168,6 @@ def naming_format(values, rule):
     return sep.join(out)
 
 
-def catalog_codes(root):
-    cat = read_json(os.path.join(root, 'catalog.json')) or {}
-    codes, works, customers = [], [], []
-    for e in cat.get('entries', []):
-        if e.get('projectCode') and e['projectCode'] not in codes:
-            codes.append(e['projectCode'])
-        if e.get('workpiece') and e['workpiece'] not in works:
-            works.append(e['workpiece'])
-        if e.get('customer') and e['customer'] not in customers:
-            customers.append(e['customer'])
-    return codes, works, customers
-
-
 # ---- ユニットごとの分割書き出し -------------------------------------------------
 # 大きいアセンブリを 1 本の STEP にすると、ビューアの変換がメモリと時間で詰む
 # (実測: 19MB 102 秒 / 59MB 12.7 分 / 373MB は失敗)。ルート直下のオカレンスごとに
@@ -466,6 +453,12 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             cmd = args.command
             cmd.isRepeatable = False
             cmd.okButtonText = '格納する'
+            # 既定の幅だとラベルが「案件コー…」と切れる。ラベル列が入る幅で開く
+            try:
+                cmd.setDialogInitialSize(560, 640)
+                cmd.setDialogMinimumSize(500, 520)
+            except Exception:
+                pass
             inputs = cmd.commandInputs
             st = load_settings()
             root = st.get('libraryRoot', '')
@@ -478,52 +471,50 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             if parsed:
                 info += '\nドキュメント名がネーミングルールに一致したので案件情報を自動入力しました。'
             inputs.addTextBoxCommandInput('info', '', info, 3, True)
-            inputs.addStringValueInput('libraryRoot', 'ライブラリのフォルダ', root)
+            inputs.addStringValueInput('libraryRoot', 'ライブラリ', root)
             inputs.addBoolValueInput('browse', 'フォルダを選ぶ…', False, '', False)
 
             inputs.addStringValueInput('projectCode', '案件コード *', parsed.get('projectCode') or st.get('lastProjectCode', ''))
-            codes, works, customers = catalog_codes(root) if root else ([], [], [])
-            dd = inputs.addDropDownCommandInput('codePick', '既存の案件から', adsk.core.DropDownStyles.TextListDropDownStyle)
-            dd.listItems.add('（選択）', True)
-            for c in codes[:50]:
-                dd.listItems.add(c, False)
             inputs.addStringValueInput('deviceName', '装置名 *', parsed.get('deviceName') or (design.rootComponent.name if design else doc_name))
             inputs.addStringValueInput('workpiece', '対象ワーク', parsed.get('workpiece') if parsed else st.get('lastWorkpiece', ''))
             inputs.addStringValueInput('customer', '取引先', (parsed.get('customer') if parsed else None) or st.get('lastCustomer', ''))
 
+            # 部署・担当者は名簿 (members.json) から選ぶ。手入力欄は置かない (名簿に無い人はビューアの「名簿」で足す)。
+            # 名簿がまだ無いライブラリでだけ、代わりに文字入力にする
             members = library_members(root) if root else []
-            depts = []
-            for d, _ in members:
-                if d not in depts:
-                    depts.append(d)
-            dd2 = inputs.addDropDownCommandInput('dept', '部署 *', adsk.core.DropDownStyles.TextListDropDownStyle)
             last_dept = parsed.get('department') or st.get('lastDept', '')
-            for d in depts:
-                dd2.listItems.add(d, d == last_dept)
-            dd2.listItems.add('（名簿にない部署を入力）', not depts or last_dept not in depts)
-            inputs.addStringValueInput('deptText', '部署 (手入力)', last_dept if last_dept not in depts else '')
-            dd3 = inputs.addDropDownCommandInput('owner', '担当者 *', adsk.core.DropDownStyles.TextListDropDownStyle)
             last_owner = parsed.get('owner') or st.get('lastOwner', '')
-            for d, n in members:
-                if d == (last_dept or (depts[0] if depts else '')):
-                    dd3.listItems.add(n, n == last_owner)
-            dd3.listItems.add('（名簿にない担当者を入力）', dd3.listItems.count == 0 or last_owner not in [n for _, n in members])
-            inputs.addStringValueInput('ownerText', '担当者 (手入力)', last_owner if last_owner not in [n for _, n in members] else '')
+            if members:
+                if last_dept and last_owner and (last_dept, last_owner) not in members:
+                    members.append((last_dept, last_owner))       # 前回 / ドキュメント名の人も選べるように
+                depts = []
+                for d, _ in members:
+                    if d not in depts:
+                        depts.append(d)
+                dd2 = inputs.addDropDownCommandInput('dept', '部署 *', adsk.core.DropDownStyles.TextListDropDownStyle)
+                cur_dept = last_dept if last_dept in depts else depts[0]
+                for d in depts:
+                    dd2.listItems.add(d, d == cur_dept)
+                dd3 = inputs.addDropDownCommandInput('owner', '担当者 *', adsk.core.DropDownStyles.TextListDropDownStyle)
+                fill_owners(dd3, members, cur_dept, last_owner)
+            else:
+                inputs.addStringValueInput('dept', '部署 *', last_dept)
+                inputs.addStringValueInput('owner', '担当者 *', last_owner)
 
             mesh_on = bool(st.get('lastMesh', True))
-            chk_mesh = inputs.addBoolValueInput('mesh', 'メッシュで格納（推奨）', True, '', mesh_on)
+            chk_mesh = inputs.addBoolValueInput('mesh', 'メッシュで格納', True, '', mesh_on)
             chk_mesh.tooltip = ('Fusion のメッシュをそのまま glb.gz に書きます。ビューア側の STEP 変換を通らないので、\n'
                                 'どんな大きさでも開くのは一瞬です。共有フォルダに置くのも glb.gz だけ (STEP の 1/23)。')
-            ddq = inputs.addDropDownCommandInput('quality', 'メッシュの細かさ', adsk.core.DropDownStyles.TextListDropDownStyle)
+            ddq = inputs.addDropDownCommandInput('quality', '細かさ', adsk.core.DropDownStyles.TextListDropDownStyle)
             last_q = st.get('lastQuality', 'normal')
             for qid, label, _ in MESH_QUALITY:
                 ddq.listItems.add(label, qid == last_q)
             ddq.isEnabled = mesh_on
-            chk_keep = inputs.addBoolValueInput('keepStep', 'STEP も一緒に書き出す', True, '', bool(st.get('lastKeepStep', False)))
+            chk_keep = inputs.addBoolValueInput('keepStep', 'STEP も書き出す', True, '', bool(st.get('lastKeepStep', False)))
             chk_keep.tooltip = 'メッシュで格納するときに STEP も step/ に置きます (後で細かさを変えて再変換したいとき)。容量は 23 倍になります。'
             chk_keep.isEnabled = mesh_on
             units = split_units(design) if design else None
-            chk = inputs.addBoolValueInput('split', 'ユニットごとに分けて書き出す', True, '', bool(st.get('lastSplit', False)) and bool(units) and not mesh_on)
+            chk = inputs.addBoolValueInput('split', 'ユニット分割', True, '', bool(st.get('lastSplit', False)) and bool(units) and not mesh_on)
             chk.isEnabled = bool(units) and not mesh_on
             chk.tooltip = ('STEP で格納するとき、大きいアセンブリはこちら。ルート直下のユニットごとに STEP を分け、組立位置は meta.json に残します。\n'
                            'ライブラリ上は 1 件のままで、ビューアで開くと全ユニットがまとめて読み込まれます。\n'
@@ -538,11 +529,30 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             _ui.messageBox('LibraryExport:\n' + traceback.format_exc())
 
 
+def fill_owners(dd, members, dept, selected):
+    """担当者のドロップダウンを部署で絞って埋める (その部署に誰もいなければ全員)"""
+    dd.listItems.clear()
+    names = [n for d, n in members if d == dept] or [n for _, n in members]
+    seen = []
+    for n in names:
+        if n not in seen:
+            seen.append(n)
+    for i, n in enumerate(seen):
+        dd.listItems.add(n, n == selected or (selected not in seen and i == 0))
+
+
+def _pick(inputs, cid):
+    """ドロップダウンなら選択中の名前、文字入力ならその値"""
+    inp = inputs.itemById(cid)
+    dd = adsk.core.DropDownCommandInput.cast(inp)
+    if dd:
+        return dd.selectedItem.name if dd.selectedItem else ''
+    return inp.value if inp else ''
+
+
 def get_params(inputs):
-    dept_sel = inputs.itemById('dept').selectedItem
-    dept = dept_sel.name if dept_sel and not dept_sel.name.startswith('（') else inputs.itemById('deptText').value
-    own_sel = inputs.itemById('owner').selectedItem
-    owner = own_sel.name if own_sel and not own_sel.name.startswith('（') else inputs.itemById('ownerText').value
+    dept = _pick(inputs, 'dept')
+    owner = _pick(inputs, 'owner')
     return {
         'root': inputs.itemById('libraryRoot').value.strip(),
         'codeRaw': inputs.itemById('projectCode').value.strip(), 'devRaw': inputs.itemById('deviceName').value.strip(),
@@ -602,23 +612,14 @@ class InputChangedHandler(adsk.core.InputChangedEventHandler):
                 sp.isEnabled = (not on) and bool(split_units(design) if design else None)
                 if on:
                     sp.value = False
-            elif ch.id == 'codePick':
-                sel = ch.selectedItem
-                if sel and not sel.name.startswith('（'):
-                    inputs.itemById('projectCode').value = sel.name
-            elif ch.id == 'dept':
+            elif ch.id == 'dept' and adsk.core.DropDownCommandInput.cast(ch):
                 # 部署に応じて担当者リストを入れ替える
                 root = inputs.itemById('libraryRoot').value.strip()
                 members = library_members(root) if root else []
-                owner = inputs.itemById('owner')
-                owner.listItems.clear()
                 sel = ch.selectedItem
-                for d, n in members:
-                    if sel and d == sel.name:
-                        owner.listItems.add(n, False)
-                owner.listItems.add('（名簿にない担当者を入力）', owner.listItems.count == 0)
-                if owner.listItems.count > 1:
-                    owner.listItems.item(0).isSelected = True
+                owner = adsk.core.DropDownCommandInput.cast(inputs.itemById('owner'))
+                if owner:
+                    fill_owners(owner, members, sel.name if sel else '', '')
             update_preview(inputs)
         except Exception:
             _ui.messageBox('LibraryExport:\n' + traceback.format_exc())
