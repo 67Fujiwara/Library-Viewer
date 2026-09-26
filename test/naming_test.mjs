@@ -35,7 +35,7 @@ const py = `
 import re, json, sys
 src = open('fusion/LibraryExport/LibraryExport.py', encoding='utf-8').read()
 ns = {'re': re, 'os': None, 'json': json}
-exec(src[src.index('NAMING_FIELDS ='):src.index('def catalog_codes')], ns)
+exec(src[src.index('NAMING_FIELDS ='):src.index('# ---- ユニットごとの分割書き出し')], ns)
 cases = json.loads(sys.argv[1])
 R = ns['NAMING_DEFAULT']
 out = [ns['naming_parse'](c, R) for c in cases]
