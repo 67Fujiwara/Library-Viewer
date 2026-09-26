@@ -2,6 +2,7 @@
 # Fusion の TriangleMesh と同じ形 (座標 cm・法線・節点番号) の箱を 2 つ作り、
 # オカレンス階層に入れて glb / glb.gz を書く。ビューアが読めるかは fusion_glb_test.mjs が見る。
 import os, sys, json
+from array import array
 here = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(here, '..', 'fusion', 'LibraryExport'))
 import glbwrite
@@ -24,14 +25,15 @@ def box_cm(x, y, z, sx, sy, sz):
         idx += [base, base + 1, base + 2, base, base + 2, base + 3]
     return pos, nrm, idx
 
-def as_fusion_mesh(name, color, geom):
+def as_fusion_mesh(name, color, geom, packed):
     pos, nrm, idx = geom
-    # Fusion スクリプトの tessellate() と同じ変換: cm → mm
+    if packed:   # Fusion スクリプトの tessellate() と同じ形 (cm → mm、array に畳む)
+        return {'name': name, 'positions': array('f', (v * CM_TO_MM for v in pos)), 'normals': array('f', nrm), 'indices': array('I', idx), 'color': color}
     return {'name': name, 'positions': [v * CM_TO_MM for v in pos], 'normals': nrm, 'indices': idx, 'color': color}
 
 meshes = [
-    as_fusion_mesh('BASE_PLATE', [0.6, 0.6, 0.65], box_cm(0, 0, 0.5, 20, 12, 1)),     # 200 x 120 x 10 mm
-    as_fusion_mesh('POST', None, box_cm(5, 0, 6, 2, 2, 10)),                          # 20 x 20 x 100 mm, x=+50mm
+    as_fusion_mesh('BASE_PLATE', [0.6, 0.6, 0.65], box_cm(0, 0, 0.5, 20, 12, 1), True),   # 200 x 120 x 10 mm (array で)
+    as_fusion_mesh('POST', None, box_cm(5, 0, 6, 2, 2, 10), False),                        # 20 x 20 x 100 mm, x=+50mm (list で)
 ]
 model = {
     'name': 'MESH_MACHINE',

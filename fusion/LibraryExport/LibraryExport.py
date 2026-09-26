@@ -21,7 +21,8 @@
 設定 (ライブラリのパス) は ~/.library-viewer/fusion.json に保存されます。
 """
 import adsk.core, adsk.fusion, traceback
-import os, sys, json, re, datetime
+import os, sys, json, re, datetime, gc
+from array import array
 
 # 同じフォルダの glbwrite.py (純 Python の GLB ライター。Fusion 無しでテスト済み)
 _DIR = os.path.dirname(os.path.abspath(__file__))
@@ -271,25 +272,66 @@ def tessellate(body, quality_id):
     mesh = calc.calculate()
     if mesh is None:
         return None
-    return {'name': body.name,
-            'positions': [v * CM_TO_MM for v in mesh.nodeCoordinatesAsFloat],   # cm → mm
-            'normals': list(mesh.normalVectorsAsFloat),
-            'indices': list(mesh.nodeIndices),
-            'color': body_color(body)}
+    # その場で 4 バイトの array に畳む。Python の float のリストで抱えると 1 要素 32 バイトで、
+    # 実測 2053 ボディ / 122 万三角形のアセンブリでは 400MB を超える (array なら 1/8)
+    m = {'name': body.name,
+         'positions': array('f', (v * CM_TO_MM for v in mesh.nodeCoordinatesAsFloat)),   # cm → mm
+         'normals': array('f', mesh.normalVectorsAsFloat),
+         'indices': array('I', mesh.nodeIndices),
+         'color': body_color(body)}
+    del mesh, calc
+    return m
 
 
-def collect_meshes(design, quality_id):
+def count_visible_bodies(root):
+    """進捗バーの分母。走査だけなので速い"""
+    n = 0
+    for body in root.bRepBodies:
+        if body.isVisible:
+            n += 1
+    def walk(occs):
+        nonlocal n
+        for occ in occs:
+            if not occ.isVisible:
+                continue
+            for body in occ.bRepBodies:
+                if body.isVisible:
+                    n += 1
+            walk(occ.childOccurrences)
+    walk(root.occurrences)
+    return n
+
+
+class Cancelled(Exception):
+    pass
+
+
+def collect_meshes(design, quality_id, progress=None):
     """デザイン全体を glbwrite の model 形式に。ツリーは Fusion のオカレンス階層そのまま。
-    戻り: (model, {'bodies', 'hidden', 'failed', 'triangles'})"""
+    progress: adsk.core.ProgressDialog (省略可)。キャンセルされたら Cancelled を投げる。
+    戻り: (model, {'bodies', 'hidden', 'failed', 'triangles'})
+    実測 (2053 ボディ / 122 万三角形 / 標準): 60 秒"""
     root = design.rootComponent
     meshes = []
-    stat = {'bodies': 0, 'hidden': 0, 'failed': 0, 'triangles': 0}
+    stat = {'bodies': 0, 'hidden': 0, 'failed': 0, 'triangles': 0, 'seen': 0}
+
+    def tick():
+        stat['seen'] += 1
+        if progress is not None:
+            progress.progressValue = stat['seen']
+            if progress.wasCancelled:
+                raise Cancelled()
+        if stat['seen'] % 25 == 0:
+            adsk.doEvents()          # UI に息をさせる (固まったままだと落ちたように見える)
+        if stat['seen'] % 200 == 0:
+            gc.collect()
 
     def add_bodies(bodies, node):
         for body in bodies:
             if not body.isVisible:
                 stat['hidden'] += 1; continue
             m = tessellate(body, quality_id)
+            tick()
             if m is None:
                 stat['failed'] += 1; continue
             meshes.append(m)
@@ -510,12 +552,26 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
             mesh_stat = None
             if p['mesh']:
                 # メッシュで格納: glb.gz を直接書く。STEP は「一緒に書き出す」のときだけ
-                model, mesh_stat = collect_meshes(design, p['quality'])
-                if not model['meshes']:
-                    _ui.messageBox('表示されているボディがありません（非表示 %d / 失敗 %d）。' % (mesh_stat['hidden'], mesh_stat['failed'])); return
-                gz, raw_size = glbwrite.write_gz(model)
-                with open(os.path.join(target, base + '.glb.gz'), 'wb') as f:
-                    f.write(gz)
+                total = count_visible_bodies(design.rootComponent)
+                pd = _ui.createProgressDialog()
+                pd.isCancelButtonShown = True
+                pd.show('ライブラリに格納', 'メッシュを取得中  %v / %m ボディ', 0, max(total, 1), 0)
+                try:
+                    model, mesh_stat = collect_meshes(design, p['quality'], pd)
+                    pd.message = 'glb を書き込み中…'
+                    adsk.doEvents()
+                    if not model['meshes']:
+                        pd.hide()
+                        _ui.messageBox('表示されているボディがありません（非表示 %d / 失敗 %d）。' % (mesh_stat['hidden'], mesh_stat['failed'])); return
+                    gz, raw_size = glbwrite.write_gz(model)
+                    del model
+                    with open(os.path.join(target, base + '.glb.gz'), 'wb') as f:
+                        f.write(gz)
+                except Cancelled:
+                    pd.hide()
+                    _ui.messageBox('格納を中止しました。'); return
+                finally:
+                    pd.hide()
                 mesh_stat['glbSize'] = len(gz); mesh_stat['rawGlbSize'] = raw_size
                 sp = None
                 if p['keepStep']:

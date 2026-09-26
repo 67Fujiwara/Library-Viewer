@@ -146,6 +146,12 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
   3 個並べても 3 個とも同じ場所に出る。API は `body.meshManager.createMeshCalculator()` → `setQuality()` →
   `calculate()` → `TriangleMesh`（`nodeCoordinatesAsFloat` は **cm**、× 10 で mm）。
   非表示のボディ・オカレンスは出さない。ツリーは Fusion のオカレンス階層そのまま（glb のノード階層に入れる）
+  - **実機の実測 (VSLT0001804 = 373MB の STEP になる装置): 2053 ボディ / 122 万三角形 / 標準品質で 60 秒、失敗 0。**
+    STEP 経由の「最善で 9〜13 分、実際は落ちる」がこれで消える
+  - **座標は 1 ボディごとに `array('f')` に畳む。** Python の float のリストは 1 要素 32 バイトで、
+    122 万三角形だと 400MB を超える（1 回目の実機テストで Fusion が落ちた）。`array` なら 1/8
+  - 進捗は `ui.createProgressDialog()`、25 ボディごとに `adsk.doEvents()`（固まったままだと落ちたように見える）、
+    キャンセルは `Cancelled` 例外で抜ける
 - Fusion の API は **この環境では動かせない**。`glbwrite.py`（純 Python）はここでテストし、
   `collect_meshes` / `tessellate` の薄い層だけ実機で確かめてもらう。Fusion で確かめる前に「動いた」と言わない
 - **偽ハンドルのテストでは `lastModified` を固定する。** 毎回 `new File()` すると更新日時が現在時刻になり、

@@ -599,3 +599,9 @@ Fusion スクリプト側が予告する名前も `.glb.gz` に揃えた。
 - **Fusion の API はこの環境で動かせない。** `collect_meshes` / `tessellate` は実機で要確認
   （ヘルプでは `createMeshCalculator` の戻りは `TriangleMeshCalculator`。`setQuality` / `calculate` /
   `nodeCoordinatesAsFloat` / `normalVectorsAsFloat` / `nodeIndices` の名前を実機で見る）
+
+**実機の結果 (Fusion 体験版・VSLT0001804)**: 1 回目の数え上げスクリプトで Fusion が落ちた (~recovered)。
+2 回目は通り、**2053 ボディ / 1,218,836 三角形 / 失敗 0 / 59.8 秒**。最初の点が (3758, 175, -122) mm =
+組立位置つきで返っている (Occurrence 経由が効いている)。落ちた原因の候補はメモリなので、
+`tessellate` は 1 ボディごとに `array('f')` / `array('I')` に畳む形に直した (list だと 400MB 超 → 50MB)。
+進捗ダイアログ + キャンセル + `adsk.doEvents()` も追加。`glbwrite.write` は list / array / bytes のどれでも受ける。

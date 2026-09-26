@@ -5,6 +5,9 @@
   入力: { 'name': str,
           'root': {'name': str, 'meshIndex': int|None, 'children': [...]},
           'meshes': [{'name': str, 'positions': [x,y,z,...] (mm), 'normals': [...], 'indices': [...], 'color': [r,g,b]|None}] }
+        positions / normals / indices は list でも array('f') / array('I') でもよい。
+        (Fusion 側は 1 ボディごとに array に畳んで持つ。Python の float のリストは 1 要素 32 バイトで、
+         122 万三角形のアセンブリだと 400MB を超えて落ちる。array なら 4 バイト)
   出力: bytes (glTF 2.0 バイナリ)。ジオメトリは mm / Z-up のまま置き、
         ルートノードに Y-up / m への行列を持たせる (他のビューアでも正しく見える)。
         1 ボディ = 1 プリミティブ + 1 マテリアル + 1 ノード。
@@ -27,13 +30,22 @@ def _pad4(n):
     return (n + 3) & ~3
 
 
-def _le_bytes(typecode, values):
-    """float32 / uint32 のリトルエンディアン列。array は CPU の並びなので、ビッグエンディアンなら反転する"""
+def as_array(typecode, values):
+    """list / array / bytes → 4 バイト要素の array。すでに array ならコピーしない"""
+    if isinstance(values, array) and values.typecode == typecode and values.itemsize == 4:
+        return values
+    if isinstance(values, (bytes, bytearray, memoryview)):
+        a = array(typecode); a.frombytes(values); return a
     a = array(typecode, values)
     if a.itemsize != 4:                       # 'I' が 4 バイトでない処理系向け
         a = array('L' if typecode == 'I' else typecode, values)
+    return a
+
+
+def _le_bytes(a):
+    """float32 / uint32 のリトルエンディアン列。array は CPU の並びなので、ビッグエンディアンなら反転する"""
     if sys.byteorder == 'big':
-        a.byteswap()
+        a = array(a.typecode, a); a.byteswap()
     return a.tobytes()
 
 
@@ -57,17 +69,17 @@ def write(model):
 
     mesh_ids = []
     for i, m in enumerate(model['meshes']):
-        pos = list(m['positions'])
-        nrm = list(m['normals'])
-        idx = list(m['indices'])
-        if pos:
+        pos = as_array('f', m['positions'])
+        nrm = as_array('f', m['normals'])
+        idx = as_array('I', m['indices'])
+        if len(pos):
             mn = [min(pos[k::3]) for k in range(3)]
             mx = [max(pos[k::3]) for k in range(3)]
         else:
             mn, mx = [0, 0, 0], [0, 0, 0]
-        pv = add_view(_le_bytes('f', pos), 34962)
-        nv = add_view(_le_bytes('f', nrm), 34962)
-        iv = add_view(_le_bytes('I', idx), 34963)
+        pv = add_view(_le_bytes(pos), 34962)
+        nv = add_view(_le_bytes(nrm), 34962)
+        iv = add_view(_le_bytes(idx), 34963)
         gltf['accessors'].append({'bufferView': pv, 'componentType': 5126, 'count': len(pos) // 3, 'type': 'VEC3', 'min': mn, 'max': mx})
         pa = len(gltf['accessors']) - 1
         gltf['accessors'].append({'bufferView': nv, 'componentType': 5126, 'count': len(nrm) // 3, 'type': 'VEC3'})
