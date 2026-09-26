@@ -26,6 +26,9 @@ const seed = {
     files: [{ name: 'fusion_mesh', step: null, glb: 'fusion_mesh.glb.gz', stepSize: null, glbSize: meshStat.gz, rawGlbSize: meshStat.raw, triangles: meshStat.triangles, solids: meshStat.solids, rootName: 'MESH_MACHINE' }],
     source: { cad: 'fusion', app: 'fusion-library-export', document: 'MESH_MACHINE v2' }
   })).toString('base64'),
+  'models/設計1課/藤原/P2026-007_メッシュ機H/_/index.json': Buffer.from(JSON.stringify({ schema: 'library-viewer/index/1', devices: [{ file: 'fusion_mesh', rootName: 'MESH_MACHINE',
+    tree: [{ name: 'MESH_MACHINE', path: 'MESH_MACHINE', depth: 0, solids: 3 }, { name: 'BASE_PLATE', path: 'MESH_MACHINE/BASE_PLATE', depth: 1, solids: 1 },
+           { name: 'UNIT_A:1', path: 'MESH_MACHINE/UNIT_A:1', depth: 1, solids: 1 }, { name: 'POST', path: 'MESH_MACHINE/UNIT_A:1/POST', depth: 2, solids: 1 }] }] })).toString('base64'),
   'models/設計1課/山田/P2026-001_検査装置A/ワークX/assembly.glb': unzip(stored + '/assembly.glb.gz'),
   'models/設計1課/山田/P2026-001_検査装置A/ワークX/step/assembly.step': b64('test/out/assembly.step'),
   'models/設計1課/山田/P2026-001_検査装置A/ワークX/assembly_b.glb': unzip(stored + '/assembly_b.glb.gz'),
@@ -125,6 +128,15 @@ check((await page.textContent('#search-sum')).includes('ライブラリ 1'), 'an
 await page.fill('#tree-search', '設計1課');       // 部署でも当たる
 await page.waitForTimeout(350);
 check((await hitTitles()).includes('検査装置A'), 'searching a department finds its devices: ' + await hitTitles());
+// 読み込んでいない装置でも、中の部品名で当たる (index.json を検索時に読む)
+await page.fill('#tree-search', 'BASE_PLATE');
+// 前の検索 (設計1課) の結果にもメッシュ機H は出るので、新しい問い合わせで部品名が当たるまで待つ
+await page.waitForFunction(() => Search.query() === 'BASE_PLATE' && Search.hits().lib.some(h => h.part === 'BASE_PLATE'), null, { timeout: 10000 });
+check((await hitTitles()).includes('メッシュ機H'), 'a part name finds an unloaded library device: ' + await hitTitles());
+check(await page.locator('#search-list .hit-card', { hasText: 'メッシュ機H' }).locator('.badge', { hasText: 'BASE_PLATE' }).count() === 1, 'the card shows which part matched');
+check((await page.evaluate(() => App.devices().length)) === 0, 'without loading it');
+const namesCached = await page.evaluate(() => Library.entries().filter(e => Array.isArray(e.partList)).length);
+check(namesCached === (await page.evaluate(() => Library.entries().length)), 'part names were read for every unloaded entry (' + namesCached + ')');
 // 結果を押すとライブラリから読み込まれる (glb 済みの 検査装置A で試す。未変換のものは後の検証に残す)
 await page.locator('#search-list .hit-card', { hasText: '検査装置A' }).first().click();
 await page.waitForFunction(() => App.devices().length > 0, null, { timeout: 60000 });

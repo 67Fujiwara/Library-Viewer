@@ -650,3 +650,7 @@ gzip は曲面座標にほぼ効かない)。法線を落として 92%、int16 �
   細かさは setQuality ではなく surfaceTolerance / normalDeviation で、部品の大きさに応じて緩める
 - `run()` の `autoTerminate(False)` に対して `destroy` で `terminate()` (実行中 ■ が残っていた)
 - 偽 Fusion (`fusion_collect_test.py`) で使い回し / 退避 / 非表示 / 色違いを確認。実機の数字は要確認
+
+### 読み込んでいない装置も部品名で検索に当たる
+「追加」を押さないと中の部品が検索に出なかった。格納時に書かれる `index.json` の名前を、検索のときだけ
+まとめて読む (`Library.loadNames`)。IndexedDB に控えて 2 回目は読まない。走査には混ぜない。

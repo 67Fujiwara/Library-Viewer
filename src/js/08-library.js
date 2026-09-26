@@ -318,7 +318,8 @@ var Library = (function () {
     try {
       var puts = [], dels = [];
       Object.keys(catCache).forEach(function (k) {
-        if (seen[k]) puts.push({ key: k, value: catCache[k] });
+        var base = k.indexOf('names:') === 0 ? k.slice(6) : k;   // 部品名の控えは装置と運命を共にする
+        if (seen[base]) puts.push({ key: k, value: catCache[k] });
         else { dels.push(k); delete catCache[k]; }   // 消えた装置は控えも捨てる
       });
       await IDB.batch('cat', puts, dels);            // 1 本のトランザクションで書く
@@ -424,7 +425,38 @@ var Library = (function () {
     var m = e.meta || {};
     return Tags.fold([m.projectCode, m.deviceName, m.workpiece, m.customer, m.department, m.owner, e.rel.join('/')].join(' '));
   }
-  function matches(e, folded) { return !folded || haystack(e).indexOf(folded) >= 0; }
+  function matches(e, folded) { return !folded || haystack(e).indexOf(folded) >= 0 || !!matchedPart(e, folded); }
+  /* 読み込んでいない装置でも部品名で当たるように、index.json (格納時に書かれる階層一覧) の名前を
+   * 検索のときだけまとめて読む。読んだ結果は IndexedDB の控え ('names:' + 装置) に置き、
+   * index.json の更新日時とサイズが同じなら次回は読まない。無い装置は '' (案件情報だけで当てる) */
+  function matchedPart(e, folded) {
+    if (!folded || !e.partList) return null;
+    for (var i = 0; i < e.partList.length; i++) if (Tags.fold(e.partList[i]).indexOf(folded) >= 0) return e.partList[i];
+    return null;
+  }
+  function needsNames() { return entries.some(function (e) { return e.partList === undefined; }); }
+  var namesLoading = null;
+  function loadNames() {
+    if (namesLoading) return namesLoading;
+    var todo = entries.filter(function (e) { return e.partList === undefined; });
+    namesLoading = pool(todo, PAR, async function (e) {
+      e.partList = null;                                   // 読み中 / 読めなかった
+      try {
+        if (!e.dir) e.dir = await dirAt(e.rel);
+        var fh; try { fh = await e.dir.getFileHandle('index.json'); } catch (err) { e.partList = []; return; }
+        var f = await fh.getFile(), key = 'names:' + e.id, c = catCache[key];
+        if (c && c.size === f.size && c.mtime === (f.lastModified || 0)) { e.partList = c.names; return; }
+        var idx = JSON.parse(await f.text()), seen = {}, names = [];
+        (idx.devices || []).forEach(function (d) {
+          (d.tree || []).forEach(function (r) { var n = String(r.name || '').trim(); if (n && !seen[n]) { seen[n] = 1; names.push(n); } });
+        });
+        e.partList = names;
+        catCache[key] = { size: f.size, mtime: f.lastModified || 0, names: names };
+        try { await IDB.put('cat', key, catCache[key]); } catch (err) { }
+      } catch (err) { e.partList = []; }
+    }).then(function () { namesLoading = null; });
+    return namesLoading;
+  }
 
   function renderList() {
     listEl.textContent = '';
@@ -608,6 +640,6 @@ var Library = (function () {
     init: init, supported: supported, open: open, scan: scan, writeFiles: writeFiles, ensureConfig: ensureConfig, saveMembers: saveMembers,
     connected: function () { return !!handle; }, name: function () { return handle ? handle.name : ''; }, processInbox: processInbox,
     entries: function () { return entries; }, config: function () { return config; }, members: function () { return members; }, deleteEntry: deleteEntry,
-    matches: matches, openEntry: openEntry
+    matches: matches, matchedPart: matchedPart, needsNames: needsNames, loadNames: loadNames, openEntry: openEntry
   };
 })();

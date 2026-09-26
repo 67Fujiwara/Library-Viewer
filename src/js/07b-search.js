@@ -39,6 +39,11 @@ var Search = (function () {
     hits = collect(Tags.fold(query));
     panelEl.hidden = false; xrefEl.hidden = true;
     render();
+    // 読み込んでいない装置の部品名は index.json から。まだ読んでいなければ読んでから結果を出し直す
+    if (Library.needsNames()) {
+      var q = query;
+      Library.loadNames().then(function () { if (query === q) run(q); });
+    }
     return hits;
   }
 
@@ -73,7 +78,7 @@ var Search = (function () {
     App.devices().forEach(function (d) { if (d.source && d.source.entry) open[d.source.entry.rel.join('/')] = 1; });
     var lib = Library.entries().filter(function (e) {
       return Library.matches(e, f) && !open[e.rel.join('/')];
-    }).map(function (e) { return { entry: e, kind: 'lib' }; });
+    }).map(function (e) { return { entry: e, kind: 'lib', part: Library.matchedPart(e, f) }; });
     return { folders: folders, devices: devices, parts: parts, lib: lib };
   }
   function count() { return hits.folders.length + hits.devices.length + hits.parts.length + hits.lib.length; }
@@ -131,7 +136,7 @@ var Search = (function () {
   function libCard(h) {
     var m = h.entry.meta || {};
     var b = el('button.xref-card.hit-card', { type: 'button', title: 'ライブラリから読み込みます（今の表示に追加）' }, [
-      el('div.dev', {}, [svgIcon(ICON.folder), el('span', { text: m.deviceName || h.entry.rel[h.entry.rel.length - 1] }), m.owner ? el('span.badge', { text: m.owner }) : null]),
+      el('div.dev', {}, [svgIcon(ICON.folder), el('span', { text: m.deviceName || h.entry.rel[h.entry.rel.length - 1] }), h.part ? el('span.badge.coral', { text: h.part, title: 'この部品名で当たりました' }) : (m.owner ? el('span.badge', { text: m.owner }) : null)]),
       el('div.path', { text: h.entry.rel.join(' / ') }),
       el('div.stats', {}, [
         m.projectCode ? el('span', { text: m.projectCode }) : null,
