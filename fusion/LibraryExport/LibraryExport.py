@@ -611,7 +611,7 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
                                 'どんな大きさでも開くのは一瞬です。共有フォルダに置くのも glb.gz だけ (STEP の 1/23)。')
             ddq = inputs.addDropDownCommandInput('quality', '細かさ', adsk.core.DropDownStyles.TextListDropDownStyle)
             last_q = st.get('lastQuality', 'normal')
-            for qid, label, _ in MESH_QUALITY:
+            for qid, label, _t, _d, _q in MESH_QUALITY:
                 ddq.listItems.add(label, qid == last_q)
             ddq.isEnabled = mesh_on
             chk_keep = inputs.addBoolValueInput('keepStep', 'STEP も書き出す', True, '', bool(st.get('lastKeepStep', False)))
@@ -675,7 +675,7 @@ def get_params(inputs):
 def _quality_id(inputs):
     dd = inputs.itemById('quality')
     sel = dd.selectedItem if dd else None
-    for qid, label, _ in MESH_QUALITY:
+    for qid, label, _t, _d, _q in MESH_QUALITY:
         if sel and sel.name == label:
             return qid
     return 'normal'
