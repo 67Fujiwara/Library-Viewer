@@ -193,6 +193,7 @@ var TreeEdit = (function () {
       close();
       Tree.rerender();
       Search.refresh();
+      CrossRef.refresh();   // 同じタグの行が横断に並ぶ
     }
     form.addEventListener('submit', onSave);
     $('#tag-cancel').addEventListener('click', close);

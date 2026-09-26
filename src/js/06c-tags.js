@@ -47,6 +47,18 @@ var Tags = (function () {
     return null;
   }
 
+  /* 畳んだタグの集合 ({畳んだ形: 1}) と共通のタグを持つ鍵をすべて返す ([{key, tag}])。
+   * 案件横断が「同じタグの行」を探すのに使う (読み込んでいない装置の行も鍵で残っている) */
+  function withAny(foldedSet) {
+    var out = [];
+    if (!foldedSet) return out;
+    Object.keys(map).forEach(function (k) {
+      var list = map[k];
+      for (var i = 0; i < list.length; i++) if (foldedSet[fold(list[i])]) { out.push({ key: k, tag: list[i] }); return; }
+    });
+    return out;
+  }
+
   /* 使われているタグを件数の多い順に (タグの候補として出す) */
   function all() {
     var count = {}, disp = {};
@@ -73,5 +85,5 @@ var Tags = (function () {
   }
   function clear() { map = {}; save(); }
 
-  return { fold: fold, parse: parse, get: get, set: set, has: has, hit: hit, all: all, repath: repath, removeUnder: removeUnder, clear: clear };
+  return { fold: fold, parse: parse, get: get, set: set, has: has, hit: hit, withAny: withAny, all: all, repath: repath, removeUnder: removeUnder, clear: clear };
 })();

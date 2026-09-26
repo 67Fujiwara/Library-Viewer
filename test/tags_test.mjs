@@ -210,6 +210,26 @@ await page.waitForTimeout(250);
 await search('治具');
 check((await page.textContent('#search-sum')).includes('装置 1'), 'a device is found by its tag: ' + await page.textContent('#search-sum'));
 await search('');
+// ---- 案件横断: 名前が違っても同じタグなら他の装置から並ぶ ----
+await devRow.click({ button: 'right' });
+await page.waitForSelector('.ctx-menu');
+await page.locator('.ctx-item', { hasText: 'タグ' }).first().click();
+await page.waitForSelector('#tags-dialog[open]');
+await page.fill('#tag-input', '治具 要確認');
+await page.click('#tag-save');
+await page.waitForSelector('#tags-dialog[open]', { state: 'detached' }).catch(() => {});
+await page.waitForTimeout(250);
+await page.evaluate(() => App.select(Tree.allNodes().find(n => !n.isGroup && n.depth > 0 && n.name === 'COLUMN')));
+await page.waitForTimeout(300);
+const xrefHeads = await page.$$eval('#xref-list h3', hs => hs.map(h => h.textContent));
+check(xrefHeads.some(h => h.startsWith('同じタグ 1')), 'crossref lists a "same tag" section for COLUMN (要確認): ' + JSON.stringify(xrefHeads));
+const tagCard = page.locator('#xref-list .xref-card', { hasText: 'ベース板' });
+check(await tagCard.count() === 1 && await tagCard.locator('.badge').textContent() === '要確認', 'the other device shows up by its shared tag with the tag as a badge');
+check((await page.$$eval('#xref-current .tags .badge', bs => bs.map(b => b.textContent))).join(',') === '支柱,要確認', 'the current part shows its own tags');
+await tagCard.click();
+await page.waitForTimeout(300);
+check((await page.textContent('#sel-info')).includes('ベース板'), 'clicking the tag card moves the selection there');
+await page.evaluate(() => App.select(null));
 // 長いタグでもカードの中で切れない (288px の右パネルで「コンベ…」にならない。バッジは折り返して全部見える)
 const longTag = '搬送コンベアユニット取引先確認待ち2026年版';
 await devRow.click({ button: 'right' });

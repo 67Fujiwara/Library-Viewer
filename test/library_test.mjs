@@ -151,6 +151,25 @@ await page.waitForSelector('#overlay', { state: 'hidden', timeout: 60000 });
 await page.waitForTimeout(400);
 check(await page.evaluate(() => App.devices().length) >= 1, 'clicking a library hit loads it');
 check(!(await hitTitles()).includes('検査装置A'), 'once loaded it drops out of the unloaded list: ' + await hitTitles());
+// 案件横断も読み込んでいない装置に当たる: 部品名 (index.json) と、その装置の行に付けたタグ
+await page.fill('#tree-search', '');
+await page.waitForTimeout(300);
+await page.evaluate(() => App.select(Tree.allNodes().find(n => !n.isGroup && n.depth > 0 && n.name === 'BASE_PLATE')));
+await page.waitForFunction(() => [...document.querySelectorAll('#xref-list .xref-card')].some(c => c.textContent.includes('メッシュ機H')), null, { timeout: 10000 });
+const xrefHeads = await page.$$eval('#xref-list h3', hs => hs.map(h => h.textContent));
+check(xrefHeads.some(h => h.startsWith('ライブラリ（未読み込み） 1')), 'crossref lists the unloaded device whose index.json has the same part name: ' + JSON.stringify(xrefHeads));
+check(await page.locator('#xref-list .xref-card', { hasText: 'メッシュ機H' }).locator('.badge').textContent() === 'BASE_PLATE', 'the card names the matching part');
+await page.evaluate(() => {
+  Tags.set('@models/設計1課/藤原/P2026-007_メッシュ機H/_/MESH_MACHINE/UNIT_A:1', ['要確認']);   // 以前読み込んだときに付けた想定
+  const head = Tree.allNodes().find(n => !n.isGroup && n.depth > 0 && n.name === 'HEAD_UNIT');
+  Tags.set(Tree.tagKey(head), ['要確認']);
+  App.select(head);
+});
+await page.waitForTimeout(300);
+const tagCard = page.locator('#xref-list .xref-card', { hasText: 'メッシュ機H' });
+check(await tagCard.count() === 1 && await tagCard.locator('.badge.coral').textContent() === '要確認', 'an unloaded device is found by a tag on one of its rows');
+check(await page.locator('#xref-list .xref-card', { hasText: '搬送装置B' }).count() === 0, 'devices without the tag stay out');
+await page.evaluate(() => { Tags.clear(); App.select(null); });
 await page.fill('#tree-search', 'P2026-002');     // 案件コードでも当たる
 await page.waitForTimeout(350);
 check((await hitTitles()).includes('搬送装置B'), 'searching a project code works too');

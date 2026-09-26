@@ -330,6 +330,8 @@ body.measuring #gl { cursor: crosshair; }
 
 .xref-current { border: 1px solid var(--hairline); border-radius: var(--r-lg); padding: 10px 12px; background: var(--surface-card); font-size: 12px; }
 .xref-current .n { font-weight: 500; color: var(--ink); font-size: 14px; }
+.xref-current .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.xref-current .tags .badge { height: auto; min-height: 18px; padding: 2px 7px; line-height: 1.3; white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
 .xref-list { display: flex; flex-direction: column; gap: 6px; }
 .xref-list h3 { font: 500 12px/1.4 var(--font-sans); letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); margin-top: 6px; }
 .xref-card { display: block; width: 100%; text-align: left; border: 1px solid var(--hairline); border-radius: var(--r-lg); padding: 10px 12px; background: var(--canvas); cursor: pointer; font: inherit; color: inherit; }
