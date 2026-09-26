@@ -170,6 +170,42 @@ const tagCard = page.locator('#xref-list .xref-card', { hasText: 'メッシュ�
 check(await tagCard.count() === 1 && await tagCard.locator('.badge.coral').textContent() === '要確認', 'an unloaded device is found by a tag on one of its rows');
 check(await page.locator('#xref-list .xref-card', { hasText: '搬送装置B' }).count() === 0, 'devices without the tag stay out');
 await page.evaluate(() => { Tags.clear(); App.select(null); });
+// 実際の流れ: 読み込んだ装置の行にタグ → 閉じる → 別の装置を読み込んでタグ → 選ぶ → 閉じた装置がタグで並ぶ
+await page.evaluate(() => {
+  const root = App.devices().find(d => d.name.indexOf('assembly_b') < 0).root;   // 検査装置A の assembly
+  Tags.set(Tree.tagKey(root), ['要確認']);
+  console.log('tagKey(assembly root) = ' + Tree.tagKey(root));
+  App.clearDevices();
+});
+await page.waitForTimeout(300);
+await page.evaluate(() => Library.openEntry(Library.entries().find(e => e.rel.join('/').includes('メッシュ機H')), true));
+await page.waitForFunction(() => App.devices().length === 1, null, { timeout: 60000 });
+await page.waitForSelector('#overlay', { state: 'hidden', timeout: 60000 });
+await page.waitForTimeout(300);
+await page.evaluate(() => {
+  const post = Tree.allNodes().find(n => !n.isGroup && n.depth > 0 && n.name === 'POST');
+  Tags.set(Tree.tagKey(post), ['要確認']);
+  App.select(post);
+});
+await page.waitForTimeout(400);
+const realFlow = page.locator('#xref-list .xref-card', { hasText: '検査装置A' });
+console.log('  xref heads:', JSON.stringify(await page.$$eval('#xref-list h3', hs => hs.map(h => h.textContent))), 'tag keys:', JSON.stringify(await page.evaluate(() => Tags.withAny({ '要確認': 1 }).map(t => t.key))));
+check(await realFlow.count() === 1 && await realFlow.locator('.badge.coral').textContent() === '要確認', 'real flow: a device tagged while loaded, then closed, comes back in crossref by its tag');
+await page.fill('#tree-search', '要確認');
+await page.waitForTimeout(400);
+check((await hitTitles()).includes('検査装置A'), 'searching the tag lists the closed device under the library hits: ' + await hitTitles());
+check(await page.locator('#search-list .hit-card', { hasText: '検査装置A' }).locator('.badge.coral', { hasText: '要確認' }).count() === 1, 'the hit card shows the matching tag');
+await page.click('label[for="tab-lib"]');
+await page.fill('#lib-search', '要確認');
+await page.waitForTimeout(300);
+const libByTag = await page.$$eval('.lib-card', cs => cs.map(c => c.querySelector('.t span').textContent));
+check(libByTag.length === 2 && libByTag.includes('検査装置A') && libByTag.includes('メッシュ機H'), 'the library tab filter narrows by tag too: ' + libByTag);
+check(await page.locator('.lib-card', { hasText: '検査装置A' }).locator('.tag', { hasText: '要確認' }).count() === 1, 'the library card shows the tag it carries');
+await page.fill('#lib-search', '');
+await page.waitForTimeout(300);
+await page.fill('#tree-search', '');
+await page.waitForTimeout(300);
+await page.evaluate(() => { Tags.clear(); App.select(null); });
 await page.fill('#tree-search', 'P2026-002');     // 案件コードでも当たる
 await page.waitForTimeout(350);
 check((await hitTitles()).includes('搬送装置B'), 'searching a project code works too');

@@ -47,6 +47,28 @@ var Tags = (function () {
     return null;
   }
 
+  /* prefix で始まる鍵 (= その装置の行) に付いたタグのうち、畳んだ問い合わせに当たる最初の 1 つ。
+   * 読み込んでいない装置を検索でタグから当てるのに使う (行の鍵は '@<保存先>/<階層>' で残っている) */
+  function hitUnder(prefix, folded) {
+    if (!folded) return null;
+    var keys = Object.keys(map);
+    for (var i = 0; i < keys.length; i++) {
+      if (keys[i].indexOf(prefix) !== 0) continue;
+      var t = hit(keys[i], folded);
+      if (t) return t;
+    }
+    return null;
+  }
+  /* prefix で始まる鍵に付いたタグを全部 (重複なし)。ライブラリのカードに「付いているタグ」を出す */
+  function under(prefix) {
+    var out = [], seen = {};
+    Object.keys(map).forEach(function (k) {
+      if (k.indexOf(prefix) !== 0) return;
+      map[k].forEach(function (t) { var f = fold(t); if (!seen[f]) { seen[f] = 1; out.push(t); } });
+    });
+    return out;
+  }
+
   /* 畳んだタグの集合 ({畳んだ形: 1}) と共通のタグを持つ鍵をすべて返す ([{key, tag}])。
    * 案件横断が「同じタグの行」を探すのに使う (読み込んでいない装置の行も鍵で残っている) */
   function withAny(foldedSet) {
@@ -85,5 +107,5 @@ var Tags = (function () {
   }
   function clear() { map = {}; save(); }
 
-  return { fold: fold, parse: parse, get: get, set: set, has: has, hit: hit, withAny: withAny, all: all, repath: repath, removeUnder: removeUnder, clear: clear };
+  return { fold: fold, parse: parse, get: get, set: set, has: has, hit: hit, hitUnder: hitUnder, under: under, withAny: withAny, all: all, repath: repath, removeUnder: removeUnder, clear: clear };
 })();

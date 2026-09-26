@@ -241,6 +241,8 @@ body.left-collapsed #left, body.right-collapsed #right { border: 0; padding-left
 .lib-card .t { font-weight: 500; color: var(--ink); display: flex; gap: 8px; align-items: baseline; }
 .lib-card .t .code { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
 .lib-card .m { font-size: 12px; color: var(--muted); display: flex; gap: 8px; flex-wrap: wrap; }
+.lib-card .m.tags { gap: 4px; }
+.lib-card .tags .tag { max-width: 140px; }   /* 以前付けたタグ。ツリーの行より幅があるので長めに */
 .lib-card .acts { display: flex; gap: 6px; margin-top: 4px; align-items: center; flex-wrap: wrap; }
 .lib-card .acts .spacer { flex: 1; min-width: 0; }
 .lib-card .acts a { white-space: nowrap; }

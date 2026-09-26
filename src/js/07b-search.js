@@ -78,7 +78,7 @@ var Search = (function () {
     App.devices().forEach(function (d) { if (d.source && d.source.entry) open[d.source.entry.rel.join('/')] = 1; });
     var lib = Library.entries().filter(function (e) {
       return Library.matches(e, f) && !open[e.rel.join('/')];
-    }).map(function (e) { return { entry: e, kind: 'lib', part: Library.matchedPart(e, f) }; });
+    }).map(function (e) { var part = Library.matchedPart(e, f); return { entry: e, kind: 'lib', part: part, tag: part ? null : Library.matchedTag(e, f) }; });
     return { folders: folders, devices: devices, parts: parts, lib: lib };
   }
   function count() { return hits.folders.length + hits.devices.length + hits.parts.length + hits.lib.length; }
@@ -90,7 +90,7 @@ var Search = (function () {
       ? '「' + query + '」に ' + total + ' 件（フォルダ ' + hits.folders.length + ' / 装置 ' + hits.devices.length + ' / 部品 ' + hits.parts.length + (hits.lib.length ? ' / ライブラリ ' + hits.lib.length : '') + '）'
       : '「' + query + '」に当たるものはありません。';
     if (!total) {
-      listEl.appendChild(el('p.muted.small', { text: '行を右クリック →「タグを付ける」でフォルダ・装置・部品にタグを付けると、ここから探せます。ライブラリは部署・担当者・案件コード・装置名・対象ワーク・中の部品名で探せます（読み込んでいない装置も当たります）。' }));
+      listEl.appendChild(el('p.muted.small', { text: '行を右クリック →「タグを付ける」でフォルダ・装置・部品にタグを付けると、ここから探せます。ライブラリは部署・担当者・案件コード・装置名・対象ワーク・中の部品名・以前付けたタグで探せます（読み込んでいない装置も当たります）。' }));
       return;
     }
     section('フォルダ', hits.folders);
@@ -136,7 +136,7 @@ var Search = (function () {
   function libCard(h) {
     var m = h.entry.meta || {};
     var b = el('button.xref-card.hit-card', { type: 'button', title: 'ライブラリから読み込みます（今の表示に追加）' }, [
-      el('div.dev', {}, [svgIcon(ICON.folder), el('span', { text: m.deviceName || h.entry.rel[h.entry.rel.length - 1] }), h.part ? el('span.badge.coral', { text: h.part, title: 'この部品名で当たりました' }) : (m.owner ? el('span.badge', { text: m.owner }) : null)]),
+      el('div.dev', {}, [svgIcon(ICON.folder), el('span', { text: m.deviceName || h.entry.rel[h.entry.rel.length - 1] }), h.part ? el('span.badge.coral', { text: h.part, title: 'この部品名で当たりました' }) : h.tag ? el('span.badge.coral', { text: h.tag, title: '以前読み込んだときに付けたタグで当たりました' }) : (m.owner ? el('span.badge', { text: m.owner }) : null)]),
       el('div.path', { text: h.entry.rel.join(' / ') }),
       el('div.stats', {}, [
         m.projectCode ? el('span', { text: m.projectCode }) : null,

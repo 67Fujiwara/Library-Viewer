@@ -437,7 +437,12 @@ var Library = (function () {
     var m = e.meta || {};
     return Tags.fold([m.projectCode, m.deviceName, m.workpiece, m.customer, m.department, m.owner, e.rel.join('/')].join(' '));
   }
-  function matches(e, folded) { return !folded || haystack(e).indexOf(folded) >= 0 || !!matchedPart(e, folded); }
+  function matches(e, folded) { return !folded || haystack(e).indexOf(folded) >= 0 || !!matchedPart(e, folded) || !!matchedTag(e, folded); }
+  /* 読み込んでいない装置も、以前読み込んだときに付けたタグで当たる。
+   * タグは行の鍵 '@<保存先>/<階層>' でブラウザに残っている (閉じても消さない) */
+  function tagPrefix(e) { return '@' + e.rel.join('/') + '/'; }
+  function matchedTag(e, folded) { return Tags.hitUnder(tagPrefix(e), folded); }
+  function tagsOf(e) { return Tags.under(tagPrefix(e)); }
   /* 読み込んでいない装置でも部品名で当たるように、index.json (格納時に書かれる階層一覧) の名前を
    * 検索のときだけまとめて読む。読んだ結果は IndexedDB の控え ('names:' + 装置) に置き、
    * index.json の更新日時とサイズが同じなら次回は読まない。無い装置は '' (案件情報だけで当てる) */
@@ -485,6 +490,14 @@ var Library = (function () {
       listEl.appendChild(box);
     });
   }
+  /* 以前読み込んだときに付けたタグ (閉じてもブラウザに残る)。押すとそのタグで絞り込む */
+  function tagChips(tags) {
+    if (!tags.length) return null;
+    var shown = tags.slice(0, 3);
+    return el('div.m.tags', {}, shown.map(function (t) {
+      return el('button.tag', { type: 'button', text: t, title: 'タグ「' + t + '」で絞り込む', onclick: function () { searchEl.value = t; renderList(); } });
+    }).concat(tags.length > 3 ? [el('span.tag.more', { text: '+' + (tags.length - 3), title: tags.slice(3).join(', ') })] : []));
+  }
   function card(e) {
     var m = e.meta, needConv = e.files.some(function (f) { return !f.glb && f.step; });
     var acts = el('div.acts', {}, [
@@ -506,6 +519,7 @@ var Library = (function () {
         el('span.mono', { text: fmtDate(m.savedAt) }),
         m.source && m.source.cad === 'fusion' ? el('span.badge', { text: 'Fusion' }) : null
       ]),
+      tagChips(tagsOf(e)),
       el('div.m.mono', { text: e.files.map(function (f) { return f.name; }).join(', ') }),
       needConv ? el('div.warn', { text: '未変換の STEP があります（開くと変換して glb を保存します）' }) : null,
       acts
@@ -653,6 +667,6 @@ var Library = (function () {
     init: init, supported: supported, open: open, scan: scan, writeFiles: writeFiles, ensureConfig: ensureConfig, saveMembers: saveMembers,
     connected: function () { return !!handle; }, name: function () { return handle ? handle.name : ''; }, processInbox: processInbox,
     entries: function () { return entries; }, config: function () { return config; }, members: function () { return members; }, deleteEntry: deleteEntry,
-    matches: matches, matchedPart: matchedPart, needsNames: needsNames, loadNames: loadNames, openEntry: openEntry
+    matches: matches, matchedPart: matchedPart, matchedTag: matchedTag, tagsOf: tagsOf, needsNames: needsNames, loadNames: loadNames, openEntry: openEntry
   };
 })();
