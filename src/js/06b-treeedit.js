@@ -165,14 +165,15 @@ var TreeEdit = (function () {
 
   /* ---- タグ (ディレクトリに付ける。検索で名称と一緒に引っかかる) ---- */
   function editTags(n) {
-    if (!n || !n.isGroup) return;
-    var key = n.path.join('/');
+    if (!n) return;
+    var key = Tree.tagKey(n);
     var d = $('#tags-dialog'), input = $('#tag-input'), known = $('#tag-known');
-    $('#tag-target').textContent = n.path.join(' / ');
+    $('#tag-target').textContent = n.isGroup ? n.path.join(' / ')
+      : (n.depth === 0 ? n.name : n.device.name + ' / ' + n.path.slice(1).join(' / '));
     input.value = Tags.get(key).join(' ');
     known.textContent = '';
     Tags.all().forEach(function (t) {
-      known.appendChild(el('button.tag', { type: 'button', text: t.tag, title: t.count + ' 個のフォルダーで使用中', onclick: function () {
+      known.appendChild(el('button.tag', { type: 'button', text: t.tag, title: t.count + ' か所で使用中', onclick: function () {
         var cur = Tags.parse(input.value);
         if (cur.some(function (x) { return Tags.fold(x) === Tags.fold(t.tag); })) return;
         input.value = cur.concat([t.tag]).join(' ');
@@ -214,9 +215,9 @@ var TreeEdit = (function () {
     var parent = n ? (n.isGroup ? n.path.slice() : (n.device ? (n.device.groupPath || []).slice() : [])) : [];
     items.push({ label: '新しいフォルダー', run: function () { newFolder(parent); } });
     if (many) items.push({ label: '選択した ' + targets.length + ' 件を新しいフォルダーへ', run: function () { moveToNewFolder(targets, parent); } });
-    if (n && n.isGroup) {
+    if (n) {
       items.push({ sep: true });
-      items.push({ label: Tags.has(n.path.join('/')) ? 'タグを編集…' : 'タグを付ける…', run: function () { editTags(n); } });
+      items.push({ label: Tags.has(Tree.tagKey(n)) ? 'タグを編集…' : 'タグを付ける…', run: function () { editTags(n); } });
     }
     if (n && Tree.selectable(n)) {
       items.push({ sep: true });

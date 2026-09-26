@@ -58,9 +58,13 @@ var Search = (function () {
         if (tag) folders.unshift({ node: n, kind: 'folder', by: 'tag', tag: tag });
         else if (Tags.fold(n.name).indexOf(f) >= 0) folders.push({ node: n, kind: 'folder', by: 'name' });
       } else if (n.depth === 0) {
-        if (deviceWords(n.device).indexOf(f) >= 0) devices.push({ node: n, kind: 'device', by: 'name' });
-      } else if (Tags.fold(n.name).indexOf(f) >= 0) {
-        parts.push({ node: n, kind: 'part', by: 'name' });
+        var dtag = Tags.hit(Tree.tagKey(n), f);
+        if (dtag) devices.unshift({ node: n, kind: 'device', by: 'tag', tag: dtag });
+        else if (deviceWords(n.device).indexOf(f) >= 0) devices.push({ node: n, kind: 'device', by: 'name' });
+      } else {
+        var ptag = Tags.hit(Tree.tagKey(n), f);
+        if (ptag) parts.unshift({ node: n, kind: 'part', by: 'tag', tag: ptag });
+        else if (Tags.fold(n.name).indexOf(f) >= 0) parts.push({ node: n, kind: 'part', by: 'name' });
       }
     });
     // ライブラリ: 保存先パスの語 (部署・担当者・案件コード・装置名・対象ワーク) に当たるもの。
@@ -81,7 +85,7 @@ var Search = (function () {
       ? '「' + query + '」に ' + total + ' 件（フォルダ ' + hits.folders.length + ' / 装置 ' + hits.devices.length + ' / 部品 ' + hits.parts.length + (hits.lib.length ? ' / ライブラリ ' + hits.lib.length : '') + '）'
       : '「' + query + '」に当たるものはありません。';
     if (!total) {
-      listEl.appendChild(el('p.muted.small', { text: 'フォルダを右クリック →「タグを編集」でタグを付けると、ここから探せます。ライブラリは部署・担当者・案件コード・装置名・対象ワークで探せます。' }));
+      listEl.appendChild(el('p.muted.small', { text: '行を右クリック →「タグを付ける」でフォルダ・装置・部品にタグを付けると、ここから探せます。ライブラリは部署・担当者・案件コード・装置名・対象ワークで探せます。' }));
       return;
     }
     section('フォルダ', hits.folders);

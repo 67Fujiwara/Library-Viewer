@@ -175,12 +175,50 @@ await page.evaluate(() => Tree.moveNode(Tree.nodeById('g:検査ユニット2'), 
 await page.waitForTimeout(300);
 check(await page.evaluate(() => JSON.stringify(Tags.get('搬送ユニット/検査ユニット2'))) === '["検査","客先A"]', 'tags follow a move into another folder');
 
+// ---- 8b. 装置の中の部品にもタグを付けられる (フォルダ以外の行でも右クリックに出る) ----
+await search('');
+const partRow = page.locator('.tree-row:not(.group):not(.device)', { hasText: 'COLUMN' }).first();
+await partRow.click({ button: 'right' });
+await page.waitForSelector('.ctx-menu');
+check(await page.locator('.ctx-item', { hasText: 'タグ' }).count() === 1, 'a part row offers タグを付ける in its context menu');
+await page.locator('.ctx-item', { hasText: 'タグ' }).first().click();
+await page.waitForSelector('#tags-dialog[open]');
+check((await page.textContent('#tag-target')).includes('COLUMN'), 'the dialog names the part: ' + await page.textContent('#tag-target'));
+await page.fill('#tag-input', '支柱 要確認');
+await page.click('#tag-save');
+await page.waitForSelector('#tags-dialog[open]', { state: 'detached' }).catch(() => {});
+await page.waitForTimeout(250);
+const partKey = await page.evaluate(() => Tree.tagKey(Tree.allNodes().find(n => !n.isGroup && n.depth > 0 && n.name === 'COLUMN')));
+check(partKey.startsWith('@') && partKey.includes('アーム.step') && partKey.endsWith('/COLUMN'), 'part tags are keyed by device + path: ' + partKey);
+const partChips = await page.locator('.tree-row:not(.group)', { hasText: 'COLUMN' }).first().locator('.tag').allTextContents();
+check(JSON.stringify(partChips) === JSON.stringify(['支柱', '要確認']), 'chips show on the part row: ' + partChips);
+await search('要確認');
+check((await page.textContent('#search-sum')).match(/部品 [1-9]/), 'a part is found by its tag: ' + await page.textContent('#search-sum'));
+check(await page.locator('#search-list .hit-card .badge', { hasText: '要確認' }).count() >= 1, 'the part card shows the matched tag');
+check(await page.locator('.tree-row:not(.group)', { hasText: 'COLUMN' }).first().isVisible(), 'the tagged part stays visible in the filtered tree');
+// 装置の行にも (絞り込みを解いてから)
+await search('');
+const devRow = page.locator('.tree-row.device', { hasText: 'ベース板' }).first();
+await devRow.click({ button: 'right' });
+await page.waitForSelector('.ctx-menu');
+await page.locator('.ctx-item', { hasText: 'タグ' }).first().click();
+await page.waitForSelector('#tags-dialog[open]');
+await page.fill('#tag-input', '治具');
+await page.click('#tag-save');
+await page.waitForSelector('#tags-dialog[open]', { state: 'detached' }).catch(() => {});
+await page.waitForTimeout(250);
+await search('治具');
+check((await page.textContent('#search-sum')).includes('装置 1'), 'a device is found by its tag: ' + await page.textContent('#search-sum'));
+await search('');
+
 // ---- 9. 読み込み直してもタグは残る ----
 if (canStore) {
   await page.reload();
   await page.waitForTimeout(1200);
   const back = await page.evaluate(() => JSON.stringify(Tags.get('搬送ユニット/検査ユニット2')));
   check(back === '["検査","客先A"]', 'tags survive a reload (stored per folder path): ' + back);
+  const backPart = await page.evaluate((k) => JSON.stringify(Tags.get(k)), partKey);
+  check(backPart === '["支柱","要確認"]', 'part tags survive a reload too (same device + path → same key): ' + backPart);
 }
 
 console.log('errors:', errors.length ? errors : 'none');

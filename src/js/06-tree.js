@@ -185,11 +185,22 @@ var Tree = (function () {
     return el('span.row-actions', {}, [solo, close]);
   }
 
-  /* フォルダ行のタグ。押すとそのタグで検索する (<div> に onclick を付けない)。
+  /* タグの鍵。フォルダはパスそのもの (改名・移動で repath される)。
+   * 装置とその中の部品は "@<装置の識別>/<階層パス>"。装置の識別はライブラリなら保存先の相対パス、
+   * ファイルから開いたものはファイル名なので、同じ装置をまた開けばタグも戻る。
+   * "@" で始めるのでフォルダのパスとは混ざらず、フォルダの repath にも巻き込まれない */
+  function tagKey(n) {
+    if (!n) return '';
+    if (n.isGroup) return n.path.join('/');
+    var d = n.device, ident = (d && d.source && d.source.entry && d.source.entry.rel) ? d.source.entry.rel.join('/') : ((d && d.fileName) || (d && d.name) || '');
+    return '@' + ident + '/' + n.path.join('/');
+  }
+
+  /* 行のタグ。押すとそのタグで検索する (<div> に onclick を付けない)。
    * 行が名前で埋まらないよう、出すのは 2 つまでで残りは +N にする (全部はツールチップに) */
   var CHIPS = 2;
   function tagChips(n) {
-    var box = el('span.tags'), list = Tags.get(n.path.join('/'));
+    var box = el('span.tags'), list = Tags.get(tagKey(n));
     list.slice(0, CHIPS).forEach(function (t) {
       box.appendChild(el('button.tag', { type: 'button', dataset: { tag: t }, title: '「' + t + '」で検索', text: t }));
     });
@@ -219,7 +230,7 @@ var Tree = (function () {
     var close = n.depth === 0
       ? el('button.close.btn.small', { type: 'button', title: 'この装置を閉じる（表示から外すだけで、ファイルは消えません）' }, [svgIcon('M6 6l12 12M18 6L6 18')])
       : null;
-    [tw, cb, nameBtn, cnt, xb, actions(solo, close)].forEach(function (c) { if (c) row.appendChild(c); });
+    [tw, cb, nameBtn, tagChips(n), cnt, xb, actions(solo, close)].forEach(function (c) { if (c) row.appendChild(c); });
     parentEl.appendChild(row);
     rows[n.id] = row; n.row = row; n.cb = cb; n.xbadge = xb;
     n.children.forEach(function (c) { renderNode(c, parentEl); });
@@ -248,11 +259,11 @@ var Tree = (function () {
     applyRowVisibility();
   }
 
-  /* 名称かタグに当たるか (タグはフォルダだけが持つ) */
+  /* 名称かタグに当たるか (タグはフォルダ・装置・部品のどの行にも付けられる) */
   function nodeMatches(n) {
     if (!filter) return false;
     if (Tags.fold(n.name).indexOf(filter) >= 0) return true;
-    if (n.isGroup && Tags.hit(n.path.join('/'), filter)) return true;
+    if (Tags.hit(tagKey(n), filter)) return true;
     return false;
   }
   function rowVisibility(n) {
@@ -531,7 +542,7 @@ var Tree = (function () {
     devicesUnder: devicesUnder, registerDeviceFolders: registerDeviceFolders,
     focused: function () { return focusedId ? nodesById[focusedId] : null; }, setFocused: setFocused,
     picked: pickedNodes, setPicked: setPicked, isPicked: isPicked, moveNodes: moveNodes, selectable: selectable,
-    nodeById: function (id) { return nodesById[id]; }, allNodes: allNodes,
+    nodeById: function (id) { return nodesById[id]; }, allNodes: allNodes, tagKey: tagKey,
     isolate: isolate, reveal: reveal, setSearch: setSearch, query: function () { return filter; },
     rerender: function () { render(devices); }, container: function () { return container; }
   };
