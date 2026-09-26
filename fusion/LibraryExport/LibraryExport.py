@@ -587,25 +587,27 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             inputs.addStringValueInput('libraryRoot', 'ライブラリ', root)
             inputs.addBoolValueInput('browse', 'フォルダを選ぶ…', False, '', False)
 
-            inputs.addStringValueInput('projectCode', '案件コード *', parsed.get('projectCode') or st.get('lastProjectCode', ''))
+            inputs.addStringValueInput('projectCode', '案件コード *', parsed.get('projectCode') or '')
             inputs.addStringValueInput('deviceName', '装置名 *', parsed.get('deviceName') or (design.rootComponent.name if design else doc_name))
-            inputs.addStringValueInput('workpiece', '対象ワーク', parsed.get('workpiece') if parsed else st.get('lastWorkpiece', ''))
-            inputs.addStringValueInput('customer', '取引先', (parsed.get('customer') if parsed else None) or st.get('lastCustomer', ''))
+            inputs.addStringValueInput('workpiece', '対象ワーク', parsed.get('workpiece') or '')
+            inputs.addStringValueInput('customer', '取引先', parsed.get('customer') or '')
 
             # 部署・担当者は名簿 (members.json) から選ぶ。手入力欄は置かない (名簿に無い人はビューアの「名簿」で足す)。
             # 名簿がまだ無いライブラリでだけ、代わりに文字入力にする
             members = library_members(root) if root else []
-            last_dept = parsed.get('department') or st.get('lastDept', '')
-            last_owner = parsed.get('owner') or st.get('lastOwner', '')
+            # 前回の値は引き継がない。ドキュメント名がルールに合うときだけ入れる
+            last_dept = parsed.get('department') or ''
+            last_owner = parsed.get('owner') or ''
             if members:
                 if last_dept and last_owner and (last_dept, last_owner) not in members:
-                    members.append((last_dept, last_owner))       # 前回 / ドキュメント名の人も選べるように
+                    members.append((last_dept, last_owner))       # ドキュメント名の人も選べるように
                 depts = []
                 for d, _ in members:
                     if d not in depts:
                         depts.append(d)
                 dd2 = inputs.addDropDownCommandInput('dept', '部署 *', adsk.core.DropDownStyles.TextListDropDownStyle)
-                cur_dept = last_dept if last_dept in depts else depts[0]
+                cur_dept = last_dept if last_dept in depts else ''
+                dd2.listItems.add(PLACEHOLDER, cur_dept == '')
                 for d in depts:
                     dd2.listItems.add(d, d == cur_dept)
                 dd3 = inputs.addDropDownCommandInput('owner', '担当者 *', adsk.core.DropDownStyles.TextListDropDownStyle)
@@ -645,16 +647,20 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             _ui.messageBox('LibraryExport:\n' + traceback.format_exc())
 
 
+PLACEHOLDER = '（選択）'     # 部署・担当者は空から始める。_pick はこれを '' として返す
+
+
 def fill_owners(dd, members, dept, selected):
-    """担当者のドロップダウンを部署で絞って埋める (その部署に誰もいなければ全員)"""
+    """担当者のドロップダウンを部署で絞って埋める。部署が未選択なら「（選択）」だけ"""
     dd.listItems.clear()
-    names = [n for d, n in members if d == dept] or [n for _, n in members]
+    names = [n for d, n in members if d == dept] if dept else []
     seen = []
     for n in names:
         if n not in seen:
             seen.append(n)
-    for i, n in enumerate(seen):
-        dd.listItems.add(n, n == selected or (selected not in seen and i == 0))
+    dd.listItems.add(PLACEHOLDER, selected not in seen)
+    for n in seen:
+        dd.listItems.add(n, n == selected)
 
 
 def _pick(inputs, cid):
@@ -662,7 +668,8 @@ def _pick(inputs, cid):
     inp = inputs.itemById(cid)
     dd = adsk.core.DropDownCommandInput.cast(inp)
     if dd:
-        return dd.selectedItem.name if dd.selectedItem else ''
+        name = dd.selectedItem.name if dd.selectedItem else ''
+        return '' if name == PLACEHOLDER else name
     return inp.value if inp else ''
 
 
@@ -735,7 +742,7 @@ class InputChangedHandler(adsk.core.InputChangedEventHandler):
                 sel = ch.selectedItem
                 owner = adsk.core.DropDownCommandInput.cast(inputs.itemById('owner'))
                 if owner:
-                    fill_owners(owner, members, sel.name if sel else '', '')
+                    fill_owners(owner, members, (sel.name if sel and sel.name != PLACEHOLDER else ''), '')
             update_preview(inputs)
         except Exception:
             _ui.messageBox('LibraryExport:\n' + traceback.format_exc())
@@ -883,10 +890,9 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
                                'members': [{'department': d, 'name': n} for d, n in members]}, f, ensure_ascii=False, indent=2)
 
             st = load_settings()
-            st.update({'libraryRoot': p['root'], 'lastProjectCode': p['codeRaw'], 'lastWorkpiece': p['workRaw'],
-                       'lastCustomer': p['customerRaw'], 'lastDept': p['deptRaw'], 'lastOwner': p['ownerRaw'],
-                       'lastSplit': bool(p['split']), 'lastMesh': bool(p['mesh']), 'lastKeepStep': bool(p['keepStep']),
-                       'lastQuality': p['quality']})
+            for k in ('lastProjectCode', 'lastWorkpiece', 'lastCustomer', 'lastDept', 'lastOwner', 'lastQuality'):
+                st.pop(k, None)                    # 案件情報は毎回空から (前回の値を残さない)
+            st.update({'libraryRoot': p['root'], 'lastSplit': bool(p['split']), 'lastMesh': bool(p['mesh']), 'lastKeepStep': bool(p['keepStep'])})
             save_settings(st)
             if mesh_stat:
                 detail = ('\n\nメッシュで格納: ボディ %d 件 (種類 %d) / 三角形 %s / glb.gz %.1f MB' % (
