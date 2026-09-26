@@ -222,14 +222,32 @@ await page.waitForTimeout(250);
 await page.evaluate(() => App.select(Tree.allNodes().find(n => !n.isGroup && n.depth > 0 && n.name === 'COLUMN')));
 await page.waitForTimeout(300);
 const xrefHeads = await page.$$eval('#xref-list h3', hs => hs.map(h => h.textContent));
-check(xrefHeads.some(h => h.startsWith('同じタグ 1')), 'crossref lists a "same tag" section for COLUMN (要確認): ' + JSON.stringify(xrefHeads));
+// ベース板 (装置に 要確認) と ブラケット (フォルダ 検査ユニット の 客先A が、COLUMN のフォルダ 搬送ユニット の 客先A と同じ) の 2 件
+check(xrefHeads.some(h => h.startsWith('同じタグ 2')), 'crossref lists a "same tag" section for COLUMN (要確認 / 客先A): ' + JSON.stringify(xrefHeads));
+check(await page.locator('#xref-list .xref-card', { hasText: 'ブラケット' }).locator('.badge').textContent() === '客先A', 'the folder tag shared by both folders matches the device in the other folder');
 const tagCard = page.locator('#xref-list .xref-card', { hasText: 'ベース板' });
 check(await tagCard.count() === 1 && await tagCard.locator('.badge').textContent() === '要確認', 'the other device shows up by its shared tag with the tag as a badge');
-check((await page.$$eval('#xref-current .tags .badge', bs => bs.map(b => b.textContent))).join(',') === '支柱,要確認', 'the current part shows its own tags');
+const curTags = await page.$$eval('#xref-current .tags .badge', bs => bs.map(b => b.textContent + (b.classList.contains('inherited') ? '*' : '')));
+check(curTags.join(',') === '支柱,要確認,搬送*,客先A*', 'the current part shows its own tags, then the folder tags as inherited: ' + curTags);
 await tagCard.click();
 await page.waitForTimeout(300);
 check((await page.textContent('#sel-info')).includes('ベース板'), 'clicking the tag card moves the selection there');
 await page.evaluate(() => App.select(null));
+// 装置やフォルダに付けたタグは、その中の部品を選んでも効く (HEAD_UNIT 自身にはタグが無い)
+await page.evaluate(() => App.select(Tree.allNodes().find(n => !n.isGroup && n.depth > 0 && n.name === 'HEAD_UNIT')));
+await page.waitForTimeout(300);
+let inherited = await page.$$eval('#xref-current .tags .badge', bs => bs.map(b => b.textContent + (b.classList.contains('inherited') ? '*' : '')));
+check(inherited.join(',') === '搬送*,客先A*', 'an untagged part inherits the tags of its folder (shown as inherited): ' + inherited);
+const viaFolder = page.locator('#xref-list .xref-card', { hasText: 'ブラケット' });
+check(await viaFolder.count() === 1 && await viaFolder.locator('.badge').textContent() === '客先A', 'a folder tag (客先A on 搬送ユニット) matches the device in the other folder (検査ユニット) once, by the shared tag');
+check(await page.locator('#xref-list .xref-card', { hasText: 'ベース板' }).count() === 0, 'devices without a shared tag stay out');
+// 装置の行に付けたタグも同じ
+await page.evaluate(() => { Tags.set(Tree.tagKey(Tree.allNodes().find(n => !n.isGroup && n.depth === 0 && n.name === 'アーム')), ['要確認']); CrossRef.refresh(); });
+await page.waitForTimeout(200);
+inherited = await page.$$eval('#xref-current .tags .badge', bs => bs.map(b => b.textContent + (b.classList.contains('inherited') ? '*' : '')));
+check(inherited.join(',') === '要確認*,搬送*,客先A*', 'a tag on the device row is inherited too: ' + inherited);
+check(await page.locator('#xref-list .xref-card', { hasText: 'ベース板' }).locator('.badge', { hasText: '要確認' }).count() === 1, 'now ベース板 (tagged 要確認) shows up for the untagged part');
+await page.evaluate(() => { Tags.set(Tree.tagKey(Tree.allNodes().find(n => !n.isGroup && n.depth === 0 && n.name === 'アーム')), []); App.select(null); });
 // 長いタグでもカードの中で切れない (288px の右パネルで「コンベ…」にならない。バッジは折り返して全部見える)
 const longTag = '搬送コンベアユニット取引先確認待ち2026年版';
 await devRow.click({ button: 'right' });

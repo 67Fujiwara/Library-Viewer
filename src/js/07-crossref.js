@@ -49,10 +49,22 @@ var CrossRef = (function () {
     return { exact: exact, similar: similar.slice(0, 40) };
   }
 
-  /* ---- タグで当てる (読み込み済みの他装置) ---- */
+  /* ---- タグで当てる (読み込み済みの他装置) ----
+   * 行に効くタグは、自分のタグ + 上の階層 (親のユニット → 装置の行 → 装置を入れたフォルダ) のタグ。
+   * 装置やフォルダにタグを付けて、その中の部品を選んでも横断できるようにする
+   * (自分の行だけ見ると「装置にタグを付けたのに部品を選ぶと出ない」になる。実際にそうなった) */
+  function folderKeys(d) {
+    var gp = d.groupPath || [], out = [];
+    for (var i = gp.length; i >= 1; i--) out.push({ key: gp.slice(0, i).join('/'), name: gp[i - 1] });
+    return out;
+  }
   function foldedTags(n) {
-    var set = {}, list = Tags.get(Tree.tagKey(n));
-    list.forEach(function (t) { set[Tags.fold(t)] = 1; });
+    var list = [], set = {};
+    function add(tags, from) {
+      tags.forEach(function (t) { var f = Tags.fold(t); if (!set[f]) { set[f] = 1; list.push({ tag: t, from: from }); } });
+    }
+    for (var p = n; p; p = p.parent) add(Tags.get(Tree.tagKey(p)), p === n ? '' : (p.depth === 0 ? '装置' : p.name));
+    folderKeys(n.device).forEach(function (fk) { add(Tags.get(fk.key), 'フォルダ ' + fk.name); });
     return { list: list, set: set, any: list.length > 0 };
   }
   function sharedTag(set, key) {
@@ -60,14 +72,20 @@ var CrossRef = (function () {
     for (var i = 0; i < list.length; i++) if (set[Tags.fold(list[i])]) return list[i];
     return null;
   }
+  /* 他の装置で同じタグを持つ行。フォルダや装置に付いたタグは装置の行で 1 回だけ出す (部品を全部並べない) */
   function tagMatches(n, tags) {
     var out = [];
     if (!tags.any) return out;
     devices.forEach(function (d) {
       if (d === n.device) return;
+      var t = null, fks = folderKeys(d);
+      for (var i = 0; i < fks.length && !t; i++) t = sharedTag(tags.set, fks[i].key);
+      if (!t) t = sharedTag(tags.set, Tree.tagKey(d.root));
+      if (t) out.push({ node: d.root, tag: t });
       d.nodes.forEach(function (m) {
-        var t = sharedTag(tags.set, Tree.tagKey(m));
-        if (t) out.push({ node: m, tag: t });
+        if (m.depth === 0) return;
+        var mt = sharedTag(tags.set, Tree.tagKey(m));
+        if (mt) out.push({ node: m, tag: mt });
       });
     });
     return out;
@@ -145,7 +163,7 @@ var CrossRef = (function () {
     curEl.appendChild(el('div.n', { text: n.name }));
     curEl.appendChild(el('div.muted', { text: isDev ? ((n.device.groupPath || []).join(' / ') || '装置') : n.device.name + ' · ' + (n.path.slice(1, -1).join(' / ') || 'ルート直下') }));
     curEl.appendChild(el('div.mono.small', { text: 'ソリッド ' + st.solids + ' · △ ' + fmtInt(st.tris) }));
-    if (tags.any) curEl.appendChild(el('div.tags', {}, tags.list.map(function (t) { return el('span.badge.coral', { text: t }); })));
+    if (tags.any) curEl.appendChild(el('div.tags', {}, tags.list.map(function (t) { return el('span.badge.coral' + (t.from ? '.inherited' : ''), { text: t.tag, title: t.from ? t.from + 'のタグ' : 'この行のタグ' }); })));
     if (!r.exact.length && !r.similar.length && !byTag.length && !lib.length) {
       listEl.appendChild(el('p.muted.small', { text: isDev
         ? '装置全体が選択されています。ユニットや部品を選ぶと、他の案件の同名ユニットを探します。装置にタグを付けると、同じタグの装置がここに並びます。'
