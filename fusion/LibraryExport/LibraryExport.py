@@ -559,8 +559,8 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             cmd.okButtonText = '格納する'
             # 既定の幅だとラベルが「案件コー…」と切れる。ラベル列が入る幅で開く
             try:
-                cmd.setDialogInitialSize(560, 640)
-                cmd.setDialogMinimumSize(500, 520)
+                cmd.setDialogInitialSize(560, 560)
+                cmd.setDialogMinimumSize(500, 440)
             except Exception:
                 pass
             inputs = cmd.commandInputs
@@ -571,10 +571,6 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
 
             rule = naming_rule(root)
             parsed = naming_parse(doc_name, rule) or {}
-            info = '共有フォルダ (Library Viewer のライブラリ) に 3D データと案件情報を格納します。'
-            if parsed:
-                info += '\nドキュメント名がネーミングルールに一致したので案件情報を自動入力しました。'
-            inputs.addTextBoxCommandInput('info', '', info, 3, True)
             inputs.addStringValueInput('libraryRoot', 'ライブラリ', root)
             inputs.addBoolValueInput('browse', 'フォルダを選ぶ…', False, '', False)
 
@@ -611,20 +607,24 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
                                 'どんな大きさでも開くのは一瞬です。共有フォルダに置くのも glb.gz だけ (STEP の 1/23)。')
             ddq = inputs.addDropDownCommandInput('quality', '細かさ', adsk.core.DropDownStyles.TextListDropDownStyle)
             last_q = st.get('lastQuality', 'normal')
+            if last_q not in [q[0] for q in MESH_QUALITY]:
+                last_q = 'normal'
             for qid, label, _t, _d, _q in MESH_QUALITY:
                 ddq.listItems.add(label, qid == last_q)
             ddq.isEnabled = mesh_on
-            chk_keep = inputs.addBoolValueInput('keepStep', 'STEP も書き出す', True, '', bool(st.get('lastKeepStep', False)))
+            adv = inputs.addGroupCommandInput('adv', '詳細')
+            adv.isExpanded = False
+            chk_keep = adv.children.addBoolValueInput('keepStep', 'STEP も書き出す', True, '', bool(st.get('lastKeepStep', False)))
             chk_keep.tooltip = 'メッシュで格納するときに STEP も step/ に置きます (後で細かさを変えて再変換したいとき)。容量は 23 倍になります。'
             chk_keep.isEnabled = mesh_on
             units = split_units(design) if design else None
-            chk = inputs.addBoolValueInput('split', 'ユニット分割', True, '', bool(st.get('lastSplit', False)) and bool(units) and not mesh_on)
+            chk = adv.children.addBoolValueInput('split', 'ユニット分割', True, '', bool(st.get('lastSplit', False)) and bool(units) and not mesh_on)
             chk.isEnabled = bool(units) and not mesh_on
             chk.tooltip = ('STEP で格納するとき、大きいアセンブリはこちら。ルート直下のユニットごとに STEP を分け、組立位置は meta.json に残します。\n'
                            'ライブラリ上は 1 件のままで、ビューアで開くと全ユニットがまとめて読み込まれます。\n'
                            '(メッシュで格納するときは分割の必要がありません)'
                            if units else 'ルート直下にボディがある / ユニットが 1 つなので分割できません')
-            inputs.addTextBoxCommandInput('preview', '保存先  (' + LAYOUT_LABEL + ')', '', 3, True)
+            inputs.addTextBoxCommandInput('preview', '保存先', '', 2, True)
 
             on_change = InputChangedHandler(); cmd.inputChanged.add(on_change); _handlers.append(on_change)
             on_exec = ExecuteHandler(); cmd.execute.add(on_exec); _handlers.append(on_exec)
@@ -692,7 +692,7 @@ def update_preview(inputs):
         note = 'STEP をユニット %d 件に分けて書き出します（ライブラリ上は 1 件）' % len(units)
     else:
         note = 'STEP 1 ファイルで書き出します（ビューアが初回に glb を作ります）'
-    inputs.itemById('preview').text = (p['root'] or '（ライブラリ未設定）') + '\n' + '/'.join(segs) + '/\n' + note
+    inputs.itemById('preview').text = (p['root'] or '（ライブラリ未設定）') + '/' + '/'.join(segs) + '/\n' + note
 
 
 class InputChangedHandler(adsk.core.InputChangedEventHandler):
