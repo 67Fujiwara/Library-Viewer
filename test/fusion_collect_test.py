@@ -56,6 +56,7 @@ adsk = types.SimpleNamespace(doEvents=lambda: None, fusion=types.SimpleNamespace
 ns = {'adsk': adsk, 'array': array, 'gc': gc, 're': re, 'json': json, 'os': os}
 exec(src[src.index('CM_TO_MM ='):src.index('CM_TO_MM =') + len('CM_TO_MM = 10.0')], ns)
 exec(src[src.index('MESH_QUALITY = ['):src.index('class CommandCreatedHandler')], ns)
+exec(src[src.index('def component_tree'):src.index('# ---- メッシュで格納')], ns)
 ns['body_color'] = lambda body, occ=None: body.appearance or (occ.appearance if occ is not None else None)   # 外観は色そのものを入れておく
 
 def check(c, m):
@@ -88,4 +89,12 @@ check(b4['matrix'] is None and model['meshes'][b4['meshIndex']]['positions'][0] 
 check(model['meshes'][kids[5]['children'][0]['meshIndex']]['color'] == [0.1, 0.2, 0.3] and kids[5]['children'][0]['meshIndex'] != b1['meshIndex'], 'a differently colored placement gets its own mesh')
 check(all(m['normals'] is None for m in model['meshes']), 'no normals are stored (viewer computes them)')
 gz, raw = ns['glbwrite'].write_gz(model) if 'glbwrite' in ns else (None, None)
+# index.json の階層一覧: ボディ (葉) の名前まで入る。読み込んでいない装置を部品名で探すのに使う
+rows = ns['flatten_tree'](model['root'])
+check(rows[0]['name'] == 'ROOT' and rows[0]['depth'] == 0 and rows[0]['solids'] == 6, 'flatten_tree: root row counts every placed body (6)')
+check(any(r['name'] == 'body1' and r['depth'] == 2 and r['path'] == 'ROOT/BOLT:1/body1' and r['solids'] == 1 for r in rows), 'flatten_tree: body names are listed as leaves with their path')
+check(not any(r['name'] in ('hidden', 'GHOST:1') for r in rows), 'flatten_tree: hidden bodies / occurrences are not listed')
+crows = ns['component_tree'](design.rootComponent)
+check(any(r['name'] == 'PLATE' and r['depth'] == 1 for r in crows) and any(r['name'] == 'body1' and r['path'] == 'ROOT/BOLT:1/body1' for r in crows), 'component_tree (STEP 格納): body names are listed too')
+check(not any(r['name'] == 'hidden' for r in crows), 'component_tree: hidden bodies are not listed')
 print('collect_meshes OK')

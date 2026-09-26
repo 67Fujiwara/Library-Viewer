@@ -210,6 +210,25 @@ await page.waitForTimeout(250);
 await search('治具');
 check((await page.textContent('#search-sum')).includes('装置 1'), 'a device is found by its tag: ' + await page.textContent('#search-sum'));
 await search('');
+// 長いタグでもカードの中で切れない (288px の右パネルで「コンベ…」にならない。バッジは折り返して全部見える)
+const longTag = '搬送コンベアユニット取引先確認待ち2026年版';
+await devRow.click({ button: 'right' });
+await page.waitForSelector('.ctx-menu');
+await page.locator('.ctx-item', { hasText: 'タグ' }).first().click();
+await page.waitForSelector('#tags-dialog[open]');
+await page.fill('#tag-input', '治具 ' + longTag);
+await page.click('#tag-save');
+await page.waitForSelector('#tags-dialog[open]', { state: 'detached' }).catch(() => {});
+await page.waitForTimeout(250);
+await search(longTag);
+const fit = await page.evaluate((t) => {
+  const b = [...document.querySelectorAll('#search-list .hit-card .badge')].find(x => x.textContent === t);
+  if (!b) return { found: false };
+  const card = b.closest('.hit-card').getBoundingClientRect(), r = b.getBoundingClientRect();
+  return { found: true, text: b.textContent, clipped: b.scrollWidth > b.clientWidth + 1, inside: r.right <= card.right && r.left >= card.left, lines: Math.round(r.height / 14) };
+}, longTag);
+check(fit.found && !fit.clipped && fit.inside, 'a long tag badge is shown in full inside the card (wrapped, not clipped): ' + JSON.stringify(fit));
+await search('');
 
 // ---- 9. 読み込み直してもタグは残る ----
 if (canStore) {

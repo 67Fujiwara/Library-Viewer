@@ -320,9 +320,13 @@ body.measuring #gl { cursor: crosshair; }
 /* ==== 右パネル: 検索結果 / 案件横断 ==== */
 .right-section { display: flex; flex-direction: column; gap: var(--sp-sm); min-height: 0; }
 .sp-actions { display: flex; gap: var(--sp-xs); margin-top: var(--sp-xs); }
-.hit-card .dev { display: flex; align-items: center; gap: 6px; }
+/* 検索結果のカードは名前・タグ・保存先を切らずに折り返す (288px の右パネルで「コンベ…」にしない)。
+   タグのバッジは名前の後ろに入りきらなければ次の行へ */
+.hit-card .dev { display: flex; align-items: center; gap: 2px 6px; flex-wrap: wrap; }
 .hit-card .dev svg { width: 13px; height: 13px; flex: none; color: var(--muted); }
-.hit-card .dev > span:first-of-type { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hit-card .dev > span:first-of-type { flex: 0 1 auto; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.hit-card .dev .badge { flex: 0 1 auto; min-width: 0; max-width: 100%; height: auto; min-height: 18px; padding: 2px 7px; line-height: 1.3; white-space: normal; overflow-wrap: anywhere; }
+.hit-card .path { white-space: normal; overflow-wrap: anywhere; }
 
 .xref-current { border: 1px solid var(--hairline); border-radius: var(--r-lg); padding: 10px 12px; background: var(--surface-card); font-size: 12px; }
 .xref-current .n { font-weight: 500; color: var(--ink); font-size: 14px; }

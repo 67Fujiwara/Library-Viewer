@@ -241,6 +241,10 @@ def component_tree(root_comp):
 
     def walk(comp, name, path, depth):
         rows.append({'name': name, 'path': '/'.join(path), 'depth': depth, 'solids': count_bodies(comp)})
+        # ボディ (ビューアのツリーの葉 = 部品) も名前を残す。これが無いと読み込んでいない装置が部品名で当たらない
+        for body in comp.bRepBodies:
+            if getattr(body, 'isVisible', True):
+                rows.append({'name': body.name, 'path': '/'.join(path + [body.name]), 'depth': depth + 1, 'solids': 1})
         for occ in comp.occurrences:
             walk(occ.component, occ.name, path + [occ.name], depth + 1)
 
@@ -564,6 +568,25 @@ def collect_meshes(design, quality_id, progress=None):
     return {'name': root.name, 'root': tree, 'meshes': meshes}, stat
 
 
+def flatten_tree(root):
+    """glb のノード階層 → index.json 用のフラットな一覧。09-store.js の flattenTree と同じ形
+    (名称・階層パス・深さ・ソリッド数)。メッシュ格納では実際に書いた glb のノード (ボディの葉まで) を
+    そのまま写すので、ビューアのツリーに出る名前と index.json の名前が一致する"""
+    out = []
+
+    def solids(n):
+        return (1 if n.get('meshIndex') is not None else 0) + sum(solids(c) for c in n.get('children') or [])
+
+    def walk(n, depth, path):
+        p = path + [n.get('name') or '']
+        out.append({'name': n.get('name') or '', 'path': '/'.join(p), 'depth': depth, 'solids': solids(n)})
+        for c in n.get('children') or []:
+            walk(c, depth + 1, p)
+
+    walk(root, 0, [])
+    return out
+
+
 class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
     def notify(self, args):
         try:
@@ -790,6 +813,7 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
             units = split_units(design) if (p['split'] and not p['mesh']) else None
             exported = []            # [(ファイル名, STEP のパス or None, 位置 or None, ルート名)]
             mesh_stat = None
+            mesh_tree = None         # メッシュ格納で実際に書いた glb の階層 (index.json 用)
             if p['mesh']:
                 # メッシュで格納: glb.gz を直接書く。STEP は「一緒に書き出す」のときだけ
                 total = count_visible_bodies(design.rootComponent)
@@ -804,6 +828,7 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
                         pd.hide()
                         _ui.messageBox('表示されているボディがありません（非表示 %d / 失敗 %d）。' % (mesh_stat['hidden'], mesh_stat['failed'])); return
                     gz, raw_size = glbwrite.write_gz(model)
+                    mesh_tree = flatten_tree(model['root'])
                     del model
                     with open(os.path.join(target, base + '.glb.gz'), 'wb') as f:
                         f.write(gz)
@@ -849,7 +874,7 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
             except Exception:
                 pass
 
-            tree = component_tree(design.rootComponent)
+            tree = mesh_tree if mesh_tree is not None else component_tree(design.rootComponent)
             files_meta = []
             for fname, sp, placement, root_name in exported:
                 # glb の名前は .glb.gz (09-store.js と揃える)。STEP 格納ではビューアが初回に作る「予告」、
