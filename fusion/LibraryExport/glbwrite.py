@@ -5,6 +5,7 @@
   入力: { 'name': str,
           'root': {'name': str, 'meshIndex': int|None, 'children': [...]},
           'meshes': [{'name': str, 'positions': [x,y,z,...] (mm), 'normals': [...], 'indices': [...], 'color': [r,g,b]|None}] }
+        color は **リニア** 0..1 (glTF の baseColorFactor の規約。sRGB を渡すと薄く出る)
         positions / normals / indices は list でも array('f') / array('I') でもよい。
         (Fusion 側は 1 ボディごとに array に畳んで持つ。Python の float のリストは 1 要素 32 バイトで、
          122 万三角形のアセンブリだと 400MB を超えて落ちる。array なら 4 バイト)

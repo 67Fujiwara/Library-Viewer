@@ -605,3 +605,9 @@ Fusion スクリプト側が予告する名前も `.glb.gz` に揃えた。
 組立位置つきで返っている (Occurrence 経由が効いている)。落ちた原因の候補はメモリなので、
 `tessellate` は 1 ボディごとに `array('f')` / `array('I')` に畳む形に直した (list だと 400MB 超 → 50MB)。
 進捗ダイアログ + キャンセル + `adsk.doEvents()` も追加。`glbwrite.write` は list / array / bytes のどれでも受ける。
+
+**実機 2 回目 (メッシュ格納)**: 2053 ボディが丸ごとビューアで開き、ツリーも Fusion と同じ階層。
+ただし色がほぼ既定色に落ちた (ベルトの緑だけ拾えた)。原因は `opaque_albedo` しか見ていなかったこと。
+外観の種類ごとに色のプロパティ id が違う (金属 `metal_f0` / 積層 `layered_diffuse` …) ので優先順で探し、
+無ければ最初の `ColorProperty`。さらに sRGB 0..255 をリニアに直してから glb に入れる
+(ビューアは `outputEncoding = sRGB`。直す前は緑が薄く出ていた)。取れなかった外観は格納後のメッセージに見本を出す。

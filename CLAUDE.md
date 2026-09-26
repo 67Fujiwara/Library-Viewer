@@ -152,6 +152,10 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
     122 万三角形だと 400MB を超える（1 回目の実機テストで Fusion が落ちた）。`array` なら 1/8
   - 進捗は `ui.createProgressDialog()`、25 ボディごとに `adsk.doEvents()`（固まったままだと落ちたように見える）、
     キャンセルは `Cancelled` 例外で抜ける
+  - **色は外観の種類ごとにプロパティ id が違う**（塗装 `opaque_albedo` / 金属 `metal_f0` / 積層 `layered_diffuse` …）。
+    1 つの id だけ見ると塗装以外が既定色に落ちる（実機で起きた）。`COLOR_PROP_IDS` の優先順 → 最初の `ColorProperty`。
+    値は sRGB 0..255 なので **リニアに直して** glb に入れる（ビューアは `outputEncoding = sRGB`、occt の色もリニア）。
+    ボディで取れなければオカレンスの外観も見る。取れなかった外観は格納後のメッセージに見本を出す
 - Fusion の API は **この環境では動かせない**。`glbwrite.py`（純 Python）はここでテストし、
   `collect_meshes` / `tessellate` の薄い層だけ実機で確かめてもらう。Fusion で確かめる前に「動いた」と言わない
 - **偽ハンドルのテストでは `lastModified` を固定する。** 毎回 `new File()` すると更新日時が現在時刻になり、

@@ -255,17 +255,84 @@ MESH_QUALITY = [   # (id, 表示名, TriangleMeshQualityOptions の名前)。ビ
 ]
 
 
-def body_color(body):
-    """外観の色 [r,g,b] (0..1)。取れなければ None (ビューアの既定色になる)"""
+# 外観の色。Fusion の Appearance は種類ごとに色のプロパティ id が違う
+# (塗装・プラスチック = opaque_albedo / 金属 = metal_f0 / 積層 = layered_diffuse / ガラス = transparent_color …)。
+# 1 つの id だけ見ると塗装以外が全部既定色に落ちる (実機で起きた) ので、優先順で探し、
+# 無ければ最初の ColorProperty を使う。値は sRGB 0..255 なので **リニアに直して**渡す
+# (ビューアは renderer.outputEncoding = sRGB で、glb の baseColorFactor はリニア。occt の色もリニア)。
+COLOR_PROP_IDS = ['opaque_albedo', 'layered_diffuse', 'metal_f0', 'surface_albedo', 'generic_diffuse',
+                  'transparent_color', 'glazing_transmittance_color', 'wood_color']
+_color_cache = {}          # appearance.id → [r,g,b] | None
+_uncolored_samples = []    # 色が取れなかった外観の見本 (格納後のメッセージに出す)
+
+
+def srgb_to_linear(v):
+    c = v / 255.0
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def _color_prop_value(prop):
     try:
-        prop = body.appearance.appearanceProperties.itemById('opaque_albedo')
+        if prop is None or prop.objectType != adsk.core.ColorProperty.classType():
+            return None
         c = prop.value
-        return [c.red / 255.0, c.green / 255.0, c.blue / 255.0]
+        if c is None:
+            return None
+        return [srgb_to_linear(c.red), srgb_to_linear(c.green), srgb_to_linear(c.blue)]
     except Exception:
         return None
 
 
-def tessellate(body, quality_id):
+def appearance_color(app):
+    if app is None:
+        return None
+    key = None
+    try:
+        key = app.id
+        if key in _color_cache:
+            return _color_cache[key]
+    except Exception:
+        pass
+    color = None
+    try:
+        props = app.appearanceProperties
+        for pid in COLOR_PROP_IDS:
+            color = _color_prop_value(props.itemById(pid))
+            if color:
+                break
+        if color is None:
+            for i in range(props.count):
+                color = _color_prop_value(props.item(i))
+                if color:
+                    break
+        if color is None and len(_uncolored_samples) < 6:
+            ids = []
+            for i in range(props.count):
+                try:
+                    ids.append(props.item(i).id)
+                except Exception:
+                    pass
+            _uncolored_samples.append('%s: [%s]' % (app.name, ', '.join(ids[:12])))
+    except Exception:
+        color = None
+    if key is not None:
+        _color_cache[key] = color
+    return color
+
+
+def body_color(body, occ=None):
+    """外観の色 [r,g,b] (リニア 0..1)。ボディ → オカレンスの順に見る。取れなければ None (ビューアの既定色)"""
+    for get in (lambda: body.appearance, lambda: occ.appearance if occ is not None else None):
+        try:
+            c = appearance_color(get())
+        except Exception:
+            c = None
+        if c:
+            return c
+    return None
+
+
+def tessellate(body, quality_id, occ=None):
     calc = body.meshManager.createMeshCalculator()
     opt_name = next(q[2] for q in MESH_QUALITY if q[0] == quality_id)
     calc.setQuality(getattr(adsk.fusion.TriangleMeshQualityOptions, opt_name))
@@ -278,7 +345,7 @@ def tessellate(body, quality_id):
          'positions': array('f', (v * CM_TO_MM for v in mesh.nodeCoordinatesAsFloat)),   # cm → mm
          'normals': array('f', mesh.normalVectorsAsFloat),
          'indices': array('I', mesh.nodeIndices),
-         'color': body_color(body)}
+         'color': body_color(body, occ)}
     del mesh, calc
     return m
 
@@ -313,7 +380,8 @@ def collect_meshes(design, quality_id, progress=None):
     実測 (2053 ボディ / 122 万三角形 / 標準): 60 秒"""
     root = design.rootComponent
     meshes = []
-    stat = {'bodies': 0, 'hidden': 0, 'failed': 0, 'triangles': 0, 'seen': 0}
+    stat = {'bodies': 0, 'hidden': 0, 'failed': 0, 'triangles': 0, 'seen': 0, 'colored': 0}
+    _color_cache.clear(); del _uncolored_samples[:]
 
     def tick():
         stat['seen'] += 1
@@ -326,16 +394,18 @@ def collect_meshes(design, quality_id, progress=None):
         if stat['seen'] % 200 == 0:
             gc.collect()
 
-    def add_bodies(bodies, node):
+    def add_bodies(bodies, node, occ=None):
         for body in bodies:
             if not body.isVisible:
                 stat['hidden'] += 1; continue
-            m = tessellate(body, quality_id)
+            m = tessellate(body, quality_id, occ)
             tick()
             if m is None:
                 stat['failed'] += 1; continue
             meshes.append(m)
             stat['bodies'] += 1
+            if m['color']:
+                stat['colored'] += 1
             stat['triangles'] += len(m['indices']) // 3
             node['children'].append({'name': body.name, 'meshIndex': len(meshes) - 1, 'children': []})
 
@@ -344,7 +414,7 @@ def collect_meshes(design, quality_id, progress=None):
             if not occ.isVisible:
                 continue
             sub = {'name': occ.name, 'meshIndex': None, 'children': []}
-            add_bodies(occ.bRepBodies, sub)          # 組立位置つきのプロキシ
+            add_bodies(occ.bRepBodies, sub, occ)     # 組立位置つきのプロキシ
             walk(occ.childOccurrences, sub)
             if sub['children']:
                 node['children'].append(sub)
@@ -659,6 +729,8 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
                     mesh_stat['bodies'], format(mesh_stat['triangles'], ','), mesh_stat['glbSize'] / 1048576.0) +
                     ('  (非表示 %d 件は含めていません)' % mesh_stat['hidden'] if mesh_stat['hidden'] else '') +
                     ('  ※ %d 件はメッシュにできませんでした' % mesh_stat['failed'] if mesh_stat['failed'] else '') +
+                    '\n色: %d / %d 件' % (mesh_stat['colored'], mesh_stat['bodies']) +
+                    ('\n色が取れなかった外観:\n  ' + '\n  '.join(_uncolored_samples) if _uncolored_samples else '') +
                     '\n\nLibrary Viewer の「ライブラリ」タブに表示され、そのまま開けます。')
             else:
                 detail = (('\n\nユニット %d 件に分けて書き出しました（ライブラリ上は 1 件です）。' % len(exported) if units else '') +
