@@ -389,11 +389,12 @@ var App = (function () {
     renderFooter(n);
   }
   /* その行だけ残して見せる (関係のない部品はチェックを外す = ソロと同じ)。検索結果・案件横断のカードから。
-   * カメラは角度を変えずに寄せる (回り込むのは「この部品に寄る」だけ) */
+   * カメラは角度を変えずに寄せる (回り込むのは「この部品に寄る」だけ)。
+   * opts.only: 構成ツリーにもその装置だけを出す (検索結果のカード。他の装置は行ごと消える) */
   function showOnly(n, opts) {
     if (!n) return;
     opts = opts || {};
-    Tree.isolate(n);
+    Tree.isolate(n, { only: !!opts.only });
     if (n.isGroup || opts.select === false) { select(null, { keepXref: true }); Viewer3D.fitNode(n); }   // 選択色にしない (検索結果)
     else select(n, { keepAngle: true, keepXref: !!opts.keepXref });
   }

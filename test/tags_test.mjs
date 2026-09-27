@@ -99,7 +99,7 @@ check((await page.textContent('#search-sum')).match(/部品 [1-9]/), 'part names
 await search('客先A');
 await page.locator('#search-list .hit-card', { hasText: '搬送ユニット' }).first().click();
 await page.waitForTimeout(400);
-check((await counter()).startsWith('3 / ' + total), 'only the solids under the chosen folder stay visible: ' + await counter());
+check((await counter()).startsWith('3 / '), 'only the solids under the chosen folder stay visible: ' + await counter());
 const off = await page.evaluate(() => Tree.allNodes()
   .filter(n => !n.isGroup && n.depth === 0)
   .map(n => ({ name: n.name, on: n.leaves.some(l => l.visible) })));
@@ -112,6 +112,11 @@ check(await page.locator('#search-list .hit-card.current').count() === 1, 'the c
 const rowsAfter = await page.$$eval('#tree .tree-row:not([hidden])', rs => rs.map(r => r.textContent.trim()));
 check(rowsAfter.some(t => t.includes('搬送ユニット')) && !rowsAfter.some(t => t.includes('ブラケット')) && !rowsAfter.some(t => t.includes('ベース板')),
   'unrelated devices disappear from the tree once a hit is isolated: ' + rowsAfter.join(' | '));
+// 選んだ装置は検索の絞り込みを掛けずに構成を全部出す (中の部品の行が '客先A' に当たらなくても見える)。カウンタもその装置だけ
+const armRows = await page.evaluate(() => Tree.allNodes().filter(n => !n.isGroup && n.device.name === 'アーム' && n.depth === 1).map(n => ({ name: n.name, shown: !!n.row && !n.row.hidden })));
+check(armRows.length >= 1 && armRows.every(r => r.shown), 'the chosen device shows its whole structure, not just the hits: ' + JSON.stringify(armRows));
+check(await page.evaluate(() => Tree.onlyDevices().length === 1 && Tree.onlyDevices()[0].name === 'アーム'), 'the tree is narrowed to the chosen device');
+check((await counter()) === '3 / 3 表示中', 'the counter counts only the device in the tree: ' + await counter());
 check(await page.locator('#search-list .hit-card .stats').count() === 0, 'search cards carry no solid / triangle counts');
 await page.screenshot({ path: outDir + '/shot-35-isolated.png' });
 
@@ -120,6 +125,7 @@ check(await page.$('#search-showall') === null, 'the extra すべて表示に戻
 await page.click('#btn-show-all');
 await page.waitForTimeout(300);
 check((await counter()).startsWith(total + ' / ' + total), 'すべて表示 brings everything back: ' + await counter());
+check(await page.evaluate(() => Tree.onlyDevices() === null), 'すべて表示 releases the device-only tree (the search filter still applies)');
 
 // 部品を選んだときは装置の中の 1 部品だけが残る
 await search('COLUMN');
@@ -137,6 +143,9 @@ if ((await hitTitles()).length) {
   await page.waitForTimeout(400);
   const shown = Number((await counter()).split('/')[0].trim());
   check(shown >= 1 && shown < Number(total), 'choosing a part isolates it: ' + await counter());
+  check((await page.$$('#tree .tree-row.device:not([hidden])')).length === 1, 'only the part\'s device is in the tree');
+  await search('客先A');
+  check(await page.evaluate(() => Tree.onlyDevices() === null), 'changing the query releases the device-only tree');
   check(await page.evaluate(() => !App.selected()), 'choosing a part does not select it (normal color, not the highlight)');
   check((await page.textContent('#sel-info')).includes('未選択'), 'footer stays 未選択');
 }

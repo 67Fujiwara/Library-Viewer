@@ -4,6 +4,7 @@ var Tree = (function () {
   var container, counterEl, searchEl;
   var devices = [], nodesById = {}, rows = {}, soloNode = null, selectedNode = null, filter = '', terms = [];
   var groups = [], groupIds = [], collapsedGroups = {};   // フォルダ階層 (元のフォルダ構成をそのまま出す)
+  var onlyDevs = null;       // 検索結果のカードを選んだ後、ツリーに出す装置 (それ以外の装置は行ごと出さない)。null なら全部
   var folderPaths = {};      // ユーザーが作ったフォルダ。中身が空でも残す ("装置A/ユニット1" → true)
   var focusedId = null;      // 最後にクリックした行 (新規フォルダの作成先)。再描画で作り直されるので id で持つ
   var picked = [], anchorId = null;   // まとめて動かすための複数選択 (フォルダ行と装置行だけ)
@@ -54,8 +55,8 @@ var Tree = (function () {
     });
     container.addEventListener('mouseleave', function () { callbacks.onHover(null); });
     searchEl.addEventListener('input', debounce(function () { applySearch(searchEl.value); }, 120));
-    $('#btn-show-all').addEventListener('click', function () { allLeaves().forEach(function (n) { n.visible = true; }); soloNode = null; refresh(); });
-    $('#btn-invert').addEventListener('click', function () { allLeaves().forEach(function (n) { n.visible = !n.visible; }); soloNode = null; refresh(); });
+    $('#btn-show-all').addEventListener('click', function () { allLeaves().forEach(function (n) { n.visible = true; }); soloNode = null; onlyDevs = null; refresh(); });
+    $('#btn-invert').addEventListener('click', function () { allLeaves().forEach(function (n) { n.visible = !n.visible; }); soloNode = null; onlyDevs = null; refresh(); });
     $('#chk-ghost').addEventListener('change', function (e) { Viewer3D.setGhost(e.target.checked); });
   }
 
@@ -84,7 +85,7 @@ var Tree = (function () {
   function allLeaves() { var out = []; devices.forEach(function (d) { out = out.concat(d.leaves); }); return out; }
   function setVisible(n, v) { n.leaves.forEach(function (l) { l.visible = v; }); }
   function toggleSolo(n) {
-    if (soloNode === n) { allLeaves().forEach(function (l) { l.visible = true; }); soloNode = null; }
+    if (soloNode === n) { allLeaves().forEach(function (l) { l.visible = true; }); soloNode = null; onlyDevs = null; }   // 全部戻すときはツリーの絞り込みも解く
     else { allLeaves().forEach(function (l) { l.visible = false; }); n.leaves.forEach(function (l) { l.visible = true; }); soloNode = n; }
     refresh();
   }
@@ -252,6 +253,7 @@ var Tree = (function () {
       d.nodes.forEach(function (n) {
         updateCheck(n);
       });
+      if (onlyDevs && onlyDevs.indexOf(d) < 0) return;   // ツリーに出していない装置は数えない (「161 / 4572」にしない)
       total += d.leaves.length; shown += d.leaves.filter(function (l) { return l.visible; }).length;
     });
     counterEl.textContent = shown + ' / ' + total + ' 表示中';
@@ -269,9 +271,19 @@ var Tree = (function () {
   }
   /* フィルターを変えたときに、問い合わせはそのままで行の表示だけ引き直す */
   function refilter() { if (filter) applyRowVisibility(); }
+  /* 検索結果のカードを選んだ後は、その装置だけをツリーに出す (フォルダはその装置を含むものだけ) */
+  function inOnly(n) {
+    if (!onlyDevs) return true;
+    if (n.isGroup) return devicesUnder(n).some(function (d) { return onlyDevs.indexOf(d) >= 0; });
+    return onlyDevs.indexOf(n.device) >= 0;
+  }
   function rowVisibility(n) {
     var hidden = false;
-    if (filter) {
+    if (onlyDevs) {
+      // 選んだ装置は検索の絞り込みを掛けずに構成を全部出す (中の部品を辿って表示に足せる)。他の装置は行ごと出さない
+      if (!inOnly(n)) hidden = true;
+      else for (var q = n.parent; q; q = q.parent) if (q.collapsed) { hidden = true; break; }
+    } else if (filter) {
       // 検索中は「当たった行」と「当たった行へ降りる途中の親」だけ。当たった行の中身は出さない
       // (装置がタグで当たっても部品を全部並べない。検索対象でない部品は 3D でグレーのまま)
       hidden = !nodeMatches(n) && !hasMatchingDescendant(n);
@@ -303,7 +315,11 @@ var Tree = (function () {
     // 問い合わせが変わったら、前の結果で絞った状態 (ソロ) は解く。残したままだと新しい当たりが
     // 「表示するものが無い装置」として消えてしまう。検索はいつも全部見える状態から始める
     // 検索で自動読み込みした装置は「選ぶまで表示しない」ので、解くときも隠したまま
-    if (filter !== prev && soloNode) { allLeaves().forEach(function (l) { l.visible = !(l.device && l.device.autoLoaded); }); soloNode = null; refresh(); }
+    if (filter !== prev && (soloNode || onlyDevs)) {
+      if (soloNode) allLeaves().forEach(function (l) { l.visible = !(l.device && l.device.autoLoaded); });
+      soloNode = null; onlyDevs = null;   // 「この装置だけ」も問い合わせごと (次の当たりを隠さない)。カウンタも全装置に戻す
+      refresh();
+    }
     applyRowVisibility();
     if (window.Search) Search.run(raw);
   }
@@ -318,12 +334,16 @@ var Tree = (function () {
     refresh();
   }
   /* 検索結果から選んだものだけ残す: 関係ない部品はチェックを外して非表示にする。
-   * ソロと同じ状態にするので、もう一度ソロを押す / 「すべて表示」で戻せる */
-  function isolate(n) {
+   * ソロと同じ状態にするので、もう一度ソロを押す / 「すべて表示」で戻せる。
+   * opts.only: ツリーにもその装置 (フォルダのカードなら中の装置) だけを出す (検索結果のカードから。要望)。
+   *   検索で自動読み込みした他の装置は 3D にも構成にも出ず、カウンタもその装置だけを数える。
+   *   問い合わせを変える / 「すべて表示」/ ソロを解く で元に戻る */
+  function isolate(n, opts) {
     if (!n) return;
     allLeaves().forEach(function (l) { l.visible = false; });
     n.leaves.forEach(function (l) { l.visible = true; });
     soloNode = n;
+    onlyDevs = (opts && opts.only) ? (n.isGroup ? devicesUnder(n) : [n.device]) : null;
     refresh();
     reveal(n);
   }
@@ -547,6 +567,7 @@ var Tree = (function () {
     device.root.parent = null;
     if (soloNode && soloNode.device === device) soloNode = null;
     if (selectedNode && selectedNode.device === device) selectedNode = null;
+    if (onlyDevs) { onlyDevs = onlyDevs.filter(function (d) { return d !== device; }); if (!onlyDevs.length) onlyDevs = null; }
   }
   return {
     init: init, buildDevice: buildDevice, render: render, refresh: refresh, select: select, setBadges: setBadges,
@@ -556,7 +577,7 @@ var Tree = (function () {
     focused: function () { return focusedId ? nodesById[focusedId] : null; }, setFocused: setFocused,
     picked: pickedNodes, setPicked: setPicked, isPicked: isPicked, moveNodes: moveNodes, selectable: selectable,
     nodeById: function (id) { return nodesById[id]; }, allNodes: allNodes, tagKey: tagKey,
-    isolate: isolate, reveal: reveal, setDevicesVisible: setDevicesVisible, setSearch: setSearch, refilter: refilter, query: function () { return filter; },
+    isolate: isolate, onlyDevices: function () { return onlyDevs; }, reveal: reveal, setDevicesVisible: setDevicesVisible, setSearch: setSearch, refilter: refilter, query: function () { return filter; },
     rerender: function () { render(devices); }, container: function () { return container; }
   };
 })();

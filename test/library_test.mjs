@@ -337,6 +337,11 @@ await page.waitForTimeout(400);
 const shownNow = await page.evaluate(() => Tree.allNodes().filter(n => !n.isGroup && n.meshIndex != null && n.visible).map(n => n.name));
 check(shownNow.length >= 1 && shownNow.every(n => n === 'BASE_PLATE'), 'choosing a part card shows just that part: ' + shownNow);
 check(!(await page.evaluate(() => App.selected())), 'without selecting it');
+// 構成にはその装置だけ (他の自動読み込みした装置は行ごと出さない)。その装置は絞り込みなしで全部出す。カウンタもその装置だけ
+const devRows = await page.$$eval('#tree .tree-row.device:not([hidden])', rs => rs.map(r => r.querySelector('.name').textContent.trim()));
+check(devRows.length === 1, 'the tree shows only the chosen card\'s device: ' + devRows.join(' | '));
+check(await page.evaluate(() => { var d = Tree.onlyDevices(); return d && d.length === 1 && d[0].nodes.filter(n => n.depth === 1).every(n => n.row && !n.row.hidden); }), 'that device is shown in full (all top-level parts, hits or not)');
+check(Number((await page.textContent('#tree-counter')).match(/\/\s*(\d+)/)[1]) === (await page.evaluate(() => Tree.onlyDevices()[0].leaves.length)), 'the counter counts only that device: ' + await page.textContent('#tree-counter'));
 await page.fill('#tree-search', 'BASE_PLATE, 設計1課');
 await page.waitForTimeout(900);
 check((await page.evaluate(() => App.devices().length)) === autoLoaded.length, 'narrowing the query does not load anything new when nothing new matches');

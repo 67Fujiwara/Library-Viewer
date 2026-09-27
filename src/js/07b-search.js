@@ -245,7 +245,7 @@ var Search = (function () {
       h.tag ? el('span.badge.coral', { text: h.tag, title: h.by === 'tag' ? 'タグで当たりました' : '名称とタグで当たりました' }) : null
     ]);
     // ソリッド数・三角形数は出さない (要望。案件横断のカードには残す)
-    var b = el('button.xref-card.hit-card', { type: 'button', dataset: { id: n.id }, title: 'これだけ表示する（関係のない部品はチェックを外します）' }, [
+    var b = el('button.xref-card.hit-card', { type: 'button', dataset: { id: n.id }, title: 'これだけ表示する（関係のない部品はチェックを外し、構成にはこの装置だけを出します）' }, [
       head, pathEl(pathSegs(n))   // 保存先はすべて出す (切らない)。強調は設定
     ]);
     b.addEventListener('click', function () { apply(h); });
@@ -269,18 +269,19 @@ var Search = (function () {
     b.addEventListener('click', function () {
       Library.openEntry(h.entry, true).then(function (devs) {
         var n = App.findLoaded(devs, { name: h.part, tag: h.tag });
-        if (n) App.showOnly(n, { keepXref: true, select: false });
+        if (n) App.showOnly(n, { keepXref: true, select: false, only: true });
       });
     });
     return b;
   }
 
   /* 選んだものだけ残す: 関係のない部品はチェックを外して非表示にし、カメラを角度そのままで収める。
-   * 選択 (ハイライト色) にはしない: 検索で残した部品は普通の色で見せる (要望) */
+   * 選択 (ハイライト色) にはしない: 検索で残した部品は普通の色で見せる (要望)。
+   * 構成ツリーにはその装置だけを出す (`only`。検索で自動読み込みした他の装置を並べない。要望) */
   function apply(h) {
     var n = h.node;
     currentId = n.id;
-    App.showOnly(n, { keepXref: true, select: false });
+    App.showOnly(n, { keepXref: true, select: false, only: true });
     mark();
   }
   function mark() {
