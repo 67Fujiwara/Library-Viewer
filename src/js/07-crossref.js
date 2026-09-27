@@ -129,7 +129,7 @@ var CrossRef = (function () {
     var e = h.entry, m = e.meta || {};
     var b = el('button.xref-card.hit-card', { type: 'button', title: 'ライブラリから読み込んで比較します（今の表示に追加）' }, [
       el('div.dev', {}, [svgIcon(ICON.folder), el('span', { text: m.deviceName || e.rel[e.rel.length - 1] }),
-        h.part ? el('span.badge', { text: h.part, title: '同じ名前の部品' }) : el('span.badge.coral', { text: h.tag, title: '同じタグ' })]),
+        el('span.brk'), h.part ? el('span.badge', { text: h.part, title: '同じ名前の部品' }) : el('span.badge.coral', { text: h.tag, title: '同じタグ' })]),
       el('div.path', { text: e.rel.join(' / ') }),
       el('div.stats', {}, [
         m.projectCode ? el('span', { text: m.projectCode }) : null,
@@ -149,7 +149,7 @@ var CrossRef = (function () {
     var st = Viewer3D.stats(m);
     var diff = curStats && curStats.tris ? Math.round((st.tris - curStats.tris) / curStats.tris * 100) : null;
     var b = el('button.xref-card.hit-card', { type: 'button', dataset: { id: m.id } }, [
-      el('div.dev', {}, [el('span', { text: m.device.name }), tag ? el('span.badge.coral', { text: tag, title: '同じタグ' }) : null]),
+      el('div.dev', {}, [el('span', { text: m.device.name }), tag ? el('span.brk') : null, tag ? el('span.badge.coral', { text: tag, title: '同じタグ' }) : null]),
       el('div.path', { text: m.path.slice(1).join(' / ') || m.name }),
       el('div.stats', {}, [
         el('span', { text: 'ソリッド ' + st.solids }),

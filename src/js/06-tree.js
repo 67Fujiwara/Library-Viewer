@@ -272,9 +272,9 @@ var Tree = (function () {
   function rowVisibility(n) {
     var hidden = false;
     if (filter) {
-      var match = nodeMatches(n) || n.leaves.some(nodeMatches);
-      // 当たったフォルダの中身は、名前が違っても出す (タグで探して中を見るため)
-      hidden = !match && !hasMatchingDescendant(n) && !hasMatchingAncestor(n);
+      // 検索中は「当たった行」と「当たった行へ降りる途中の親」だけ。当たった行の中身は出さない
+      // (装置がタグで当たっても部品を全部並べない。検索対象でない部品は 3D でグレーのまま)
+      hidden = !nodeMatches(n) && !hasMatchingDescendant(n);
     } else {
       for (var p = n.parent; p; p = p.parent) if (p.collapsed) { hidden = true; break; }
     }
@@ -290,10 +290,6 @@ var Tree = (function () {
   }
   function hasMatchingDescendant(n) {
     return n.children.some(function (c) { return nodeMatches(c) || hasMatchingDescendant(c); });
-  }
-  function hasMatchingAncestor(n) {
-    for (var p = n.parent; p; p = p.parent) if (nodeMatches(p)) return true;
-    return false;
   }
 
   /* ---- 検索 (左の絞り込みと右の結果一覧はひとつの問い合わせで動く) ---- */

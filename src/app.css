@@ -373,6 +373,7 @@ body.measuring #gl { cursor: crosshair; }
 .hit-card .dev { display: flex; align-items: center; gap: 2px 6px; flex-wrap: wrap; }
 .hit-card .dev svg { width: 13px; height: 13px; flex: none; color: var(--muted); }
 .hit-card .dev > span:first-of-type { flex: 0 1 auto; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.hit-card .dev .brk { flex-basis: 100%; height: 0; }   /* バッジを必ず 2 行目に。名前の長さで位置が変わらない */
 .hit-card .dev .badge { flex: 0 1 auto; min-width: 0; max-width: 100%; height: auto; min-height: 18px; padding: 2px 7px; line-height: 1.3; white-space: normal; overflow-wrap: anywhere; }
 .hit-card .path { white-space: normal; overflow-wrap: anywhere; }
 

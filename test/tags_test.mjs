@@ -110,10 +110,11 @@ check(await page.evaluate(() => Viewer3D.leavesOf(Tree.allNodes().find(n => n.na
 check(await page.locator('#search-list .hit-card.current').count() === 1, 'the chosen card is marked');
 await page.screenshot({ path: outDir + '/shot-35-isolated.png' });
 
-// 「すべて表示に戻す」で元へ
-await page.click('#search-showall');
+// ツールバーの「すべて表示」で元へ (結果の下の「すべて表示に戻す」は要望で無くした)
+check(await page.$('#search-showall') === null, 'the extra すべて表示に戻す button is gone');
+await page.click('#btn-show-all');
 await page.waitForTimeout(300);
-check((await counter()).startsWith(total + ' / ' + total), 'すべて表示に戻す brings everything back: ' + await counter());
+check((await counter()).startsWith(total + ' / ' + total), 'すべて表示 brings everything back: ' + await counter());
 
 // 部品を選んだときは装置の中の 1 部品だけが残る
 await search('COLUMN');
@@ -126,8 +127,7 @@ if ((await hitTitles()).length) {
 }
 
 // ---- 5. タグのチップを押すとそのタグで検索 ----
-await page.click('#search-clear');
-await page.waitForTimeout(300);
+await search('');
 await page.click('#btn-show-all');
 await page.locator('.tree-row.group', { hasText: '検査ユニット' }).locator('.tag', { hasText: '検査' }).click();
 await page.waitForTimeout(400);
@@ -135,8 +135,7 @@ check(await page.inputValue('#tree-search') === '検査', 'clicking a tag chip s
 check((await hitTitles()).includes('検査ユニット'), 'and the folder is listed: ' + await hitTitles());
 
 // ---- 6. 検索をやめると案件横断に戻る ----
-await page.click('#search-clear');
-await page.waitForTimeout(300);
+await search('');
 check(await page.inputValue('#tree-search') === '', 'the search box is cleared');
 check(await page.locator('#search-panel').isHidden() && await page.locator('#xref-panel').isVisible(), '案件横断 comes back');
 
@@ -154,8 +153,7 @@ check(await page.evaluate(() => document.activeElement.id) === 'tree-search', 'a
 await page.keyboard.type('客先A');
 await page.waitForTimeout(400);
 check((await hitTitles()).length === 2, 'typing right after "/" searches: ' + await hitTitles());
-await page.click('#search-clear');
-await page.waitForTimeout(400);
+await search('');
 check(await page.evaluate(() => Panels.isOpen('right')), 'ending the search leaves the panel open (the search box lives there)');
 
 // ---- 8. 改名してもタグは付いてくる (フォルダの id はパスから作られる) ----
@@ -281,7 +279,7 @@ check((await page.textContent('#search-sum')).includes('絞り込み 1 件'), 't
 await page.fill('#search-filters input[data-facet="name"]', '検査');
 await page.waitForTimeout(300);
 check(JSON.stringify(await hitTitles()) === JSON.stringify(['検査ユニット2']), 'the 名称 filter picks the other folder: ' + await hitTitles());
-check(await page.locator('.tree-row.device', { hasText: 'アーム' }).first().isHidden() && await page.locator('.tree-row.device', { hasText: 'ブラケット' }).first().isVisible(), 'the same filter narrows the tree on the left (アーム hidden, ブラケット inside the matching folder shown)');
+check(await page.locator('.tree-row.device', { hasText: 'アーム' }).first().isHidden() && await page.locator('.tree-row.device', { hasText: 'ブラケット' }).first().isHidden() && await folderRow('検査ユニット2').isVisible(), 'the same filter narrows the tree on the left (only the matching folder row; its contents are not listed)');
 check(await page.locator('#search-filters .fpill.text.on').count() === 1, 'an active text facet is filled');
 await page.fill('#search-filters input[data-facet="name"]', '');
 await page.waitForTimeout(300);
@@ -356,6 +354,14 @@ await page.waitForTimeout(250);
 check(JSON.stringify(await hitTitles()) === JSON.stringify(['検査ユニット2']) && await folderRow('検査ユニット2').isVisible(), 'choosing 一致 keeps the hit and the tree row');
 await page.keyboard.press('Escape');
 await search('');
+
+// ---- 8d. 「検索をやめる」は検索で読み込んだものも含めて構成を空にする ----
+await search('客先A');
+check((await page.evaluate(() => App.devices().length)) === 3, 'three devices are loaded before ending the search');
+await page.click('#search-clear');
+await page.waitForTimeout(400);
+check(await page.inputValue('#tree-search') === '' && (await page.evaluate(() => App.devices().length)) === 0, '検索をやめる clears the search and closes every device in the tree');
+check(await page.evaluate(() => JSON.stringify(Tags.get('搬送ユニット/検査ユニット2'))) === '["検査","客先A"]', 'tags are kept (rows closed, tags stay)');
 
 // ---- 9. 読み込み直してもタグは残る ----
 if (canStore) {

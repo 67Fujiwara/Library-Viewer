@@ -7,7 +7,7 @@
  *   カメラは角度を変えずに収める (Viewer3D.fitNode)。回り込むのは「この部品に寄る」だけ
  */
 var Search = (function () {
-  var panelEl, xrefEl, listEl, sumEl, inputEl, clearBtn, allBtn;
+  var panelEl, xrefEl, listEl, sumEl, inputEl, clearBtn;
   var MAX_PARTS = 50, MAX_LIB = 30;
   var EMPTY = { folders: [], devices: [], parts: [], lib: [] };
   var hits = EMPTY, query = '', currentId = null, byNode = {};   // byNode: ノード id → ヒット (左のツリーのフィルター判定に使う)
@@ -16,11 +16,11 @@ var Search = (function () {
     panelEl = $('#search-panel'); xrefEl = $('#xref-panel');
     listEl = $('#search-list'); sumEl = $('#search-sum');
     inputEl = $('#tree-search');
-    clearBtn = $('#search-clear'); allBtn = $('#search-showall');
-    clearBtn.addEventListener('click', function () { Tree.setSearch(''); inputEl.focus(); });
+    clearBtn = $('#search-clear');
+    // 検索をやめる = 検索で読み込んだものも含めて、構成にある装置を全部閉じる (次の検索を素の状態から始める)
+    clearBtn.addEventListener('click', function () { Tree.setSearch(''); App.clearDevices(); inputEl.focus(); });
     // フィルター (結果の見出しの下)。変えたら一覧を描き直し、左のツリーにも同じ条件を掛ける
     SearchFilters.init({ onChange: function () { if (query) { render(); Tree.refilter(); } } });
-    allBtn.addEventListener('click', function () { $('#btn-show-all').click(); currentId = null; mark(); });
   }
 
   /* 検索欄は右パネルの中にあるので、畳んでいたら開いてから入れる (/ か Ctrl+F) */
@@ -133,6 +133,7 @@ var Search = (function () {
     var head = el('div.dev', {}, [
       n.isGroup ? svgIcon(ICON.folder) : null,
       el('span', { text: n.name }),
+      h.tag ? el('span.brk') : null,   // バッジは名前の長さに関係なく次の行に (位置を揃える)
       h.tag ? el('span.badge.coral', { text: h.tag, title: h.by === 'tag' ? 'タグで当たりました' : '名称とタグで当たりました' }) : null
     ]);
     var stats = el('div.stats', {}, [
@@ -151,7 +152,7 @@ var Search = (function () {
   function libCard(h) {
     var m = h.entry.meta || {};
     var b = el('button.xref-card.hit-card', { type: 'button', title: 'ライブラリから読み込みます（今の表示に追加）' }, [
-      el('div.dev', {}, [svgIcon(ICON.folder), el('span', { text: m.deviceName || h.entry.rel[h.entry.rel.length - 1] }), h.part ? el('span.badge.coral', { text: h.part, title: 'この部品名で当たりました' }) : h.tag ? el('span.badge.coral', { text: h.tag, title: '以前読み込んだときに付けたタグで当たりました' }) : (m.owner ? el('span.badge', { text: m.owner }) : null)]),
+      el('div.dev', {}, [svgIcon(ICON.folder), el('span', { text: m.deviceName || h.entry.rel[h.entry.rel.length - 1] }), el('span.brk'), h.part ? el('span.badge.coral', { text: h.part, title: 'この部品名で当たりました' }) : h.tag ? el('span.badge.coral', { text: h.tag, title: '以前読み込んだときに付けたタグで当たりました' }) : (m.owner ? el('span.badge', { text: m.owner }) : null)]),
       el('div.path', { text: h.entry.rel.join(' / ') }),
       el('div.stats', {}, [
         m.projectCode ? el('span', { text: m.projectCode }) : null,
