@@ -611,6 +611,24 @@ var Library = (function () {
   }
 
   /* ---- 削除: 装置フォルダごと消し、空になった親フォルダも掃除する ---- */
+  /* 検索で当たった装置をまとめて読み込む (自動読み込み)。glb 済みのものだけ: 未変換の STEP は変換に分単位かかるので
+   * カードに残して押してもらう。1 件ずつ addDevice しない (全部読んでから App.addDevices で 1 回)。
+   * 読めなかったものは飛ばす (カードに残る) */
+  function isReady(e) { return e.files.length > 0 && e.files.every(function (f) { return !!f.glb; }); }
+  async function openEntries(list) {
+    var devs = [];
+    await pool(list.filter(isReady), 4, async function (e) {
+      try {
+        if (!e.dir) e.dir = await dirAt(e.rel);
+        for (var i = 0; i < e.files.length; i++) {
+          var f = e.files[i];
+          devs.push({ model: await readModel(e.dir, f.glb), fileName: f.step ? f.step.split('/').pop() : f.name + '.step', stepBytes: null, source: { kind: 'library', entry: e, file: f } });
+        }
+      } catch (err) { /* 読めないものは残す */ }
+    });
+    if (devs.length) { App.addDevices(devs); Viewer3D.fitAll(); }
+    return devs;
+  }
   async function dirAt(segments) {
     var d = handle;
     for (var i = 0; i < segments.length; i++) d = await d.getDirectoryHandle(segments[i]);
@@ -680,6 +698,7 @@ var Library = (function () {
     init: init, supported: supported, open: open, scan: scan, writeFiles: writeFiles, ensureConfig: ensureConfig, saveMembers: saveMembers,
     connected: function () { return !!handle; }, name: function () { return handle ? handle.name : ''; }, processInbox: processInbox,
     entries: function () { return entries; }, config: function () { return config; }, members: function () { return members; }, deleteEntry: deleteEntry,
-    matches: matches, matchedPart: matchedPart, matchedTag: matchedTag, tagsOf: tagsOf, needsNames: needsNames, loadNames: loadNames, openEntry: openEntry
+    matches: matches, matchedPart: matchedPart, matchedTag: matchedTag, tagsOf: tagsOf, needsNames: needsNames, loadNames: loadNames, openEntry: openEntry,
+    openEntries: openEntries, isReady: isReady
   };
 })();

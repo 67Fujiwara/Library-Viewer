@@ -377,6 +377,7 @@ body.measuring #gl { cursor: crosshair; }
 .hit-card .dev .badge { flex: 0 1 auto; min-width: 0; max-width: 100%; height: auto; min-height: 18px; padding: 2px 7px; line-height: 1.3; white-space: normal; overflow-wrap: anywhere; }
 .xref-card.hit-card .path { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }   /* .xref-card .path の nowrap より後勝ちにするため 2 クラスで */
 .hit-card .path .sep { color: var(--muted-soft); }
+.hit-card.loading { opacity: 0.6; cursor: progress; }
 .hit-card .path .seg.em { font-weight: 600; color: var(--ink); }   /* 設定「保存先の強調」で選んだ区切り */
 
 .xref-current { border: 1px solid var(--hairline); border-radius: var(--r-lg); padding: 10px 12px; background: var(--surface-card); font-size: 12px; }

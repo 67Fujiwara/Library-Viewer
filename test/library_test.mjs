@@ -102,6 +102,8 @@ await page.addInitScript((seed) => {
   for (const [p, data] of Object.entries(seed)) { const parts = p.split('/'); let d = root; for (let i = 0; i < parts.length - 1; i++) { if (!d._e.has(parts[i])) d._e.set(parts[i], new DirH(parts[i])); d = d._e.get(parts[i]); } d._e.set(parts.at(-1), new FileH(parts.at(-1), b64(data))); }
   window.__root = root;
   window.showDirectoryPicker = async () => root;
+  // 検索の自動読み込みはここでは切っておく (カードを押す経路をそのまま確かめる)。専用の節で入れて試す
+  try { localStorage.setItem('lv.autoLoadHits', 'false'); } catch (e) { }
   window.__ls = (p) => { const parts = p.split('/'); let d = root; for (const s of parts) { if (!s) continue; d = d._e.get(s); if (!d) return null; } return d.kind === 'file' ? { file: d.name, size: d._d.length, text: d._d.length < 20000 ? new TextDecoder().decode(d._d) : null } : [...d._e.keys()]; };
 }, seed);
 
@@ -305,6 +307,40 @@ const cards = await page.$$('.lib-card');
 check(cards.length === 6, '6 cards rendered (4 seeded + 2 from inbox)');
 check(await page.$('.lib-card .warn') !== null, 'unconverted STEP warns');
 check(await page.$('.lib-card a[href^="https://example.autodesk360.com"]') !== null, 'Fusion で開く link present');
+
+// ---- 検索で当たった装置の自動読み込み (設定 歯車 → 検索) ----
+check((await page.evaluate(() => Search.autoLoad())) === false && !(await page.isChecked('#chk-auto-load')), 'auto-load was off for the checks above and the switch shows it');
+await page.evaluate(() => App.clearDevices());
+await openSettings();
+await page.click('label[for="chk-auto-load"]');
+await closeSettings();
+check((await page.evaluate(() => Search.autoLoad())) === true, 'the switch turns auto-load on');
+// 未変換の STEP しか無い装置 (搬送装置B) は当たっても自動では読み込まない
+await page.fill('#tree-search', '鈴木');
+await page.waitForTimeout(1500);
+check((await page.evaluate(() => App.devices().every(d => !d.source.entry.rel.join('/').includes('搬送装置B')))) && (await hitTitles()).includes('搬送装置B'), 'an unconverted STEP entry is not loaded automatically; its card stays: ' + await hitTitles());
+check((await page.textContent('#search-list')).includes('未変換の STEP 1 件'), 'a note explains why it stayed');
+await page.fill('#tree-search', 'BASE_PLATE');
+// 入力が落ち着いてから glb 済みの当たり (検査装置A / メッシュ機H) が勝手に読み込まれる。未変換の 搬送装置B は読み込まれない
+await page.waitForFunction(() => App.devices().filter(d => d.source && d.source.entry).map(d => d.source.entry.rel.join('/')).filter(r => r.includes('検査装置A') || r.includes('メッシュ機H')).length >= 2 && !Search.loading(), null, { timeout: 30000 });
+await page.waitForTimeout(400);
+const autoLoaded = await page.evaluate(() => App.devices().map(d => d.source.entry.rel.join('/')));
+check(autoLoaded.some(r => r.includes('検査装置A')) && autoLoaded.some(r => r.includes('メッシュ機H')), 'the glb-ready hits were loaded without clicking: ' + autoLoaded.join(' | '));
+check(!autoLoaded.some(r => r.includes('搬送装置B')), 'the unconverted entry is still not loaded');
+check((await page.evaluate(() => Search.hits().lib.length)) === 0 && !(await hitTitles()).includes('検査装置A'), 'the loaded ones left the library list: ' + await hitTitles());
+check((await page.textContent('#search-sum')).match(/部品 [1-9]/) !== null, 'their parts now show up as part hits: ' + await page.textContent('#search-sum'));
+check((await page.evaluate(() => Tree.allNodes().filter(n => !n.isGroup && n.meshIndex != null).every(n => n.visible))), 'auto-loaded devices are fully visible (nothing isolated until a card is chosen)');
+await page.fill('#tree-search', 'BASE_PLATE, 設計1課');
+await page.waitForTimeout(900);
+check((await page.evaluate(() => App.devices().length)) === autoLoaded.length, 'narrowing the query does not load anything new when nothing new matches');
+await page.click('#search-clear');
+await page.waitForTimeout(300);
+check((await page.evaluate(() => App.devices().length)) === 0 && (await page.evaluate(() => Search.query())) === '', '検索をやめる closes the auto-loaded devices too');
+await openSettings();
+await page.click('label[for="chk-auto-load"]');
+await closeSettings();
+check((await page.evaluate(() => Search.autoLoad())) === false, 'the switch turns it off again');
+await page.click('label[for="tab-lib"]');
 
 // 「開く」の前に検索・ソロ・選択を残しておき、開いたら構成が初期化されていることを見る
 await page.fill('#tree-search', 'BASE');
