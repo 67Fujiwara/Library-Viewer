@@ -427,6 +427,11 @@ def tessellate(body, quality_id, color):
     """ボディ → glbwrite の mesh。座標は **そのボディの文脈のまま** (コンポーネントのボディなら部品の原点)。
     法線は書かない (ビューアが計算する。ファイルが 8% 小さい)"""
     q = next(x for x in MESH_QUALITY if x[0] == quality_id)
+    try:
+        if body.faces.count == 0:
+            return None                          # 面の無いボディ (空・壊れ) はメッシュにならない
+    except Exception:
+        pass
     calc = body.meshManager.createMeshCalculator()
     try:
         tol = adaptive_tolerance(body_extent_mm(body), q[2])
@@ -434,8 +439,18 @@ def tessellate(body, quality_id, color):
         calc.normalDeviation = q[3]
     except Exception:
         calc.setQuality(getattr(adsk.fusion.TriangleMeshQualityOptions, q[4]))
-    mesh = calc.calculate()
-    if mesh is None:
+    # calculate() は壊れたボディで RuntimeError: 2 InternalValidationError: facesToFacet_.size() > 0 を
+    # 投げる (実機で起きた)。落とさず、既定の品質で 1 回だけやり直し、それでもだめなら失敗として数える
+    try:
+        mesh = calc.calculate()
+    except Exception:
+        try:
+            calc = body.meshManager.createMeshCalculator()
+            calc.setQuality(getattr(adsk.fusion.TriangleMeshQualityOptions, q[4]))
+            mesh = calc.calculate()
+        except Exception:
+            mesh = None
+    if mesh is None or mesh.triangleCount == 0:
         return None
     # その場で 4 バイトの array に畳む。Python の float のリストで抱えると 1 要素 32 バイトで、
     # 実測 2053 ボディ / 122 万三角形のアセンブリでは 400MB を超える (array なら 1/8)
@@ -517,8 +532,13 @@ def collect_meshes(design, quality_id, progress=None):
     戻り: (model, {'bodies', 'unique', 'hidden', 'failed', 'triangles', 'colored', 'fallback'})"""
     root = design.rootComponent
     meshes, cache = [], {}          # cache: (コンポーネント id, ボディ番号, 色) → メッシュ番号
-    stat = {'bodies': 0, 'unique': 0, 'hidden': 0, 'failed': 0, 'broken': 0, 'triangles': 0, 'seen': 0, 'colored': 0, 'fallback': 0,
+    stat = {'bodies': 0, 'unique': 0, 'hidden': 0, 'failed': 0, 'failedNames': [], 'broken': 0, 'triangles': 0, 'seen': 0, 'colored': 0, 'fallback': 0,
             'small_tris': 0, 'top': [], 'colors': set()}
+
+    def fail(name):
+        stat['failed'] += 1
+        if len(stat['failedNames']) < 8:
+            stat['failedNames'].append(name)
     _color_cache.clear(); del _uncolored_samples[:]
 
     def tick():
@@ -559,7 +579,7 @@ def collect_meshes(design, quality_id, progress=None):
             m = tessellate(body, quality_id, body_color(body))
             tick()
             if m is None:
-                stat['failed'] += 1; continue
+                fail(body.name); continue
             meshes.append(m)
             if m['color']:
                 stat['colored'] += 1
@@ -586,7 +606,7 @@ def collect_meshes(design, quality_id, progress=None):
                 if mi is None:
                     m = tessellate(comp.bRepBodies.item(i), quality_id, color)   # 部品の原点で 1 回だけ
                     if m is None:
-                        stat['failed'] += 1; tick(); continue
+                        fail(pb.name); tick(); continue
                     meshes.append(m); mi = len(meshes) - 1; cache[key] = mi
                     if color:
                         stat['colored'] += 1
@@ -596,7 +616,7 @@ def collect_meshes(design, quality_id, progress=None):
                 m = tessellate(pb, quality_id, color)                                # 焼き込み (共有しない)
                 tick()
                 if m is None:
-                    stat['failed'] += 1; continue
+                    fail(pb.name); continue
                 meshes.append(m)
                 if color:
                     stat['colored'] += 1
@@ -1000,7 +1020,7 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
                     mesh_stat['bodies'], mesh_stat['unique'], format(mesh_stat['triangles'], ','), mesh_stat['glbSize'] / 1048576.0) +
                     ('  ※ 行列の検査に落ちた配置 %d 件は焼き込み' % mesh_stat['fallback'] if mesh_stat['fallback'] else '') +
                     ('  (非表示 %d 件は含めていません)' % mesh_stat['hidden'] if mesh_stat['hidden'] else '') +
-                    ('  ※ %d 件はメッシュにできませんでした' % mesh_stat['failed'] if mesh_stat['failed'] else '') +
+                    ('  ※ %d 件はメッシュにできませんでした (%s)' % (mesh_stat['failed'], ', '.join(mesh_stat['failedNames']) + (' …' if mesh_stat['failed'] > len(mesh_stat['failedNames']) else '')) if mesh_stat['failed'] else '') +
                     ('\n※ ' + broken_note() if mesh_stat['broken'] else '') +
                     '\n色: %d / %d 種類 (色の種類 %d)' % (mesh_stat['colored'], mesh_stat['unique'], len(mesh_stat['colors'])) +
                     '\n三角形の内訳: 30mm 未満の小物 %d%% / 多い順: %s' % (

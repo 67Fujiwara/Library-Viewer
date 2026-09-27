@@ -722,3 +722,5 @@ PC を閉じてから格納しようとしたら `RuntimeError: 3 The occurrence
   except を `_fail()` (トレースバック → terminate) に。InputChanged はダイアログが生きているのでメッセージだけ
 - 実機では壊れた参照が `occ.isVisible` で先に落ちた (`InternalValidationError: path.valid()`)。`occ_visible` で飛ばす。
   保存先欄はパスだけにし、注意書きは別の「注意」欄 (読めないものがあるときだけ) に移した
+- 実機で `calc.calculate()` が壊れたボディで `InternalValidationError: facesToFacet_.size() > 0` を投げた。
+  try で受けて既定品質でやり直し、だめなら失敗として名前付きで数える (落とさない)

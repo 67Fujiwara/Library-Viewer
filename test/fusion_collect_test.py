@@ -18,7 +18,9 @@ class Mesh:
 class Calc:
     def __init__(s, body): s.body = body; s.surfaceTolerance = None; s.normalDeviation = None
     def setQuality(s, q): pass
-    def calculate(s): return None if s.body.broken else Mesh(s.body.pts)
+    def calculate(s):
+        if s.body.broken == 'raise': raise RuntimeError('2 : InternalValidationError : facesToFacet_.size() > 0')   # 実機で起きた
+        return None if s.body.broken else Mesh(s.body.pts)
 class MeshMgr:
     def __init__(s, body): s.body = body
     def createMeshCalculator(s): return Calc(s.body)
@@ -79,6 +81,7 @@ tri = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]                                 # cm
 bolt = Comp('c-bolt', 'BOLT', [Body('body1', tri), Body('hidden', tri, visible=False)])
 design = Design()
 design.rootComponent.bRepBodies.append(Body('PLATE', tri))
+design.rootComponent.bRepBodies.append(Body('CORRUPT', tri, broken='raise'))   # calculate() が例外を投げるボディ
 T = lambda x, y=0, z=0: [[1,0,0,x],[0,1,0,y],[0,0,1,z],[0,0,0,1]]
 design.rootComponent.occurrences.extend([
     Occ('BOLT:1', bolt, T(5)), Occ('BOLT:2', bolt, T(10)), Occ('BOLT:3', bolt, T(15, 2)),
@@ -89,11 +92,12 @@ design.rootComponent.occurrences.extend([
 ])
 model, stat = ns['collect_meshes'](design, 'normal')
 check(stat['bodies'] == 6 and stat['triangles'] == 6, 'PLATE + 5 visible bolt placements = 6 solids (%d)' % stat['bodies'])
+check(stat['failed'] == 1 and stat['failedNames'] == ['CORRUPT'], 'a body whose calculate() raises is counted as failed with its name, not a crash (%d, %s)' % (stat['failed'], stat['failedNames']))
 check(stat['unique'] == 4, 'meshes stored once per (component, body, color) + fallback: PLATE, BOLT, BOLT(colored), BOLT(baked) = 4 (%d)' % stat['unique'])
 check(stat['fallback'] == 1 and stat['hidden'] == 5, 'one placement fell back to baking; hidden bodies skipped (%d / %d)' % (stat['fallback'], stat['hidden']))
 check(stat['broken'] == 1 and ns['BROKEN_REFS'] == ['LINKED_UNIT:1'], 'an occurrence that fails even on isVisible (path.valid) is skipped and named (%d, %s)' % (stat['broken'], ns['BROKEN_REFS']))
 check('LINKED_UNIT' in ns['broken_note']() and '外部参照' in ns['broken_note'](), 'the note names the broken reference: ' + ns['broken_note']().split(chr(10))[0])
-check(ns['count_visible_bodies'](design.rootComponent) == 6, 'count_visible_bodies survives the broken reference (%d)' % ns['count_visible_bodies'](design.rootComponent))
+check(ns['count_visible_bodies'](design.rootComponent) == 7, 'count_visible_bodies survives the broken reference (PLATE + CORRUPT + 5 bolts = %d)' % ns['count_visible_bodies'](design.rootComponent))
 kids = model['root']['children']
 b1 = kids[1]['children'][0]
 check(kids[1]['name'] == 'BOLT:1' and b1['meshIndex'] == kids[2]['children'][0]['meshIndex'], 'BOLT:1 and BOLT:2 share one mesh')
