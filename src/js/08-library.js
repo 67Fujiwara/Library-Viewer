@@ -544,7 +544,7 @@ var Library = (function () {
       try { e.dir = await dirAt(e.rel); }
       catch (err) { showMessage('読み込みに失敗しました', e.rel.join('/') + '\nフォルダが見つかりません。一覧を読み直します。'); scan(); return; }
     }
-    if (!append) App.clearDevices();
+    if (!append) App.resetWorkspace();   // 検索・装置・ソロ・選択を全部初期化してから出す
     var devices = [];
     for (var i = 0; i < e.files.length; i++) {
       var f = e.files[i];

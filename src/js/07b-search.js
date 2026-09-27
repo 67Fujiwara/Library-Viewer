@@ -126,7 +126,7 @@ var Search = (function () {
   }
 
   function card(h) {
-    var n = h.node, st = Viewer3D.stats(n);
+    var n = h.node;
     var where = n.isGroup ? (n.path.slice(0, -1).join(' / ') || '最上位')
       : n.depth === 0 ? ((n.device.groupPath || []).join(' / ') || '最上位')
         : n.device.name + ' · ' + (n.path.slice(1, -1).join(' / ') || 'ルート直下');
@@ -136,13 +136,9 @@ var Search = (function () {
       h.tag ? el('span.brk') : null,   // バッジは名前の長さに関係なく次の行に (位置を揃える)
       h.tag ? el('span.badge.coral', { text: h.tag, title: h.by === 'tag' ? 'タグで当たりました' : '名称とタグで当たりました' }) : null
     ]);
-    var stats = el('div.stats', {}, [
-      n.isGroup ? el('span', { text: '装置 ' + Tree.devicesUnder(n).length }) : null,
-      el('span', { text: 'ソリッド ' + st.solids }),
-      el('span', { text: '△ ' + fmtInt(st.tris) })
-    ]);
+    // ソリッド数・三角形数は出さない (要望。案件横断のカードには残す)
     var b = el('button.xref-card.hit-card', { type: 'button', dataset: { id: n.id }, title: 'これだけ表示する（関係のない部品はチェックを外します）' }, [
-      head, el('div.path', { text: where }), stats
+      head, el('div.path', { text: where })
     ]);
     b.addEventListener('click', function () { apply(h); });
     return b;
@@ -165,17 +161,18 @@ var Search = (function () {
     b.addEventListener('click', function () {
       Library.openEntry(h.entry, true).then(function (devs) {
         var n = App.findLoaded(devs, { name: h.part, tag: h.tag });
-        if (n) App.showOnly(n, { keepXref: true });
+        if (n) App.showOnly(n, { keepXref: true, select: false });
       });
     });
     return b;
   }
 
-  /* 選んだものだけ残す: 関係のない部品はチェックを外して非表示にし、カメラを角度そのままで収める */
+  /* 選んだものだけ残す: 関係のない部品はチェックを外して非表示にし、カメラを角度そのままで収める。
+   * 選択 (ハイライト色) にはしない: 検索で残した部品は普通の色で見せる (要望) */
   function apply(h) {
     var n = h.node;
     currentId = n.id;
-    App.showOnly(n, { keepXref: true });
+    App.showOnly(n, { keepXref: true, select: false });
     mark();
   }
   function mark() {

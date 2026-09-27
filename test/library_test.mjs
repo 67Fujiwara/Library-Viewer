@@ -158,7 +158,7 @@ await page.waitForTimeout(400);
 check(await page.evaluate(() => App.devices().length) >= 1, 'clicking a library hit loads it');
 const visLeaves = await page.evaluate(() => Tree.allNodes().filter(n => !n.isGroup && n.meshIndex != null && n.visible).map(n => n.name));
 check(visLeaves.length >= 1 && visLeaves.every(n => n === 'BASE_PLATE'), 'loading from a part hit shows only that part, not the whole device: ' + visLeaves);
-check((await page.textContent('#sel-info')).includes('BASE_PLATE'), 'and selects it');
+check((await page.textContent('#sel-info')).includes('未選択'), 'without selecting it (normal color)');
 check(!(await hitTitles()).includes('検査装置A'), 'once loaded it drops out of the unloaded list: ' + await hitTitles());
 // 案件横断も読み込んでいない装置に当たる: 部品名 (index.json) と、その装置の行に付けたタグ
 await page.fill('#tree-search', '');
@@ -292,11 +292,20 @@ check(cards.length === 6, '6 cards rendered (4 seeded + 2 from inbox)');
 check(await page.$('.lib-card .warn') !== null, 'unconverted STEP warns');
 check(await page.$('.lib-card a[href^="https://example.autodesk360.com"]') !== null, 'Fusion で開く link present');
 
+// 「開く」の前に検索・ソロ・選択を残しておき、開いたら構成が初期化されていることを見る
+await page.fill('#tree-search', 'BASE');
+await page.waitForTimeout(300);
+await page.evaluate(() => { var n = Tree.allNodes().find(x => !x.isGroup && x.depth > 0 && x.leaves.length); if (n) { Tree.isolate(n); App.select(n); } });
+check((await page.evaluate(() => Search.query())) === 'BASE', 'a search is active before 開く');
 // 未変換エントリを開く → 変換 → glb 書き戻し
 await page.locator('.lib-card', { hasText: '搬送装置B' }).locator('button', { hasText: '開く' }).click();
 await page.waitForSelector('#overlay', { state: 'hidden', timeout: 60000 });
 await page.waitForTimeout(400);
 check((await page.$$eval('.tree-row.device .name', r => r.map(x => x.textContent))).join().includes('assembly_b'), 'opened the entry from the library');
+check((await page.evaluate(() => Search.query())) === '' && (await page.inputValue('#tree-search')) === '', '開く clears the search first');
+check(!(await page.evaluate(() => App.selected())) && (await page.textContent('#sel-info')).includes('未選択'), '開く clears the selection');
+const cnt = await page.textContent('#tree-counter');
+check(/^(\d+) \/ \1 表示中$/.test(cnt) && (await page.$$('.tree-row.device')).length === 1, '開く starts from a clean tree: only the opened device, everything visible (' + cnt + ')');
 const glbInfo = await page.evaluate(() => window.__ls('models/設計2課/鈴木/P2026-002_搬送装置B/_/assembly_b.glb.gz'));
 check(glbInfo && glbInfo.size > 1000, 'glb written back into library (' + (glbInfo && glbInfo.size) + ' bytes)');
 await page.click('label[for="tab-lib"]');

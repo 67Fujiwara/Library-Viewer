@@ -275,6 +275,9 @@ var Tree = (function () {
       // 検索中は「当たった行」と「当たった行へ降りる途中の親」だけ。当たった行の中身は出さない
       // (装置がタグで当たっても部品を全部並べない。検索対象でない部品は 3D でグレーのまま)
       hidden = !nodeMatches(n) && !hasMatchingDescendant(n);
+      // 結果を選んで 1 つに絞った (isolate = ソロ) 後は、表示するものが残っていない装置・フォルダも消す
+      // (当たった他の装置がグレーで並んだままにしない。「すべて表示」で戻る)
+      if (!hidden && soloNode && n.leaves.length && !n.leaves.some(function (l) { return l.visible; })) hidden = true;
     } else {
       for (var p = n.parent; p; p = p.parent) if (p.collapsed) { hidden = true; break; }
     }
@@ -294,8 +297,12 @@ var Tree = (function () {
 
   /* ---- 検索 (左の絞り込みと右の結果一覧はひとつの問い合わせで動く) ---- */
   function applySearch(raw) {
+    var prev = filter;
     filter = Tags.fold(String(raw || '').trim()); terms = Tags.terms(raw);
     if (!terms.length) filter = '';   // カンマだけなら検索していないのと同じ
+    // 問い合わせが変わったら、前の結果で絞った状態 (ソロ) は解く。残したままだと新しい当たりが
+    // 「表示するものが無い装置」として消えてしまう。検索はいつも全部見える状態から始める
+    if (filter !== prev && soloNode) { allLeaves().forEach(function (l) { l.visible = true; }); soloNode = null; refresh(); }
     applyRowVisibility();
     if (window.Search) Search.run(raw);
   }

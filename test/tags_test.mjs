@@ -108,6 +108,11 @@ check(!off.find(d => d.name === 'ブラケット').on && !off.find(d => d.name =
 check(await page.evaluate(() => Viewer3D.leavesOf(Tree.allNodes().find(n => n.name === 'ブラケット')).every(l => !l.mesh.visible)),
   'the unrelated meshes are actually hidden in 3D');
 check(await page.locator('#search-list .hit-card.current').count() === 1, 'the chosen card is marked');
+// 絞った後は、表示するものが残っていない装置・フォルダの行は消える (グレーで並べない)
+const rowsAfter = await page.$$eval('#tree .tree-row:not([hidden])', rs => rs.map(r => r.textContent.trim()));
+check(rowsAfter.some(t => t.includes('搬送ユニット')) && !rowsAfter.some(t => t.includes('ブラケット')) && !rowsAfter.some(t => t.includes('ベース板')),
+  'unrelated devices disappear from the tree once a hit is isolated: ' + rowsAfter.join(' | '));
+check(await page.locator('#search-list .hit-card .stats').count() === 0, 'search cards carry no solid / triangle counts');
 await page.screenshot({ path: outDir + '/shot-35-isolated.png' });
 
 // ツールバーの「すべて表示」で元へ (結果の下の「すべて表示に戻す」は要望で無くした)
@@ -123,7 +128,8 @@ if ((await hitTitles()).length) {
   await page.waitForTimeout(400);
   const shown = Number((await counter()).split('/')[0].trim());
   check(shown >= 1 && shown < Number(total), 'choosing a part isolates it: ' + await counter());
-  check(await page.evaluate(() => !!App.selected()), 'choosing a part also selects it (footer shows it)');
+  check(await page.evaluate(() => !App.selected()), 'choosing a part does not select it (normal color, not the highlight)');
+  check((await page.textContent('#sel-info')).includes('未選択'), 'footer stays 未選択');
 }
 
 // ---- 5. タグのチップを押すとそのタグで検索 ----

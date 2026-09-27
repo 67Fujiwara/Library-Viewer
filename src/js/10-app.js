@@ -394,8 +394,14 @@ var App = (function () {
     if (!n) return;
     opts = opts || {};
     Tree.isolate(n);
-    if (n.isGroup) { select(null, { keepXref: true }); Viewer3D.fitNode(n); }
+    if (n.isGroup || opts.select === false) { select(null, { keepXref: true }); Viewer3D.fitNode(n); }   // 選択色にしない (検索結果)
     else select(n, { keepAngle: true, keepXref: !!opts.keepXref });
+  }
+  /* 構成をまっさらにする: 検索をやめ、装置を全部閉じ、選択を外す (ライブラリの「開く」の前) */
+  function resetWorkspace() {
+    Tree.setSearch('');
+    clearDevices();
+    select(null);
   }
   /* ライブラリから読み込んだ装置の中から、カードが指していた行を引く: 部品名 → タグ → 名寄せの鍵 → 装置の行 */
   function findLoaded(devs, want) {
@@ -427,7 +433,7 @@ var App = (function () {
   }
 
   return {
-    init: init, addDevice: addDevice, removeDevice: removeDevice, clearDevices: clearDevices, select: select,
+    init: init, addDevice: addDevice, removeDevice: removeDevice, clearDevices: clearDevices, resetWorkspace: resetWorkspace, select: select,
     devices: function () { return devices; }, selected: function () { return selectedNode; }, precision: function () { return currentPrecision; },
     addDevices: addDevices, loadEntries: loadEntries, showOnly: showOnly, findLoaded: findLoaded,
     showOverlay: showOverlay, hideOverlay: hideOverlay, showLeftTab: showLeftTab, clearCache: clearCache,
