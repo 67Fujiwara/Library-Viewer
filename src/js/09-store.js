@@ -21,9 +21,9 @@ var Store = (function () {
     $('#roster-cancel').addEventListener('click', function () { $('#roster-dialog').close(); });
     $('#roster-dialog form').addEventListener('submit', function (e) { e.preventDefault(); saveRoster(); });
     $('#roster-export').addEventListener('click', function () {
-      var list = parseRoster($('#roster-text').value);
-      downloadBytes(new TextEncoder().encode(JSON.stringify({ schema: 'library-viewer/members/1', updatedAt: isoNowLocal(), members: list }, null, 2)), 'members.json', 'application/json');
+      downloadBytes(new TextEncoder().encode(JSON.stringify({ schema: 'library-viewer/members/1', updatedAt: isoNowLocal(), members: draftList() }, null, 2)), 'members.json', 'application/json');
     });
+    initRosterEditor();
     rosterEl.addEventListener('click', function (e) {
       var b = e.target.closest('button.dept'); if (b) b.classList.toggle('open');
     });
@@ -49,12 +49,107 @@ var Store = (function () {
     if (lib && lib.length) return lib;
     return parseRoster(Storage.get(ROSTER_KEY, DEFAULT_ROSTER));
   }
+  /* ---- 名簿の編集ダイアログ ----
+   *   テキストで「部署, 担当者」を書かせない (知らない人には JSON にしか見えない。要望)。
+   *   部署ごとのカードに担当者をチップで並べ、カードの中の欄でその場で足す / × で外す。下の欄で部署を足す。
+   *   編集中は draft (部署名 → 担当者の配列。順序つき) に持ち、「保存」でいつもの {department, name} の配列に戻す。
+   *   Enter は「足す」(フォームの submit = 保存 にしない) */
+  var draft = [];   // [{ dept, names: [] }]
+  var listEl, deptInput;
+  function draftList() {
+    var out = [];
+    draft.forEach(function (d) { d.names.forEach(function (n) { out.push({ department: d.dept, name: n }); }); });
+    return out;
+  }
+  function toDraft(list) {
+    var byDept = {}, order = [];
+    list.forEach(function (m) {
+      if (!byDept[m.department]) { byDept[m.department] = []; order.push(m.department); }
+      if (byDept[m.department].indexOf(m.name) < 0) byDept[m.department].push(m.name);
+    });
+    return order.map(function (d) { return { dept: d, names: byDept[d] }; });
+  }
+  function deptOf(name) { return draft.filter(function (d) { return d.dept === name; })[0] || null; }
+  function addDept(name) {
+    name = String(name || '').trim();
+    if (!name) return null;
+    var d = deptOf(name);
+    if (!d) { d = { dept: name, names: [] }; draft.push(d); }
+    return d;
+  }
+  function addName(d, name) {
+    name = String(name || '').trim();
+    if (!d || !name || d.names.indexOf(name) >= 0) return false;
+    d.names.push(name);
+    return true;
+  }
+  var ICON_PEOPLE = 'M16 20v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 18.5V20M10 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M20 20v-1.5a3.5 3.5 0 0 0-2.6-3.4M15.5 4.1a3.5 3.5 0 0 1 0 6.8';
+  function renderRosterEditor(focusDept) {
+    listEl.textContent = '';
+    if (!draft.length) {
+      listEl.appendChild(el('p.empty', { text: 'まだ部署がありません。下の欄に部署名を入れて「部署を追加」を押してください。' }));
+      return;
+    }
+    draft.forEach(function (d) {
+      var card = el('div.rd-dept', { dataset: { dept: d.dept } });
+      card.appendChild(el('div.rd-head', {}, [
+        svgIcon(ICON_PEOPLE),
+        el('span.rd-name', { text: d.dept }),
+        el('span.cnt', { text: d.names.length + ' 名' }),
+        el('button.btn.link.small.rd-del-dept', { type: 'button', text: '部署を削除', title: 'この部署と担当者をまとめて外します' })
+      ]));
+      var box = el('div.rd-members');
+      d.names.forEach(function (n) {
+        box.appendChild(el('span.rd-member', { dataset: { name: n } }, [
+          n,
+          el('button.rd-x', { type: 'button', title: n + ' を名簿から外す', 'aria-label': n + ' を外す', dataset: { name: n } }, [svgIcon('M6 6l12 12M18 6L6 18')])
+        ]));
+      });
+      var input = el('input.rd-name-input', { type: 'text', placeholder: '担当者の名前', autocomplete: 'off', spellcheck: 'false', 'aria-label': d.dept + ' に担当者を追加' });
+      box.appendChild(el('span.rd-add', {}, [input, el('button.btn.small.secondary.rd-add-name', { type: 'button', text: '追加' })]));
+      card.appendChild(box);
+      listEl.appendChild(card);
+      if (focusDept === d.dept) input.focus();
+    });
+  }
+  function initRosterEditor() {
+    listEl = $('#roster-list'); deptInput = $('#roster-dept-input');
+    function commitName(card) {
+      var d = deptOf(card.dataset.dept), input = card.querySelector('.rd-name-input');
+      if (!d || !addName(d, input.value)) { input.value = ''; input.focus(); return; }
+      renderRosterEditor(d.dept);   // 同じ部署の欄にフォーカスを戻す (続けて何人も足せる)
+    }
+    function commitDept() {
+      var d = addDept(deptInput.value);
+      if (!d) { deptInput.focus(); return; }
+      deptInput.value = '';
+      renderRosterEditor(d.dept);   // 作った部署の担当者欄へ
+    }
+    listEl.addEventListener('click', function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      var card = b.closest('.rd-dept'), d = card && deptOf(card.dataset.dept); if (!d) return;
+      if (b.classList.contains('rd-add-name')) commitName(card);
+      else if (b.classList.contains('rd-x')) { d.names = d.names.filter(function (n) { return n !== b.dataset.name; }); renderRosterEditor(); }
+      else if (b.classList.contains('rd-del-dept')) {
+        var go = d.names.length ? showConfirm('部署を削除', '「' + d.dept + '」と担当者 ' + d.names.length + ' 名（' + d.names.join('、') + '）を名簿から外します。', '外す') : Promise.resolve(true);
+        go.then(function (ok) { if (!ok) return; draft = draft.filter(function (x) { return x !== d; }); renderRosterEditor(); });
+      }
+    });
+    listEl.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' || !e.target.classList.contains('rd-name-input')) return;
+      e.preventDefault(); commitName(e.target.closest('.rd-dept'));
+    });
+    $('#roster-add-dept').addEventListener('click', commitDept);
+    deptInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); commitDept(); } });
+  }
   function openRoster() {
-    $('#roster-text').value = rosterText(currentRoster());
+    draft = toDraft(currentRoster());
+    deptInput.value = '';
+    renderRosterEditor();
     $('#roster-dialog').showModal();
   }
   async function saveRoster() {
-    var list = parseRoster($('#roster-text').value);
+    var list = draftList();   // 担当者のいない部署は保存されない (名簿は 部署 + 担当者 の組の一覧)
     Storage.set(ROSTER_KEY, rosterText(list));
     var shared = await Library.saveMembers(list);
     $('#roster-dialog').close();

@@ -785,3 +785,13 @@ tags_test (4.) と library_test (自動読み込みの節) に確認を追加。
 (止めないと `afterDevicesChanged → Search.refresh → scheduleAutoLoad` で読み直され、初期化が無かったことになる)。
 問い合わせが変われば普段どおり読む。ファイルから読んだ装置は閉じると戻せないので閉じず、`only` でツリーから外すだけ。
 library_test: カードを選んだ後に装置 1 件 / 他はカードに戻る / 1.2 秒待っても読み直さない / 問い合わせを変えると読み直す。
+
+### 名簿の編集をカード + チップに
+「名簿登録の UI が JSON そのままで、知らない人には分からない」という要望。`#roster-dialog` のテキスト欄
+(1 行に `部署, 担当者`) をやめ、部署ごとのカードに担当者のチップを並べる形にした (`09-store.js` の `initRosterEditor` /
+`renderRosterEditor`、CSS は `.rd-*`)。カードの中の欄で担当者を足す (Enter でも。フォームの submit にしない)、
+チップの × で外す、下の欄で部署を足す、「部署を削除」は担当者がいれば `showConfirm`。編集中は `draft` に持ち、
+保存で今までどおり `{department, name}` の配列にする (`members.json` / `lv.roster` の形は不変)。
+`parseRoster` / `rosterText` は localStorage の形として残した。library_test の名簿の節を新しい操作に書き換え
+(カード表示 / 部署を追加 → 担当者欄にフォーカス / Enter で追加 / 重複は足さない / × で外す / 削除の確認 / members.json)。
+dist は 4.99MB。

@@ -366,6 +366,28 @@ body.measuring #gl { cursor: crosshair; }
 .fopt .n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fopt .c { font: 500 11px/1 var(--font-mono); color: var(--muted); }
 #filters-list .sm-row, #path-emph-list .sm-row, #tag-manage-list .sm-row { height: 38px; }
+/* 名簿の編集: 部署ごとのカードに担当者のチップを並べ、その場で足す・外す (JSON やカンマ区切りを見せない) */
+.rd-list { display: flex; flex-direction: column; gap: var(--sp-xs); max-height: 52vh; overflow: auto; padding: 2px; }
+.rd-list .empty { margin: 0; padding: var(--sp-md); text-align: center; color: var(--muted); font-size: 13px; border: 1px dashed var(--hairline); border-radius: var(--r-md); }
+.rd-dept { border: 1px solid var(--hairline); border-radius: var(--r-md); background: var(--surface-soft); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.rd-head { display: flex; align-items: center; gap: 8px; min-height: 24px; }
+.rd-head svg { width: 16px; height: 16px; fill: none; stroke: var(--muted); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.rd-head .rd-name { font: 500 14px/1.3 var(--font-sans); color: var(--ink); }
+.rd-head .cnt { font: 500 11px/1 var(--font-mono); color: var(--muted); }
+.rd-head .rd-del-dept { margin-left: auto; color: var(--muted); text-decoration: none; font-size: 12px; }
+.rd-head .rd-del-dept:hover { color: var(--error); }
+.rd-members { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.rd-member { display: inline-flex; align-items: center; gap: 2px; height: 28px; padding: 0 4px 0 10px; border: 1px solid var(--hairline); border-radius: var(--r-pill); background: var(--canvas); color: var(--ink); font: 500 13px/1 var(--font-sans); }
+.rd-member .rd-x { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border: 0; border-radius: var(--r-pill); background: none; color: var(--muted); cursor: pointer; padding: 0; }
+.rd-member .rd-x svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.rd-member .rd-x:hover { background: var(--primary-ring); color: var(--error); }
+.rd-add { display: inline-flex; align-items: center; gap: 4px; }
+.rd-add input { height: 28px; width: 150px; padding: 0 10px; font-size: 13px; border-radius: var(--r-pill); }
+.rd-add input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-ring); }
+.rd-add .btn.small { height: 28px; border-radius: var(--r-pill); }
+.rd-new { display: flex; gap: var(--sp-xs); align-items: center; margin-top: 2px; }
+.rd-new input { flex: 1; }
+.rd-new .btn { white-space: nowrap; }
 #tag-manage-list { max-height: 50vh; overflow: auto; }
 #tag-manage-list .sm-label { display: flex; align-items: center; gap: 6px; }
 .right-section { display: flex; flex-direction: column; gap: var(--sp-sm); min-height: 0; }

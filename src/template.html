@@ -348,10 +348,14 @@
 <dialog id="roster-dialog" class="dialog">
   <form method="dialog">
     <h2>名簿</h2>
-    <p class="muted small">1 行に <span class="mono">部署, 担当者</span> の形式で書きます。ライブラリを開いている場合は <span class="mono">members.json</span> にも保存され、全員で共有されます。</p>
-    <textarea id="roster-text" rows="12" spellcheck="false"></textarea>
+    <p class="muted small">部署ごとに担当者を登録します。格納するときはここから選びます。ライブラリを開いている場合は保存すると全員で共有されます。</p>
+    <div id="roster-list" class="rd-list"></div>
+    <div class="rd-new">
+      <input type="text" id="roster-dept-input" placeholder="新しい部署名（例: 設計1課）" autocomplete="off" spellcheck="false">
+      <button type="button" id="roster-add-dept" class="btn secondary">部署を追加</button>
+    </div>
     <div class="dialog-actions">
-      <button type="button" id="roster-export" class="btn secondary">members.json を書き出す</button>
+      <button type="button" id="roster-export" class="btn secondary" title="名簿を members.json として保存します（ライブラリを開いていないときに、他の人へ渡す用）">ファイルに書き出す</button>
       <span class="spacer"></span>
       <button type="button" id="roster-cancel" class="btn secondary">キャンセル</button>
       <button type="submit" id="roster-save" class="btn primary">保存</button>

@@ -414,10 +414,31 @@ await page.click('label[for="tab-lib"]');
 await openSettings();
 await page.click('#btn-roster');
 await page.waitForSelector('#roster-dialog[open]');
-await page.fill('#roster-text', '設計1課, 山田\n設計2課, 鈴木\n生産技術, 高橋');
+// テキストではなく、部署のカード + 担当者のチップで編集する (members.json の中身は見せない)
+check(await page.$('#roster-text') === null && (await page.$$('#roster-list .rd-dept')).length >= 2, 'the roster opens as department cards, not a text box');
+check(await page.locator('#roster-list .rd-dept[data-dept="設計1課"] .rd-member', { hasText: '山田' }).count() === 1, 'members are listed as chips under their department');
+await page.fill('#roster-dept-input', '生産技術');
+await page.click('#roster-add-dept');
+check(await page.locator('#roster-list .rd-dept[data-dept="生産技術"]').count() === 1, '部署を追加 adds a department card');
+check(await page.evaluate(() => document.activeElement.classList.contains('rd-name-input') && document.activeElement.closest('.rd-dept').dataset.dept === '生産技術'), 'and focuses its member box');
+await page.keyboard.type('高橋');
+await page.keyboard.press('Enter');   // Enter は「追加」(保存にしない)
+check(await page.locator('#roster-list .rd-dept[data-dept="生産技術"] .rd-member', { hasText: '高橋' }).count() === 1 && await page.evaluate(() => document.querySelector('#roster-dialog').open), 'Enter adds the member and keeps the dialog open');
+await page.keyboard.type('高橋');
+await page.keyboard.press('Enter');
+check(await page.locator('#roster-list .rd-dept[data-dept="生産技術"] .rd-member').count() === 1, 'a duplicate name is not added twice');
+await page.locator('#roster-list .rd-dept[data-dept="生産技術"] .rd-name-input').fill('中村');
+await page.locator('#roster-list .rd-dept[data-dept="生産技術"] .rd-add-name').click();
+await page.locator('#roster-list .rd-member[data-name="中村"] .rd-x').click();
+check(await page.locator('#roster-list .rd-member[data-name="中村"]').count() === 0, 'the × on a chip removes that member');
+await page.locator('#roster-list .rd-dept[data-dept="設計2課"] .rd-del-dept').click();
+await page.waitForSelector('#confirm-dialog[open]');
+await page.click('#confirm-cancel');
+check(await page.locator('#roster-list .rd-dept[data-dept="設計2課"]').count() === 1, 'deleting a department asks first; cancel keeps it');
 await page.click('#roster-save');
 await page.waitForTimeout(300);
-check((await page.evaluate(() => window.__ls('members.json'))).text.includes('高橋'), 'members.json updated in library');
+const mj = JSON.parse((await page.evaluate(() => window.__ls('members.json'))).text);
+check(mj.members.some(m => m.department === '生産技術' && m.name === '高橋') && mj.members.some(m => m.department === '設計2課' && m.name === '鈴木') && !mj.members.some(m => m.name === '中村'), 'members.json updated in library: ' + mj.members.map(m => m.department + '/' + m.name).join(' '));
 
 // ---- 2 回目以降は差分だけ読む / 開いた装置はキャッシュから ----
 // 1 回目は meta.json を全部読む。2 回目は更新日時とサイズが同じものを読み直さない
