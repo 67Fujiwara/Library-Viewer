@@ -47,6 +47,15 @@ class Occ:
         real = rows if not lie else [[1,0,0,99],[0,1,0,0],[0,0,1,0],[0,0,0,1]]   # lie: 行列が嘘 (プロキシは別の場所)
         s.bRepBodies = Coll([b.moved(real) for b in comp.bRepBodies])
         s.childOccurrences = Coll()
+class BrokenOcc:
+    """外部参照が読めないオカレンス: component / bRepBodies / childOccurrences を触ると RuntimeError"""
+    def __init__(s, name): s.name, s.isVisible, s.appearance = name, True, None
+    @property
+    def component(s): raise RuntimeError("3 : The occurrence's referenced component is unavailable (broken or missing external reference).")
+    @property
+    def bRepBodies(s): raise RuntimeError('3 : unavailable')
+    @property
+    def childOccurrences(s): raise RuntimeError('3 : unavailable')
 class Root:
     def __init__(s): s.name = 'ROOT'; s.bRepBodies = Coll(); s.occurrences = Coll()
 class Design:
@@ -56,6 +65,7 @@ adsk = types.SimpleNamespace(doEvents=lambda: None, fusion=types.SimpleNamespace
 ns = {'adsk': adsk, 'array': array, 'gc': gc, 're': re, 'json': json, 'os': os}
 exec(src[src.index('CM_TO_MM ='):src.index('CM_TO_MM =') + len('CM_TO_MM = 10.0')], ns)
 exec(src[src.index('MESH_QUALITY = ['):src.index('class CommandCreatedHandler')], ns)
+exec(src[src.index('BROKEN_REFS = []'):src.index('def placement_of')], ns)
 exec(src[src.index('def component_tree'):src.index('# ---- メッシュで格納')], ns)
 ns['body_color'] = lambda body, occ=None: body.appearance or (occ.appearance if occ is not None else None)   # 外観は色そのものを入れておく
 
@@ -73,11 +83,15 @@ design.rootComponent.occurrences.extend([
     Occ('BOLT:4', bolt, T(20), lie=True),                                # 行列が実体と合わない → 焼き込み
     Occ('BOLT:5', bolt, T(25), color=[0.1, 0.2, 0.3]),                  # 色違い → 別メッシュ
     Occ('GHOST:1', bolt, T(30), visible=False),
+    BrokenOcc('LINKED_UNIT:1'),                                          # 外部参照が読めない → 飛ばして数える
 ])
 model, stat = ns['collect_meshes'](design, 'normal')
 check(stat['bodies'] == 6 and stat['triangles'] == 6, 'PLATE + 5 visible bolt placements = 6 solids (%d)' % stat['bodies'])
 check(stat['unique'] == 4, 'meshes stored once per (component, body, color) + fallback: PLATE, BOLT, BOLT(colored), BOLT(baked) = 4 (%d)' % stat['unique'])
 check(stat['fallback'] == 1 and stat['hidden'] == 5, 'one placement fell back to baking; hidden bodies skipped (%d / %d)' % (stat['fallback'], stat['hidden']))
+check(stat['broken'] == 1 and ns['BROKEN_REFS'] == ['LINKED_UNIT:1'], 'an occurrence whose referenced component is unavailable is skipped and named (%d, %s)' % (stat['broken'], ns['BROKEN_REFS']))
+check('LINKED_UNIT' in ns['broken_note']() and '外部参照' in ns['broken_note'](), 'the note names the broken reference: ' + ns['broken_note']().split(chr(10))[0])
+check(ns['count_visible_bodies'](design.rootComponent) == 6, 'count_visible_bodies survives the broken reference (%d)' % ns['count_visible_bodies'](design.rootComponent))
 kids = model['root']['children']
 b1 = kids[1]['children'][0]
 check(kids[1]['name'] == 'BOLT:1' and b1['meshIndex'] == kids[2]['children'][0]['meshIndex'], 'BOLT:1 and BOLT:2 share one mesh')
@@ -97,4 +111,9 @@ check(not any(r['name'] in ('hidden', 'GHOST:1') for r in rows), 'flatten_tree: 
 crows = ns['component_tree'](design.rootComponent)
 check(any(r['name'] == 'PLATE' and r['depth'] == 1 for r in crows) and any(r['name'] == 'body1' and r['path'] == 'ROOT/BOLT:1/body1' for r in crows), 'component_tree (STEP 格納): body names are listed too')
 check(not any(r['name'] == 'hidden' for r in crows), 'component_tree: hidden bodies are not listed')
+check(not any(r['name'] == 'LINKED_UNIT:1' for r in crows), 'component_tree skips the broken reference')
+# split_units: ルートにボディが無いデザインで、壊れた参照を飛ばしてユニットを数える
+d2 = Design(); d2.rootComponent.occurrences.extend([Occ('BOLT:1', bolt, T(5)), Occ('BOLT:2', bolt, T(10)), BrokenOcc('LINKED_UNIT:2')])
+units = ns['split_units'](d2)
+check(units is not None and len(units) == 2 and 'LINKED_UNIT:2' in ns['BROKEN_REFS'], 'split_units skips the broken reference instead of raising (%s)' % (units and len(units)))
 print('collect_meshes OK')

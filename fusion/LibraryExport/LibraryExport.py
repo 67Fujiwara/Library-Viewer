@@ -183,6 +183,34 @@ def naming_format(values, rule):
 CM_TO_MM = 10.0   # Fusion API の長さは cm、STEP と meta.json は mm
 
 
+# 参照先が読めないオカレンス (外部参照が未取得 / 壊れている)。occ.component を触ると
+# RuntimeError: 3 "The occurrence's referenced component is unavailable" になる。
+# PC をスリープから戻した直後やオフラインだと、リンク先のデザインが手元に無くてこうなる。
+# 落ちずに飛ばし、名前を控えて格納後のメッセージとダイアログに出す
+BROKEN_REFS = []
+
+
+def safe_component(occ):
+    """occ.component。参照先が読めなければ None (BROKEN_REFS に名前を控える)"""
+    try:
+        return occ.component
+    except Exception:
+        try:
+            name = occ.name
+        except Exception:
+            name = '?'
+        if name not in BROKEN_REFS:
+            BROKEN_REFS.append(name)
+        return None
+
+
+def broken_note():
+    if not BROKEN_REFS:
+        return ''
+    return ('参照先が読めないオカレンス %d 件は含めません: %s\n（外部参照が未取得か壊れています。オンラインで開き直すと直ることがあります）'
+            % (len(BROKEN_REFS), ', '.join(BROKEN_REFS[:5]) + (' …' if len(BROKEN_REFS) > 5 else '')))
+
+
 def split_units(design):
     """分割して書き出せるならルート直下のオカレンス一覧、できないなら None。
 
@@ -195,7 +223,9 @@ def split_units(design):
     out = []
     for i in range(root.occurrences.count):
         occ = root.occurrences.item(i)
-        comp = occ.component
+        comp = safe_component(occ)
+        if comp is None:
+            continue                      # 参照先が読めない (外部参照が未取得 / 壊れている)
         if comp.bRepBodies.count == 0 and comp.occurrences.count == 0:
             continue                      # 中身の無いオカレンスは書き出さない
         out.append(occ)
@@ -236,7 +266,9 @@ def component_tree(root_comp):
     def count_bodies(comp):
         n = comp.bRepBodies.count
         for occ in comp.occurrences:
-            n += count_bodies(occ.component)
+            c = safe_component(occ)
+            if c is not None:
+                n += count_bodies(c)
         return n
 
     def walk(comp, name, path, depth):
@@ -246,7 +278,9 @@ def component_tree(root_comp):
             if getattr(body, 'isVisible', True):
                 rows.append({'name': body.name, 'path': '/'.join(path + [body.name]), 'depth': depth + 1, 'solids': 1})
         for occ in comp.occurrences:
-            walk(occ.component, occ.name, path + [occ.name], depth + 1)
+            c = safe_component(occ)
+            if c is not None:
+                walk(c, occ.name, path + [occ.name], depth + 1)
 
     walk(root_comp, root_comp.name, [root_comp.name], 0)
     return rows
@@ -413,12 +447,17 @@ def count_visible_bodies(root):
     def walk(occs):
         nonlocal n
         for occ in occs:
-            if not occ.isVisible:
+            try:
+                if not occ.isVisible:
+                    continue
+                for body in occ.bRepBodies:
+                    if body.isVisible:
+                        n += 1
+                kids = occ.childOccurrences
+            except Exception:
+                safe_component(occ)        # 参照先が読めない → 名前を控えて飛ばす
                 continue
-            for body in occ.bRepBodies:
-                if body.isVisible:
-                    n += 1
-            walk(occ.childOccurrences)
+            walk(kids)
     walk(root.occurrences)
     return n
 
@@ -468,7 +507,7 @@ def collect_meshes(design, quality_id, progress=None):
     戻り: (model, {'bodies', 'unique', 'hidden', 'failed', 'triangles', 'colored', 'fallback'})"""
     root = design.rootComponent
     meshes, cache = [], {}          # cache: (コンポーネント id, ボディ番号, 色) → メッシュ番号
-    stat = {'bodies': 0, 'unique': 0, 'hidden': 0, 'failed': 0, 'triangles': 0, 'seen': 0, 'colored': 0, 'fallback': 0,
+    stat = {'bodies': 0, 'unique': 0, 'hidden': 0, 'failed': 0, 'broken': 0, 'triangles': 0, 'seen': 0, 'colored': 0, 'fallback': 0,
             'small_tris': 0, 'top': [], 'colors': set()}
     _color_cache.clear(); del _uncolored_samples[:]
 
@@ -517,7 +556,9 @@ def collect_meshes(design, quality_id, progress=None):
             place(node, body.name, len(meshes) - 1, None, len(m['indices']) // 3, body_extent_mm(body))
 
     def add_occ_bodies(occ, node):
-        comp = occ.component
+        comp = safe_component(occ)
+        if comp is None:
+            stat['broken'] += 1; return       # 参照先が読めない (外部参照が未取得 / 壊れている)
         ck = comp_key(comp)
         mtx = occurrence_matrix(occ)
         shared = matrix_ok(occ, mtx)
@@ -557,7 +598,11 @@ def collect_meshes(design, quality_id, progress=None):
                 continue
             sub = {'name': occ.name, 'meshIndex': None, 'matrix': None, 'children': []}
             add_occ_bodies(occ, sub)
-            walk(occ.childOccurrences, sub)
+            try:
+                kids = occ.childOccurrences
+            except Exception:
+                kids = []                      # 参照先が読めないオカレンスは子も辿れない
+            walk(kids, sub)
             if sub['children']:
                 node['children'].append(sub)
 
@@ -600,6 +645,12 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             except Exception:
                 pass
             inputs = cmd.commandInputs
+            # ハンドラは入力欄を作る前に登録する。作る途中で例外が出ても (参照先の読めないオカレンスなど)
+            # 「部署を変えても担当者が埋まらない / 実行が始まらない」にならないように
+            on_change = InputChangedHandler(); cmd.inputChanged.add(on_change); _handlers.append(on_change)
+            on_exec = ExecuteHandler(); cmd.execute.add(on_exec); _handlers.append(on_exec)
+            on_destroy = DestroyHandler(); cmd.destroy.add(on_destroy); _handlers.append(on_destroy)
+            del BROKEN_REFS[:]
             st = load_settings()
             root = st.get('libraryRoot', '')
             design = adsk.fusion.Design.cast(_app.activeProduct)
@@ -660,11 +711,7 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
                            'ライブラリ上は 1 件のままで、ビューアで開くと全ユニットがまとめて読み込まれます。\n'
                            '(メッシュで格納するときは分割の必要がありません)'
                            if units else 'ルート直下にボディがある / ユニットが 1 つなので分割できません')
-            inputs.addTextBoxCommandInput('preview', '保存先', '', 2, True)
-
-            on_change = InputChangedHandler(); cmd.inputChanged.add(on_change); _handlers.append(on_change)
-            on_exec = ExecuteHandler(); cmd.execute.add(on_exec); _handlers.append(on_exec)
-            on_destroy = DestroyHandler(); cmd.destroy.add(on_destroy); _handlers.append(on_destroy)
+            inputs.addTextBoxCommandInput('preview', '保存先', '', 4 if BROKEN_REFS else 2, True)
             update_preview(inputs)
         except Exception:
             _ui.messageBox('LibraryExport:\n' + traceback.format_exc())
@@ -733,6 +780,8 @@ def update_preview(inputs):
         note = 'STEP をユニット %d 件に分けて書き出します（ライブラリ上は 1 件）' % len(units)
     else:
         note = 'STEP 1 ファイルで書き出します（ビューアが初回に glb を作ります）'
+    if BROKEN_REFS:
+        note += '\n※ ' + broken_note()
     inputs.itemById('preview').text = (p['root'] or '（ライブラリ未設定）') + '/' + '/'.join(segs) + '/\n' + note
 
 
@@ -925,6 +974,7 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
                     ('  ※ 行列の検査に落ちた配置 %d 件は焼き込み' % mesh_stat['fallback'] if mesh_stat['fallback'] else '') +
                     ('  (非表示 %d 件は含めていません)' % mesh_stat['hidden'] if mesh_stat['hidden'] else '') +
                     ('  ※ %d 件はメッシュにできませんでした' % mesh_stat['failed'] if mesh_stat['failed'] else '') +
+                    ('\n※ ' + broken_note() if mesh_stat['broken'] else '') +
                     '\n色: %d / %d 種類 (色の種類 %d)' % (mesh_stat['colored'], mesh_stat['unique'], len(mesh_stat['colors'])) +
                     '\n三角形の内訳: 30mm 未満の小物 %d%% / 多い順: %s' % (
                         int(100.0 * mesh_stat['small_tris'] / max(mesh_stat['triangles'], 1)),

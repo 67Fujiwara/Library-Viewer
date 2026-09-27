@@ -180,6 +180,13 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
   **案件コード・対象ワーク・取引先・部署・担当者は毎回空から始める**（前回の値を引き継がない。ドキュメント名が
   ルールに合うときだけ入れる）。部署・担当者の先頭は `PLACEHOLDER`「（選択）」で、`_pick` はこれを空として返す
   名簿がまだ無いライブラリでだけ文字入力に切り替える。「既存の案件から」の候補は置かない
+- **参照先が読めないオカレンス（外部参照が未取得 / 壊れている）で落とさない。** `occ.component` が
+  `RuntimeError: 3 The occurrence's referenced component is unavailable` を投げる（PC をスリープから戻した直後・
+  オフラインでリンク先のデザインが手元に無いとき）。必ず `safe_component(occ)` 経由で触り、None なら飛ばして
+  `BROKEN_REFS` に名前を控える（`split_units` / `component_tree` / `count_visible_bodies` / `collect_meshes`）。
+  ダイアログの保存先欄と格納後のメッセージに `broken_note()` で出す。
+  **ダイアログのハンドラ (`inputChanged` / `execute` / `destroy`) は入力欄を作る前に登録する。** 作る途中で例外が出ると
+  「部署を変えても担当者が埋まらない / 実行が始まらない」になる（実際にそうなった。1 つの例外で症状が 3 つ出た）
 - Fusion の API は **この環境では動かせない**。`glbwrite.py`（純 Python）はここでテストし、
   `collect_meshes` / `tessellate` の薄い層だけ実機で確かめてもらう。Fusion で確かめる前に「動いた」と言わない
 - **偽ハンドルのテストでは `lastModified` を固定する。** 毎回 `new File()` すると更新日時が現在時刻になり、

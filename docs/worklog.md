@@ -711,3 +711,10 @@ dist は 4.96MB で上限に近い。`madeby_test` でオンオフ・黒板の�
 フィルターバーに押すだけの facet (`type: 'toggle'`) を足した。タグのバッジが付いた行だけ残す。既定で表示。
 ピルのクラスに `.toggle` を使ったら押せなくなった — 隠しチェックボックス用の既存クラス (`pointer-events: none`) と
 衝突していた。`.flag` に改名。
+
+### Fusion: 参照先が読めないオカレンスで落ちていた
+PC を閉じてから格納しようとしたら `RuntimeError: 3 The occurrence's referenced component is unavailable`
+(外部参照の未取得 / 壊れ)。`split_units` の `occ.component` で落ち、ダイアログの後半 (ハンドラ登録) に
+届かなかったので「担当者が埋まらない」「実行が始まらない」が同時に出た。`safe_component` で飛ばして
+名前を控え、注意書きを出す。ハンドラ登録は入力欄を作る前に移した。`fusion_collect_test.py` に壊れた参照を追加。
+「私が作りました」ダイアログの説明文は要望で削除。
