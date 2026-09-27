@@ -718,3 +718,5 @@ PC を閉じてから格納しようとしたら `RuntimeError: 3 The occurrence
 届かなかったので「担当者が埋まらない」「実行が始まらない」が同時に出た。`safe_component` で飛ばして
 名前を控え、注意書きを出す。ハンドラ登録は入力欄を作る前に移した。`fusion_collect_test.py` に壊れた参照を追加。
 「私が作りました」ダイアログの説明文は要望で削除。
+- エラーで止まったときも「スクリプトとアドイン」の実行中 (■) を残さないように、run / CommandCreated / Execute の
+  except を `_fail()` (トレースバック → terminate) に。InputChanged はダイアログが生きているのでメッセージだけ

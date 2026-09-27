@@ -632,6 +632,21 @@ def flatten_tree(root):
     return out
 
 
+def _fail():
+    """例外で続けられないとき: トレースバックを見せてスクリプトを終える。
+    run() で autoTerminate(False) にしているので、ここで terminate() しないと
+    「スクリプトとアドイン」に実行中 (■) のまま残る (エラーで止まったら停止中に切り替える)。
+    入力欄の変更 (InputChanged) はダイアログが生きているのでここは使わず、メッセージだけ出す"""
+    try:
+        if _ui:
+            _ui.messageBox('LibraryExport:\n' + traceback.format_exc())
+    finally:
+        try:
+            adsk.terminate()
+        except Exception:
+            pass
+
+
 class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
     def notify(self, args):
         try:
@@ -714,7 +729,7 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             inputs.addTextBoxCommandInput('preview', '保存先', '', 4 if BROKEN_REFS else 2, True)
             update_preview(inputs)
         except Exception:
-            _ui.messageBox('LibraryExport:\n' + traceback.format_exc())
+            _fail()
 
 
 PLACEHOLDER = '（選択）'     # 部署・担当者は空から始める。_pick はこれを '' として返す
@@ -984,7 +999,7 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
                 detail = ('\n\nユニット %d 件に分けて書き出しました（ライブラリ上は 1 件です）。' % len(exported) if units else '')
             _ui.messageBox('格納しました:\n' + target + detail)
         except Exception:
-            _ui.messageBox('LibraryExport:\n' + traceback.format_exc())
+            _fail()
 
 
 def run(context):
@@ -1002,8 +1017,7 @@ def run(context):
         cmd_def.execute()
         adsk.autoTerminate(False)   # ダイアログが閉じるまでスクリプトを生かす
     except Exception:
-        if _ui:
-            _ui.messageBox('LibraryExport:\n' + traceback.format_exc())
+        _fail()
 
 
 def stop(context):

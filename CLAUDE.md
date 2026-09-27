@@ -169,6 +169,9 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
     `importlib.reload(glbwrite)` を必ず通す。実機で「行番号と文が合わないトレースバック」が出たらこれ
   - `run()` で `autoTerminate(False)` にしたら、`destroy` で `adsk.terminate()` を呼ぶ。
     呼ばないと「スクリプトとアドイン」に実行中 (■) のまま残る
+    **例外で続けられない経路（`run` / `CommandCreated` / `Execute` の except）は `_fail()`**: トレースバックを見せてから
+    `terminate()`。エラーで止まったのに実行中 (■) のまま残さない。`InputChanged` はダイアログが生きているので
+    メッセージだけ（ここで terminate するとダイアログのハンドラが死ぬ）
   - **色は外観の種類ごとにプロパティ id が違う**（塗装 `opaque_albedo` / 金属 `metal_f0` / 積層 `layered_diffuse` …）。
     1 つの id だけ見ると塗装以外が既定色に落ちる（実機で起きた）。`COLOR_PROP_IDS` の優先順 → 最初の `ColorProperty`。
     値は sRGB 0..255 なので **リニアに直して** glb に入れる（ビューアは `outputEncoding = sRGB`、occt の色もリニア）。
