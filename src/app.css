@@ -429,11 +429,17 @@ body.measuring #gl { cursor: crosshair; }
  * 見出し + 枠で囲んだ 1 つのまとまり、という形を 3 つとも揃える。
  * 値を選ぶ行 (.sm-row) と、押すと何か開く行 (.sm-item) の 2 種類だけで組む。 */
 .settings-menu {
-  position: fixed; left: var(--sp-sm); bottom: 46px; z-index: 60; width: 288px;
-  background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--r-lg);
-  box-shadow: 0 10px 28px rgba(20,20,19,0.16); padding: var(--sp-sm);
+  position: fixed; left: var(--sp-sm); bottom: 46px; z-index: 60; width: 300px;   /* スクロールバーの分 (8px) を見込む。288 だと「当たった装置を自動で読み込む」が折れる */
+  /* 枠は周りの罫線 (hairline) より濃くして、パネルの縁だと分かるようにする (要望)。影も少し強める */
+  background: var(--canvas); border: 1px solid var(--muted-soft); border-radius: var(--r-lg);
+  box-shadow: 0 12px 32px rgba(20,20,19,0.28), 0 0 0 3px var(--primary-ring); padding: var(--sp-sm);
   display: flex; flex-direction: column; gap: var(--sp-xxs);
+  /* 項目が増えて窓の高さに収まらないときは中でスクロールする (上の項目が画面の外に出ない) */
+  max-height: calc(100vh - 46px - var(--sp-sm) - var(--sp-xs)); overflow-y: auto; overscroll-behavior: contain;
 }
+.settings-menu > * { flex: none; }   /* 縦 flex の中で行が潰れないように (overflow を付けると子が縮む) */
+.settings-menu::-webkit-scrollbar { width: 8px; }
+.settings-menu::-webkit-scrollbar-thumb { border-width: 1px; }
 .settings-menu h3 { font: 500 11px/1.4 var(--font-sans); color: var(--muted-soft); margin: var(--sp-xs) 0 var(--sp-xxs) 2px; }
 .settings-menu h3:first-child { margin-top: 0; }
 .sm-group { border: 1px solid var(--hairline); border-radius: var(--r-md); overflow: hidden; background: var(--canvas); }

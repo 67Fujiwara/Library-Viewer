@@ -795,3 +795,10 @@ library_test: カードを選んだ後に装置 1 件 / 他はカードに戻る
 `parseRoster` / `rosterText` は localStorage の形として残した。library_test の名簿の節を新しい操作に書き換え
 (カード表示 / 部署を追加 → 担当者欄にフォーカス / Enter で追加 / 重複は足さない / × で外す / 削除の確認 / members.json)。
 dist は 4.99MB。
+
+### 設定パネル: スクロールと枠の強調
+項目が増えて低い窓では「表示」の節が画面の外に出ていた。`.settings-menu` に `max-height: calc(100vh - 46px - sp-sm - sp-xs)` と
+`overflow-y: auto` (子は `flex: none` で潰さない)。スクロールバー (8px) の分だけ幅が減って
+「当たった装置を自動で読み込む」が 2 行に折れたので幅を 288 → 300px に。枠は `--muted-soft` の線 + `--primary-ring` の
+輪 + 濃い影で、フッターや左パネルの罫線と区別できるようにした。900×620 / 900×900 のスクリーンショットで確認、
+panels / browser / madeby を通した。
