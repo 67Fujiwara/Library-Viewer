@@ -110,7 +110,17 @@ var Tags = (function () {
     Object.keys(map).forEach(function (k) { if (k === key || k.indexOf(key + '/') === 0) delete map[k]; });
     save();
   }
+  /* 1 つのタグをすべての行から外す (設定 → タグの管理)。外した行の数を返す */
+  function removeTag(tag) {
+    var f = fold(tag), n = 0;
+    Object.keys(map).forEach(function (k) {
+      var list = map[k].filter(function (t) { return fold(t) !== f; });
+      if (list.length !== map[k].length) { n++; if (list.length) map[k] = list; else delete map[k]; }
+    });
+    save();
+    return n;
+  }
   function clear() { map = {}; save(); }
 
-  return { fold: fold, terms: terms, parse: parse, get: get, set: set, has: has, hit: hit, hitUnder: hitUnder, under: under, withAny: withAny, all: all, repath: repath, removeUnder: removeUnder, clear: clear };
+  return { fold: fold, terms: terms, parse: parse, get: get, set: set, has: has, hit: hit, hitUnder: hitUnder, under: under, withAny: withAny, all: all, repath: repath, removeUnder: removeUnder, removeTag: removeTag, clear: clear };
 })();

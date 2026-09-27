@@ -12,8 +12,38 @@ var TreeEdit = (function () {
   var container, menuEl = null, dragging = null, dropTarget = null, editing = null, draggedSinceDown = false;
   var MIME = 'application/x-lv-node';   // 外から来たファイルのドロップと区別するため
 
+  /* ---- タグの管理 (歯車 → 検索 → タグの管理): 使っているタグを件数付きで並べ、消せる ----
+   *   タグはこの PC の localStorage にあるだけ (ディスクは触らない) が、戻せないので showConfirm で確認する */
+  function afterTagsChanged() { Tree.rerender(); Search.refresh(); CrossRef.refresh(); }
+  function renderTagManage() {
+    var list = $('#tag-manage-list'), all = Tags.all();
+    list.textContent = '';
+    if (!all.length) { list.appendChild(el('p.muted.small', { text: 'タグはまだありません。行を右クリック →「タグを付ける」で付けられます。' })); }
+    all.forEach(function (t) {
+      var del = el('button.btn.secondary.small', { type: 'button', text: '削除', title: 'このタグをすべての行から外します' });
+      del.addEventListener('click', function () {
+        showConfirm('タグ「' + t.tag + '」を消しますか？', t.count + ' 件の行から外します。ディスク上のファイルは変わりません。この操作は戻せません。', '消す').then(function (ok) {
+          if (!ok) return;
+          Tags.removeTag(t.tag); afterTagsChanged(); renderTagManage();
+        });
+      });
+      list.appendChild(el('div.sm-row', {}, [
+        el('span.sm-label', {}, [el('span.badge', { text: t.tag }), el('span.muted.small', { text: ' ' + t.count + ' 件' })]), del]));
+    });
+    $('#tag-manage-clear').disabled = !all.length;
+  }
+  function openTagManage() { renderTagManage(); $('#tag-manage-dialog').showModal(); }
+
   function init() {
     container = Tree.container();
+    $('#btn-tag-manage').addEventListener('click', openTagManage);
+    $('#tag-manage-clear').addEventListener('click', function () {
+      var n = Tags.all().length;
+      showConfirm('タグをすべて消しますか？', n + ' 種類のタグをすべての行から外します。ディスク上のファイルは変わりません。この操作は戻せません。', 'すべて消す').then(function (ok) {
+        if (!ok) return;
+        Tags.clear(); afterTagsChanged(); renderTagManage();
+      });
+    });
     $('#btn-new-folder').addEventListener('click', function () { newFolder(parentForNew()); });
     container.addEventListener('contextmenu', onContextMenu);
     container.addEventListener('dragstart', onDragStart);
@@ -266,5 +296,5 @@ var TreeEdit = (function () {
   function hideMenu() { if (menuEl) { menuEl.remove(); menuEl = null; } }
   function onKeyDown(e) { if (e.key === 'Escape') hideMenu(); }
 
-  return { init: init, newFolder: newFolder, startRename: startRename, editTags: editTags, isEditing: function () { return !!editing; } };
+  return { init: init, newFolder: newFolder, startRename: startRename, editTags: editTags, openTagManage: openTagManage, isEditing: function () { return !!editing; } };
 })();

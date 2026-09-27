@@ -365,7 +365,9 @@ body.measuring #gl { cursor: crosshair; }
 .fopt input { margin: 0; accent-color: var(--primary); width: 14px; height: 14px; flex: none; }
 .fopt .n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fopt .c { font: 500 11px/1 var(--font-mono); color: var(--muted); }
-#filters-list .sm-row, #path-emph-list .sm-row { height: 38px; }
+#filters-list .sm-row, #path-emph-list .sm-row, #tag-manage-list .sm-row { height: 38px; }
+#tag-manage-list { max-height: 50vh; overflow: auto; }
+#tag-manage-list .sm-label { display: flex; align-items: center; gap: 6px; }
 .right-section { display: flex; flex-direction: column; gap: var(--sp-sm); min-height: 0; }
 .sp-actions { display: flex; gap: var(--sp-xs); margin-top: var(--sp-xs); }
 /* 検索結果のカードは名前・タグ・保存先を切らずに折り返す (288px の右パネルで「コンベ…」にしない)。

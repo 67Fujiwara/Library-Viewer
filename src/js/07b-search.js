@@ -15,7 +15,8 @@ var Search = (function () {
   /* ---- 当たった装置の自動読み込み ----
    *   ライブラリ (未読み込み) のカードを 1 枚ずつ押すのは面倒 (要望) なので、検索したら glb 済みの当たりは
    *   自動で読み込む。入力が落ち着いてから (AUTO_DELAY)、1 つの問い合わせにつき MAX_AUTO 件まで。
-   *   未変換の STEP (変換に分単位) と上限を超えた分はカードに残す。設定 (歯車 → 検索) でオフにできる */
+   *   未変換の STEP (変換に分単位) と上限を超えた分はカードに残す。設定 (歯車 → 検索) でオフにできる。
+   *   読み込んだ装置は 3D に出さない (`hidden`)。結果のカードを選んだものだけ表示する (要望) */
   var AUTO_KEY = 'lv.autoLoadHits', AUTO_DELAY = 500, MAX_AUTO = 20;
   var autoTimer = null, autoQuery = '', autoCount = 0, loadingKeys = {};
   function autoLoad() { return Storage.get(AUTO_KEY, true) !== false; }
@@ -38,7 +39,7 @@ var Search = (function () {
       autoCount += ready.length;
       ready.forEach(function (h) { loadingKeys[entryKey(h.entry)] = 1; });
       render();   // 「読み込み中」を出す
-      Library.openEntries(ready.map(function (h) { return h.entry; })).then(function () {
+      Library.openEntries(ready.map(function (h) { return h.entry; }), { hidden: true }).then(function () {
         ready.forEach(function (h) { delete loadingKeys[entryKey(h.entry)]; });
         if (query) run(query);   // 読み込めたものはライブラリの欄から消え、装置・部品の当たりに移る
       });

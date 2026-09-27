@@ -615,18 +615,22 @@ var Library = (function () {
    * カードに残して押してもらう。1 件ずつ addDevice しない (全部読んでから App.addDevices で 1 回)。
    * 読めなかったものは飛ばす (カードに残る) */
   function isReady(e) { return e.files.length > 0 && e.files.every(function (f) { return !!f.glb; }); }
-  async function openEntries(list) {
-    var devs = [];
+  async function openEntries(list, opts) {
+    var devs = [], hidden = !!(opts && opts.hidden);
     await pool(list.filter(isReady), 4, async function (e) {
       try {
         if (!e.dir) e.dir = await dirAt(e.rel);
         for (var i = 0; i < e.files.length; i++) {
           var f = e.files[i];
-          devs.push({ model: await readModel(e.dir, f.glb), fileName: f.step ? f.step.split('/').pop() : f.name + '.step', stepBytes: null, source: { kind: 'library', entry: e, file: f } });
+          devs.push({ model: await readModel(e.dir, f.glb), fileName: f.step ? f.step.split('/').pop() : f.name + '.step', stepBytes: null, source: { kind: 'library', entry: e, file: f }, autoLoaded: hidden });
         }
       } catch (err) { /* 読めないものは残す */ }
     });
-    if (devs.length) { App.addDevices(devs); Viewer3D.fitAll(); }
+    if (devs.length) {
+      App.addDevices(devs);
+      // 検索の自動読み込みでは 3D に出さない (要望: 結果を選んだものだけ表示する)。カメラも動かさない
+      if (hidden) Tree.setDevicesVisible(devs, false); else Viewer3D.fitAll();
+    }
     return devs;
   }
   async function dirAt(segments) {

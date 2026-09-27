@@ -269,6 +269,11 @@
       <span>検索結果のフィルター</span>
       <svg class="sm-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
     </button>
+    <button type="button" id="btn-tag-manage" class="sm-item" title="付けたタグの一覧。要らないタグをまとめて外せます">
+      <svg viewBox="0 0 24 24"><path d="M3 12V4h8l10 10-8 8zM7.5 8.5h.01"/></svg>
+      <span>タグの管理</span>
+      <svg class="sm-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+    </button>
     <button type="button" id="btn-path-emph" class="sm-item" title="検索結果に出す保存先のうち、どの区切りを強調するかを選びます">
       <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM8 14h8"/></svg>
       <span>保存先の強調</span>
@@ -400,6 +405,18 @@
     <p class="muted small">検索結果の下に出すフィルターを選びます。タグと名称のほか、種類・装置・部署・担当者・案件コード・取引先で絞り込めます。</p>
     <div id="filters-list" class="sm-group"></div>
     <div class="dialog-actions">
+      <button type="submit" class="btn primary">閉じる</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="tag-manage-dialog" class="dialog small-dialog">
+  <form method="dialog">
+    <h2>タグの管理</h2>
+    <p class="muted small">付けてあるタグと、付いている行の数です。「削除」でそのタグをすべての行から外します（この PC に保存されているタグだけが変わります。ディスク上のファイルは変わりません）。</p>
+    <div id="tag-manage-list" class="sm-group"></div>
+    <div class="dialog-actions">
+      <button type="button" id="tag-manage-clear" class="btn secondary">すべて消す</button>
       <button type="submit" class="btn primary">閉じる</button>
     </div>
   </form>

@@ -329,10 +329,18 @@ check(autoLoaded.some(r => r.includes('検査装置A')) && autoLoaded.some(r => 
 check(!autoLoaded.some(r => r.includes('搬送装置B')), 'the unconverted entry is still not loaded');
 check((await page.evaluate(() => Search.hits().lib.length)) === 0 && !(await hitTitles()).includes('検査装置A'), 'the loaded ones left the library list: ' + await hitTitles());
 check((await page.textContent('#search-sum')).match(/部品 [1-9]/) !== null, 'their parts now show up as part hits: ' + await page.textContent('#search-sum'));
-check((await page.evaluate(() => Tree.allNodes().filter(n => !n.isGroup && n.meshIndex != null).every(n => n.visible))), 'auto-loaded devices are fully visible (nothing isolated until a card is chosen)');
+// 自動で読み込んだ装置は 3D に出さない。結果のカードを選んだものだけ表示する
+check((await page.evaluate(() => Tree.allNodes().filter(n => !n.isGroup && n.meshIndex != null).every(n => !n.visible))), 'auto-loaded devices start hidden in 3D (nothing shown until a card is chosen)');
+check((await page.textContent('#tree-counter')).startsWith('0 /'), 'the tree counter shows 0 visible: ' + await page.textContent('#tree-counter'));
+await page.locator('#search-list .hit-card', { hasText: 'BASE_PLATE' }).first().click();
+await page.waitForTimeout(400);
+const shownNow = await page.evaluate(() => Tree.allNodes().filter(n => !n.isGroup && n.meshIndex != null && n.visible).map(n => n.name));
+check(shownNow.length >= 1 && shownNow.every(n => n === 'BASE_PLATE'), 'choosing a part card shows just that part: ' + shownNow);
+check(!(await page.evaluate(() => App.selected())), 'without selecting it');
 await page.fill('#tree-search', 'BASE_PLATE, 設計1課');
 await page.waitForTimeout(900);
 check((await page.evaluate(() => App.devices().length)) === autoLoaded.length, 'narrowing the query does not load anything new when nothing new matches');
+check((await page.evaluate(() => Tree.allNodes().filter(n => !n.isGroup && n.meshIndex != null).every(n => !n.visible))), 'a changed query releases the isolation but keeps auto-loaded devices hidden');
 await page.click('#search-clear');
 await page.waitForTimeout(300);
 check((await page.evaluate(() => App.devices().length)) === 0 && (await page.evaluate(() => Search.query())) === '', '検索をやめる closes the auto-loaded devices too');

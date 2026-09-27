@@ -302,7 +302,8 @@ var Tree = (function () {
     if (!terms.length) filter = '';   // カンマだけなら検索していないのと同じ
     // 問い合わせが変わったら、前の結果で絞った状態 (ソロ) は解く。残したままだと新しい当たりが
     // 「表示するものが無い装置」として消えてしまう。検索はいつも全部見える状態から始める
-    if (filter !== prev && soloNode) { allLeaves().forEach(function (l) { l.visible = true; }); soloNode = null; refresh(); }
+    // 検索で自動読み込みした装置は「選ぶまで表示しない」ので、解くときも隠したまま
+    if (filter !== prev && soloNode) { allLeaves().forEach(function (l) { l.visible = !(l.device && l.device.autoLoaded); }); soloNode = null; refresh(); }
     applyRowVisibility();
     if (window.Search) Search.run(raw);
   }
@@ -311,6 +312,11 @@ var Tree = (function () {
     applySearch(searchEl.value);
   }
 
+  /* 装置ごとに表示 / 非表示 (検索で自動読み込みした装置は選ぶまで隠しておく) */
+  function setDevicesVisible(list, v) {
+    (list || []).forEach(function (d) { (d.leaves || []).forEach(function (l) { l.visible = !!v; }); });
+    refresh();
+  }
   /* 検索結果から選んだものだけ残す: 関係ない部品はチェックを外して非表示にする。
    * ソロと同じ状態にするので、もう一度ソロを押す / 「すべて表示」で戻せる */
   function isolate(n) {
@@ -550,7 +556,7 @@ var Tree = (function () {
     focused: function () { return focusedId ? nodesById[focusedId] : null; }, setFocused: setFocused,
     picked: pickedNodes, setPicked: setPicked, isPicked: isPicked, moveNodes: moveNodes, selectable: selectable,
     nodeById: function (id) { return nodesById[id]; }, allNodes: allNodes, tagKey: tagKey,
-    isolate: isolate, reveal: reveal, setSearch: setSearch, refilter: refilter, query: function () { return filter; },
+    isolate: isolate, reveal: reveal, setDevicesVisible: setDevicesVisible, setSearch: setSearch, refilter: refilter, query: function () { return filter; },
     rerender: function () { render(devices); }, container: function () { return container; }
   };
 })();

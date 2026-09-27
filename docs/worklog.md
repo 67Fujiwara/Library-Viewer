@@ -761,3 +761,10 @@ PC を閉じてから格納しようとしたら `RuntimeError: 3 The occurrence
 待って glb 済みの当たりを `Library.openEntries` (4 本並列 → `App.addDevices` 1 回) でまとめて読み込む。
 1 問い合わせ 20 件まで、未変換の STEP は残す (理由を結果の下に出す)。設定 歯車 → 検索 のスイッチ (`lv.autoLoadHits`、既定オン)。
 library_test は初期化スクリプトで切っておき、専用の節でオンにして 鈴木 (未変換は残る) → BASE_PLATE (2 件が自動で入る) を確認。
+
+### 自動読み込みした装置は選ぶまで表示しない / 設定にタグの管理
+- 検索の自動読み込みで入った装置は 3D に出さない (`Library.openEntries` の `hidden` → `Tree.setDevicesVisible(false)`、
+  `device.autoLoaded`)。結果のカードを選んだものだけ `isolate` で出す。問い合わせが変わってソロを解くときも
+  `autoLoaded` は隠したまま
+- 歯車 → 検索 → 「タグの管理」: `Tags.all()` を件数付きで並べ、削除 (`Tags.removeTag`) / すべて消す (`Tags.clear`)。
+  `showConfirm` で件数を見せてから。tags_test に節 8d、library_test の自動読み込みの節を「隠れている → 選ぶと出る」に

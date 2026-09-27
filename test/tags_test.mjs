@@ -378,6 +378,27 @@ await page.waitForTimeout(400);
 check(await page.inputValue('#tree-search') === '' && (await page.evaluate(() => App.devices().length)) === 0, '検索をやめる clears the search and closes every device in the tree');
 check(await page.evaluate(() => JSON.stringify(Tags.get('搬送ユニット/検査ユニット2'))) === '["検査","客先A"]', 'tags are kept (rows closed, tags stay)');
 
+// ---- 8d. 設定 → タグの管理: 使っているタグの一覧から消せる ----
+await page.click('#btn-settings');
+await page.click('#btn-tag-manage');
+await page.waitForSelector('#tag-manage-dialog[open]');
+const managed = await page.$$eval('#tag-manage-list .sm-row', rs => rs.map(r => r.querySelector('.badge').textContent + ':' + r.querySelector('.muted').textContent.trim()));
+check(managed.some(m => m.startsWith('客先A:')) && managed.some(m => m.startsWith('要確認:')), 'the dialog lists every tag with how many rows carry it: ' + managed.join(' | '));
+const rowsWithNote = await page.evaluate(() => Tags.all().find(t => t.tag === '要確認').count);
+await page.locator('#tag-manage-list .sm-row', { hasText: '要確認' }).locator('button').click();
+await page.waitForSelector('#confirm-dialog[open]');
+check((await page.textContent('#confirm-body')).includes(rowsWithNote + ' 件'), 'deleting asks first and says how many rows lose the tag');
+await page.click('#confirm-cancel');
+check(await page.evaluate(() => Tags.all().some(t => t.tag === '要確認')), 'cancel keeps the tag');
+await page.locator('#tag-manage-list .sm-row', { hasText: '要確認' }).locator('button').click();
+await page.waitForSelector('#confirm-dialog[open]');
+await page.click('#confirm-ok');
+await page.waitForTimeout(200);
+check(!(await page.evaluate(() => Tags.all().some(t => t.tag === '要確認'))) && (await page.evaluate(() => Tags.get('搬送ユニット/検査ユニット2'))).join() === '検査,客先A', 'the tag is gone from every row, other tags on those rows stay');
+check((await page.$$eval('#tag-manage-list .sm-row', rs => rs.map(r => r.querySelector('.badge').textContent))).indexOf('要確認') < 0, 'the list updates in place');
+await page.click('#tag-manage-dialog button[type="submit"]');
+await page.evaluate((k) => Tags.set(k, ['支柱', '要確認']), partKey);   // 後の節が期待する形に戻す
+
 // ---- 9. 読み込み直してもタグは残る ----
 if (canStore) {
   await page.reload();
