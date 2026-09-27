@@ -19,6 +19,7 @@ var Search = (function () {
    *   読み込んだ装置は 3D に出さない (`hidden`)。結果のカードを選んだものだけ表示する (要望) */
   var AUTO_KEY = 'lv.autoLoadHits', AUTO_DELAY = 500, MAX_AUTO = 20;
   var autoTimer = null, autoQuery = '', autoCount = 0, loadingKeys = {};
+  var chosenQuery = null;   // カードを選んだ問い合わせ。選んだ後は (閉じた装置を) 同じ問い合わせで読み直さない
   function autoLoad() { return Storage.get(AUTO_KEY, true) !== false; }
   function setAutoLoad(on) { Storage.set(AUTO_KEY, !!on); if (on && query) scheduleAutoLoad(); }
   function entryKey(e) { return e.rel.join('/'); }
@@ -27,6 +28,7 @@ var Search = (function () {
   function scheduleAutoLoad() {
     if (autoTimer) { clearTimeout(autoTimer); autoTimer = null; }
     if (!autoLoad() || !query) return;
+    if (chosenQuery === query) return;   // カードを選んで初期化した後。読み直すと初期化が無かったことになる
     if (query !== autoQuery) { autoQuery = query; autoCount = 0; }   // 問い合わせが変わったら上限を数え直す
     var room = MAX_AUTO - autoCount;
     if (room <= 0) return;
@@ -130,7 +132,9 @@ var Search = (function () {
   }
 
   function run(raw) {
+    var prev = query;
     query = String(raw == null ? '' : raw).trim();
+    if (query !== prev) chosenQuery = null;   // 問い合わせが変わったら自動読み込みは普段どおり
     if (!query) {
       hits = EMPTY; currentId = null; byNode = {};
       SearchFilters.reset();                               // 次の検索に前のフィルターを持ち越さない
@@ -265,8 +269,11 @@ var Search = (function () {
         el('span', { text: loading ? '読み込み中…' : 'ファイル ' + h.entry.files.length })
       ])
     ]);
-    // 読み込んだら装置全体ではなく、当たった部品 (無ければタグの行 → 装置) だけを残して見せる
+    // 読み込んだら装置全体ではなく、当たった部品 (無ければタグの行 → 装置) だけを残して見せる。
+    // 先に構成を初期化する (ライブラリから読み込んだ装置を全部閉じる。カードを選ぶたびに 0 から)
     b.addEventListener('click', function () {
+      chosenQuery = query;
+      App.keepOnly([]);
       Library.openEntry(h.entry, true).then(function (devs) {
         var n = App.findLoaded(devs, { name: h.part, tag: h.tag });
         if (n) App.showOnly(n, { keepXref: true, select: false, only: true });
@@ -277,10 +284,14 @@ var Search = (function () {
 
   /* 選んだものだけ残す: 関係のない部品はチェックを外して非表示にし、カメラを角度そのままで収める。
    * 選択 (ハイライト色) にはしない: 検索で残した部品は普通の色で見せる (要望)。
-   * 構成ツリーにはその装置だけを出す (`only`。検索で自動読み込みした他の装置を並べない。要望) */
+   * 構成は 0 から: その装置 (フォルダのカードなら中の装置) 以外のライブラリの装置は閉じる (`App.keepOnly`。
+   * 自動読み込みで入った装置を構成に積み上げない。要望)。閉じた装置はライブラリ (未読み込み) のカードに戻り、
+   * 同じ問い合わせでは自動で読み直さない (`chosenQuery`)。ファイルから読んだ装置は閉じずに表示から外す (`only`) */
   function apply(h) {
     var n = h.node;
     currentId = n.id;
+    chosenQuery = query;
+    App.keepOnly(n.isGroup ? Tree.devicesUnder(n) : [n.device]);
     App.showOnly(n, { keepXref: true, select: false, only: true });
     mark();
   }

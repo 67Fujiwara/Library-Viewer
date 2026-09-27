@@ -336,7 +336,16 @@ var App = (function () {
     if (clearSel) select(null);
     Tree.render(devices); CrossRef.rebuild(devices); afterDevicesChanged();
   }
-  function clearDevices() { devices.slice().forEach(removeDevice); }
+  function clearDevices() { if (devices.length) removeDevice(devices.slice()); }   // 1 回で消す (1 件ずつだと件数分の描き直し)
+  /* 検索結果のカードを選んだときの初期化: 残す装置以外で、ライブラリから読み込んだものを全部閉じる。
+   * 検索の自動読み込みで入った装置を構成に積み上げない (ライブラリが増えると件数分だけ重くなる。要望)。
+   * ライブラリの装置はカードを押せば戻せるので閉じてよい。ファイルから読んだ装置は閉じると戻せないので残す
+   * (表示から外すだけ = Tree.isolate の only) */
+  function keepOnly(keep) {
+    keep = keep || [];
+    var drop = devices.filter(function (d) { return keep.indexOf(d) < 0 && d.source && d.source.kind === 'library'; });
+    if (drop.length) removeDevice(drop);
+  }
   function afterDevicesChanged() {
     var has = devices.length > 0;
     $('#drop-hint').hidden = has; $('#btn-store').disabled = !has;
@@ -436,7 +445,7 @@ var App = (function () {
   return {
     init: init, addDevice: addDevice, removeDevice: removeDevice, clearDevices: clearDevices, resetWorkspace: resetWorkspace, select: select,
     devices: function () { return devices; }, selected: function () { return selectedNode; }, precision: function () { return currentPrecision; },
-    addDevices: addDevices, loadEntries: loadEntries, showOnly: showOnly, findLoaded: findLoaded,
+    addDevices: addDevices, loadEntries: loadEntries, showOnly: showOnly, findLoaded: findLoaded, keepOnly: keepOnly,
     showOverlay: showOverlay, hideOverlay: hideOverlay, showLeftTab: showLeftTab, clearCache: clearCache,
     onLibraryChanged: function () { }, stepSource: function (e) { lastLibraryEntry = e; }, loadFolders: loadFolders
   };
