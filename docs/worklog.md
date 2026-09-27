@@ -744,3 +744,11 @@ PC を閉じてから格納しようとしたら `RuntimeError: 3 The occurrence
 - 検索結果を押しても選択 (ハイライト) にしない: `App.showOnly(n, {select: false})`。案件横断のカードは選択のまま
 - 検索結果のカードから ソリッド / △ の行を外した
 - ライブラリの「開く」は `App.resetWorkspace()` (検索を消す → 装置を閉じる → 選択を外す) の後で読み込む
+
+### 検索結果の保存先を全部出す / 強調する区切りを設定で選ぶ
+- カードの保存先が「…」で切れていた原因は CSS の後勝ち (`.xref-card .path` の nowrap が `.hit-card .path` の
+  wrap より後に書かれていた)。`.xref-card.hit-card .path` の 2 クラスで上書き
+- 保存先を区切りごとの役割付きで組む (`Search.pathSegs`: ライブラリの rel → 部署 / 担当者 / 案件コード_装置名 / 対象ワーク、
+  フォルダ読み込みの groupPath → フォルダ、ファイル名、部品の階層)。ライブラリの部品カードにも保存先が付く
+- 設定 歯車 → 検索 → 「保存先の強調」 (`#btn-path-emph` → `#path-emph-dialog`、フィルターの設定と同じ形のスイッチ)。
+  `lv.pathEmphasis` に役割の配列。既定は案件コード_装置名

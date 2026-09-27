@@ -265,6 +265,11 @@
       <span>検索結果のフィルター</span>
       <svg class="sm-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
     </button>
+    <button type="button" id="btn-path-emph" class="sm-item" title="検索結果に出す保存先のうち、どの区切りを強調するかを選びます">
+      <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM8 14h8"/></svg>
+      <span>保存先の強調</span>
+      <svg class="sm-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+    </button>
   </div>
 
   <h3>ライブラリ</h3>
@@ -390,6 +395,17 @@
     <h2>検索結果のフィルター</h2>
     <p class="muted small">検索結果の下に出すフィルターを選びます。タグと名称のほか、種類・装置・部署・担当者・案件コード・取引先で絞り込めます。</p>
     <div id="filters-list" class="sm-group"></div>
+    <div class="dialog-actions">
+      <button type="submit" class="btn primary">閉じる</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="path-emph-dialog" class="dialog small-dialog">
+  <form method="dialog">
+    <h2>保存先の強調</h2>
+    <p class="muted small">検索結果のカードに出す保存先（部署 / 担当者 / 案件コード_装置名 / 対象ワーク / ファイル名 / 部品の階層）のうち、太く濃く出す区切りを選びます。</p>
+    <div id="path-emph-list" class="sm-group"></div>
     <div class="dialog-actions">
       <button type="submit" class="btn primary">閉じる</button>
     </div>

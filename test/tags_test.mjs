@@ -123,6 +123,15 @@ check((await counter()).startsWith(total + ' / ' + total), 'すべて表示 brin
 
 // 部品を選んだときは装置の中の 1 部品だけが残る
 await search('COLUMN');
+// 保存先はフォルダ / ファイル名 / 部品の階層 を切らずに全部出す。既定の強調 (案件コード_装置名) はフォルダ読み込みには無い
+const segInfo = await page.$eval('#search-list .hit-card .path', p => ({
+  text: p.textContent, clipped: p.scrollWidth > p.clientWidth + 1, wrap: getComputedStyle(p).whiteSpace,
+  roles: [...p.querySelectorAll('.seg')].map(s => s.title + (s.classList.contains('em') ? '*' : '')) }));
+check(segInfo.wrap === 'normal' && !segInfo.clipped, 'the path on a part card wraps instead of being cut off: ' + JSON.stringify(segInfo));
+check(segInfo.roles.includes('ファイル名（装置）') && segInfo.roles.some(r => r.startsWith('フォルダ')), 'the path names the folder and the file: ' + segInfo.roles.join(','));
+await page.evaluate(() => Search.setEmphasized('device', true));
+check((await page.$$eval('#search-list .hit-card .path .seg.em', ss => ss.map(s => s.title))).join() === 'ファイル名（装置）', 'the emphasis setting picks which segment is bold');
+await page.evaluate(() => Search.setEmphasized('device', false));
 if ((await hitTitles()).length) {
   await page.locator('#search-list .hit-card').first().click();
   await page.waitForTimeout(400);

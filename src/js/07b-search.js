@@ -12,6 +12,67 @@ var Search = (function () {
   var EMPTY = { folders: [], devices: [], parts: [], lib: [] };
   var hits = EMPTY, query = '', currentId = null, byNode = {};   // byNode: ノード id → ヒット (左のツリーのフィルター判定に使う)
 
+  /* ---- 保存先 (ファイルパス) の表示 ----
+   *   区切りごとに役割 (部署 / 担当者 / 案件コード_装置名 / 対象ワーク / フォルダ / ファイル名 / 部品の階層) を持たせ、
+   *   設定 (歯車 → 検索 → 保存先の強調) で選んだ役割だけ太く濃く出す。パスは切らずに全部出す */
+  var EMPH_KEY = 'lv.pathEmphasis', EMPH_DEFAULT = ['project'];
+  var ROLES = [
+    { id: 'department', label: '部署' }, { id: 'owner', label: '担当者' }, { id: 'project', label: '案件コード_装置名' },
+    { id: 'workpiece', label: '対象ワーク' }, { id: 'folder', label: 'フォルダ' }, { id: 'device', label: 'ファイル名（装置）' },
+    { id: 'unit', label: '部品の階層（ユニット）' }
+  ];
+  var LIB_ROLES = ['department', 'owner', 'project', 'workpiece'];   // models/ の下の並び (09-store.js の LAYOUT と同じ)
+  function emphasized() { var v = Storage.get(EMPH_KEY, null); return Array.isArray(v) ? v : EMPH_DEFAULT.slice(); }
+  function setEmphasized(id, on) {
+    var list = emphasized().filter(function (x) { return x !== id; });
+    if (on) list.push(id);
+    Storage.set(EMPH_KEY, list);
+    if (query) render();
+  }
+  function roleLabel(id) { var r = ROLES.filter(function (x) { return x.id === id; })[0]; return r ? r.label : ''; }
+  function libSegs(rel) {
+    var out = [];
+    (rel || []).slice(1).forEach(function (s, i) {   // rel[0] は models
+      var role = LIB_ROLES[i] || 'folder';
+      if (s === '_' && role === 'workpiece') return;   // 対象ワークなし
+      out.push({ text: s, role: role });
+    });
+    return out;
+  }
+  function pathSegs(n) {
+    var out = [];
+    if (n.isGroup) { n.path.slice(0, -1).forEach(function (s) { out.push({ text: s, role: 'folder' }); }); return out; }
+    var d = n.device, src = d.source || {};
+    if (src.kind === 'library' && src.entry) out = libSegs(src.entry.rel);
+    else (d.groupPath || []).forEach(function (s) { out.push({ text: s, role: 'folder' }); });
+    if (n.depth > 0) {
+      out.push({ text: d.name, role: 'device' });
+      n.path.slice(1, -1).forEach(function (s) { out.push({ text: s, role: 'unit' }); });
+    }
+    return out;
+  }
+  function pathEl(segs) {
+    var p = el('div.path'), em = emphasized();
+    if (!segs.length) { p.textContent = '最上位'; return p; }
+    segs.forEach(function (s, i) {
+      if (i) p.appendChild(el('span.sep', { text: ' / ' }));
+      p.appendChild(el('span.seg' + (em.indexOf(s.role) >= 0 ? '.em' : ''), { text: s.text, title: roleLabel(s.role) }));
+    });
+    return p;
+  }
+  function openEmphDialog() {
+    var list = $('#path-emph-list'); list.textContent = '';
+    var cur = emphasized();
+    ROLES.forEach(function (r) {
+      var id = 'emph-' + r.id;
+      var cb = el('input.switch', { type: 'checkbox', id: id });
+      cb.checked = cur.indexOf(r.id) >= 0;
+      cb.addEventListener('change', function () { setEmphasized(r.id, cb.checked); });
+      list.appendChild(el('div.sm-row', {}, [el('label.sm-label', { 'for': id, text: r.label }), cb, el('label.switch-label', { 'for': id, 'aria-hidden': 'true' })]));
+    });
+    $('#path-emph-dialog').showModal();
+  }
+
   function init() {
     panelEl = $('#search-panel'); xrefEl = $('#xref-panel');
     listEl = $('#search-list'); sumEl = $('#search-sum');
@@ -21,6 +82,7 @@ var Search = (function () {
     clearBtn.addEventListener('click', function () { Tree.setSearch(''); App.clearDevices(); inputEl.focus(); });
     // フィルター (結果の見出しの下)。変えたら一覧を描き直し、左のツリーにも同じ条件を掛ける
     SearchFilters.init({ onChange: function () { if (query) { render(); Tree.refilter(); } } });
+    $('#btn-path-emph').addEventListener('click', openEmphDialog);
   }
 
   /* 検索欄は右パネルの中にあるので、畳んでいたら開いてから入れる (/ か Ctrl+F) */
@@ -127,9 +189,6 @@ var Search = (function () {
 
   function card(h) {
     var n = h.node;
-    var where = n.isGroup ? (n.path.slice(0, -1).join(' / ') || '最上位')
-      : n.depth === 0 ? ((n.device.groupPath || []).join(' / ') || '最上位')
-        : n.device.name + ' · ' + (n.path.slice(1, -1).join(' / ') || 'ルート直下');
     var head = el('div.dev', {}, [
       n.isGroup ? svgIcon(ICON.folder) : null,
       el('span', { text: n.name }),
@@ -138,7 +197,7 @@ var Search = (function () {
     ]);
     // ソリッド数・三角形数は出さない (要望。案件横断のカードには残す)
     var b = el('button.xref-card.hit-card', { type: 'button', dataset: { id: n.id }, title: 'これだけ表示する（関係のない部品はチェックを外します）' }, [
-      head, el('div.path', { text: where })
+      head, pathEl(pathSegs(n))   // 保存先はすべて出す (切らない)。強調は設定
     ]);
     b.addEventListener('click', function () { apply(h); });
     return b;
@@ -149,7 +208,7 @@ var Search = (function () {
     var m = h.entry.meta || {};
     var b = el('button.xref-card.hit-card', { type: 'button', title: 'ライブラリから読み込みます（今の表示に追加）' }, [
       el('div.dev', {}, [svgIcon(ICON.folder), el('span', { text: m.deviceName || h.entry.rel[h.entry.rel.length - 1] }), el('span.brk'), h.part ? el('span.badge.coral', { text: h.part, title: 'この部品名で当たりました' }) : h.tag ? el('span.badge.coral', { text: h.tag, title: '以前読み込んだときに付けたタグで当たりました' }) : (m.owner ? el('span.badge', { text: m.owner }) : null)]),
-      el('div.path', { text: h.entry.rel.join(' / ') }),
+      pathEl(libSegs(h.entry.rel)),
       el('div.stats', {}, [
         m.projectCode ? el('span', { text: m.projectCode }) : null,
         m.customer ? el('span', { text: m.customer }) : null,
@@ -182,5 +241,6 @@ var Search = (function () {
   /* 装置を消した・読み込んだ後に一覧を作り直す (消えたノードを指したままにしない) */
   function refresh() { if (query) run(query); }
 
-  return { init: init, run: run, refresh: refresh, focus: focus, query: function () { return query; }, hits: function () { return hits; }, hitOfNode: hitOfNode, shown: function () { return SearchFilters.apply(hits); } };
+  return { init: init, run: run, refresh: refresh, focus: focus, query: function () { return query; }, hits: function () { return hits; }, hitOfNode: hitOfNode, shown: function () { return SearchFilters.apply(hits); },
+    pathSegs: pathSegs, emphasized: emphasized, setEmphasized: setEmphasized, openEmphDialog: openEmphDialog };
 })();

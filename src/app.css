@@ -365,7 +365,7 @@ body.measuring #gl { cursor: crosshair; }
 .fopt input { margin: 0; accent-color: var(--primary); width: 14px; height: 14px; flex: none; }
 .fopt .n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fopt .c { font: 500 11px/1 var(--font-mono); color: var(--muted); }
-#filters-list .sm-row { height: 38px; }
+#filters-list .sm-row, #path-emph-list .sm-row { height: 38px; }
 .right-section { display: flex; flex-direction: column; gap: var(--sp-sm); min-height: 0; }
 .sp-actions { display: flex; gap: var(--sp-xs); margin-top: var(--sp-xs); }
 /* 検索結果のカードは名前・タグ・保存先を切らずに折り返す (288px の右パネルで「コンベ…」にしない)。
@@ -375,7 +375,9 @@ body.measuring #gl { cursor: crosshair; }
 .hit-card .dev > span:first-of-type { flex: 0 1 auto; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
 .hit-card .dev .brk { flex-basis: 100%; height: 0; }   /* バッジを必ず 2 行目に。名前の長さで位置が変わらない */
 .hit-card .dev .badge { flex: 0 1 auto; min-width: 0; max-width: 100%; height: auto; min-height: 18px; padding: 2px 7px; line-height: 1.3; white-space: normal; overflow-wrap: anywhere; }
-.hit-card .path { white-space: normal; overflow-wrap: anywhere; }
+.xref-card.hit-card .path { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }   /* .xref-card .path の nowrap より後勝ちにするため 2 クラスで */
+.hit-card .path .sep { color: var(--muted-soft); }
+.hit-card .path .seg.em { font-weight: 600; color: var(--ink); }   /* 設定「保存先の強調」で選んだ区切り */
 
 .xref-current { border: 1px solid var(--hairline); border-radius: var(--r-lg); padding: 10px 12px; background: var(--surface-card); font-size: 12px; }
 .xref-current .n { font-weight: 500; color: var(--ink); font-size: 14px; }
