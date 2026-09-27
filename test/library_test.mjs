@@ -337,21 +337,21 @@ await page.waitForTimeout(400);
 const shownNow = await page.evaluate(() => Tree.allNodes().filter(n => !n.isGroup && n.meshIndex != null && n.visible).map(n => n.name));
 check(shownNow.length >= 1 && shownNow.every(n => n === 'BASE_PLATE'), 'choosing a part card shows just that part: ' + shownNow);
 check(!(await page.evaluate(() => App.selected())), 'without selecting it');
-// 構成は 0 から: 選んだ装置以外 (自動読み込みで入ったもの) は閉じる。閉じた装置はライブラリ (未読み込み) のカードに戻り、
-// 同じ問い合わせでは自動で読み直さない。その装置は絞り込みなしで全部出す。カウンタもその装置だけ
-await page.waitForTimeout(1200);   // 自動読み込みの待ち時間 (500ms) を越えても読み直さないことを見る
+// 構成ツリーには選んだ装置だけ出す。他の装置は閉じない (閉じると「未読み込み」のカードに戻って毎回読み直しになる)。
+// その装置は絞り込みなしで全部出す。カウンタもその装置だけ
+await page.waitForTimeout(1200);
 const devRows = await page.$$eval('#tree .tree-row.device:not([hidden])', rs => rs.map(r => r.querySelector('.name').textContent.trim()));
 check(devRows.length === 1, 'the tree shows only the chosen card\'s device: ' + devRows.join(' | '));
-check((await page.evaluate(() => App.devices().length)) === 1, 'the other auto-loaded devices were closed, not just hidden: ' + await page.evaluate(() => App.devices().map(d => d.name).join(' | ')));
-check((await page.evaluate(() => Search.hits().lib.length)) === 2 && (await hitTitles()).includes('検査装置A') && (await hitTitles()).includes('メッシュ機H'), 'the closed devices are back as library cards (not auto-loaded again): ' + await hitTitles());
+check((await page.evaluate(() => App.devices().length)) === autoLoaded.length, 'the other auto-loaded devices stay loaded (hidden from the tree, not closed): ' + await page.evaluate(() => App.devices().map(d => d.name).join(' | ')));
+check((await page.evaluate(() => Search.hits().lib.length)) === 0 && !(await hitTitles()).includes('検査装置A'), 'nothing falls back to a library (unloaded) card: ' + await hitTitles());
 check((await page.evaluate(() => Tree.allNodes().filter(n => !n.isGroup && n.meshIndex != null && n.visible).map(n => n.name))).every(n => n === 'BASE_PLATE'), 'the chosen part is still the only thing shown');
 check(await page.evaluate(() => { var d = Tree.onlyDevices(); return d && d.length === 1 && d[0].nodes.filter(n => n.depth === 1).every(n => n.row && !n.row.hidden); }), 'that device is shown in full (all top-level parts, hits or not)');
 check(Number((await page.textContent('#tree-counter')).match(/\/\s*(\d+)/)[1]) === (await page.evaluate(() => Tree.onlyDevices()[0].leaves.length)), 'the counter counts only that device: ' + await page.textContent('#tree-counter'));
 await page.fill('#tree-search', 'BASE_PLATE, 設計1課');
-// 問い合わせが変わったら自動読み込みは普段どおり (閉じた装置も当たれば読み直す)
-await page.waitForFunction((n) => App.devices().length === n && !Search.loading(), autoLoaded.length, { timeout: 30000 });
-await page.waitForTimeout(400);
-check((await page.evaluate(() => App.devices().length)) === autoLoaded.length, 'a changed query auto-loads its hits again (the closed device comes back)');
+// 問い合わせを変えても、読み込んだ装置はそのまま (読み直しは起きない)。ツリーの「この装置だけ」は解ける
+await page.waitForTimeout(900);
+check((await page.evaluate(() => App.devices().length)) === autoLoaded.length && !(await page.evaluate(() => Search.loading())), 'a changed query keeps the loaded devices and loads nothing new when nothing new matches');
+check(await page.evaluate(() => Tree.onlyDevices() === null), 'changing the query releases the device-only tree');
 check((await page.evaluate(() => Tree.allNodes().filter(n => !n.isGroup && n.meshIndex != null).every(n => !n.visible))), 'a changed query releases the isolation but keeps auto-loaded devices hidden');
 await page.click('#search-clear');
 await page.waitForTimeout(300);
