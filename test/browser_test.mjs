@@ -65,6 +65,8 @@ check(badge === '+1', 'tree badge +1');
 await page.keyboard.press('ArrowRight');
 await page.waitForTimeout(200);
 check((await page.textContent('#sel-info')).includes('assembly_b'), '→ key moved selection to the other device');
+check(await page.evaluate(() => { const vis = Tree.allNodes().filter(n => !n.isGroup && n.meshIndex != null && n.visible); return vis.length > 0 && vis.every(n => n.device.name === 'assembly_b' && n.path.indexOf('HEAD_UNIT') >= 0); }), 'the crossref card shows only that unit (not the whole device)');
+await page.click('#btn-show-all'); await page.waitForTimeout(150);
 await page.screenshot({ path: outDir + '/shot-2-selected.png' });
 
 // 表示モード・エッジ・断面

@@ -388,6 +388,30 @@ var App = (function () {
     CrossRef.markCurrent(n);
     renderFooter(n);
   }
+  /* その行だけ残して見せる (関係のない部品はチェックを外す = ソロと同じ)。検索結果・案件横断のカードから。
+   * カメラは角度を変えずに寄せる (回り込むのは「この部品に寄る」だけ) */
+  function showOnly(n, opts) {
+    if (!n) return;
+    opts = opts || {};
+    Tree.isolate(n);
+    if (n.isGroup) { select(null, { keepXref: true }); Viewer3D.fitNode(n); }
+    else select(n, { keepAngle: true, keepXref: !!opts.keepXref });
+  }
+  /* ライブラリから読み込んだ装置の中から、カードが指していた行を引く: 部品名 → タグ → 名寄せの鍵 → 装置の行 */
+  function findLoaded(devs, want) {
+    var nodes = [];
+    (devs || []).forEach(function (d) { nodes = nodes.concat(d.nodes || []); });
+    if (!nodes.length) return null;
+    var fold = Tags.fold, hit = null;
+    if (want.name) hit = nodes.filter(function (n) { return n.depth > 0 && fold(n.name) === fold(want.name); })[0]
+      || nodes.filter(function (n) { return n.depth > 0 && fold(n.name).indexOf(fold(want.name)) >= 0; })[0];
+    if (!hit && want.tag) {
+      var f = fold(want.tag);
+      hit = nodes.filter(function (n) { return Tags.get(Tree.tagKey(n)).some(function (t) { return fold(t) === f; }); })[0];
+    }
+    if (!hit && want.key) hit = nodes.filter(function (n) { return n.depth > 0 && n.key === want.key; })[0];
+    return hit || devs[0].root;
+  }
   function renderFooter(n) {
     var box = $('#sel-info'); box.textContent = '';
     if (!n) { box.appendChild(el('span.muted', { text: '未選択' })); return; }
@@ -405,7 +429,7 @@ var App = (function () {
   return {
     init: init, addDevice: addDevice, removeDevice: removeDevice, clearDevices: clearDevices, select: select,
     devices: function () { return devices; }, selected: function () { return selectedNode; }, precision: function () { return currentPrecision; },
-    addDevices: addDevices, loadEntries: loadEntries,
+    addDevices: addDevices, loadEntries: loadEntries, showOnly: showOnly, findLoaded: findLoaded,
     showOverlay: showOverlay, hideOverlay: hideOverlay, showLeftTab: showLeftTab, clearCache: clearCache,
     onLibraryChanged: function () { }, stepSource: function (e) { lastLibraryEntry = e; }, loadFolders: loadFolders
   };

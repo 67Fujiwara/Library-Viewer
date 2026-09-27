@@ -137,7 +137,11 @@ var CrossRef = (function () {
         el('span', { text: '未読み込み' })
       ])
     ]);
-    b.addEventListener('click', function () { Library.openEntry(e, true); });
+    // 読み込んだら装置全体ではなく、当たったユニット (部品名 → タグ → 名寄せの鍵) だけを残して見せる
+    var want = { name: h.part, tag: h.tag, key: current && current.key };
+    b.addEventListener('click', function () {
+      Library.openEntry(e, true).then(function (devs) { var n = App.findLoaded(devs, want); if (n) App.showOnly(n); });
+    });
     return b;
   }
 
@@ -192,7 +196,7 @@ var CrossRef = (function () {
 
   /* カードへ移動: カメラの角度は変えず、注視点と距離だけ移す */
   function go(m) {
-    App.select(m, { keepAngle: true });
+    App.showOnly(m);                 // 装置全体ではなく、そのユニットだけを残す。角度は変えない
   }
   function step(dir) {
     // 現在の選択がリスト内なら順送り。リスト外 (起点) なら先頭 / 末尾へ

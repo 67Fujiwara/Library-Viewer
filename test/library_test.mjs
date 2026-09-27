@@ -156,6 +156,9 @@ await page.waitForFunction(() => App.devices().length > 0, null, { timeout: 6000
 await page.waitForSelector('#overlay', { state: 'hidden', timeout: 60000 });
 await page.waitForTimeout(400);
 check(await page.evaluate(() => App.devices().length) >= 1, 'clicking a library hit loads it');
+const visLeaves = await page.evaluate(() => Tree.allNodes().filter(n => !n.isGroup && n.meshIndex != null && n.visible).map(n => n.name));
+check(visLeaves.length >= 1 && visLeaves.every(n => n === 'BASE_PLATE'), 'loading from a part hit shows only that part, not the whole device: ' + visLeaves);
+check((await page.textContent('#sel-info')).includes('BASE_PLATE'), 'and selects it');
 check(!(await hitTitles()).includes('検査装置A'), 'once loaded it drops out of the unloaded list: ' + await hitTitles());
 // 案件横断も読み込んでいない装置に当たる: 部品名 (index.json) と、その装置の行に付けたタグ
 await page.fill('#tree-search', '');

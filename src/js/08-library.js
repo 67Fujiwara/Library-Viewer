@@ -579,6 +579,7 @@ var Library = (function () {
     devices.forEach(function (d) { App.addDevice(d); });
     if (devices.length) { App.showLeftTab('tree'); App.stepSource(e); Viewer3D.fitAll(); }
     if (e.files.some(function (f) { return f.glb && f.glb.indexOf('.glb') > 0; })) { renderList(); }
+    return devices;   // 呼び出し側が「当たった部品だけ残す」のに使う (検索 / 案件横断のカード)
   }
 
   /* 書き戻した結果を meta.json に反映する。

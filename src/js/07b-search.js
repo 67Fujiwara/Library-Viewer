@@ -160,7 +160,13 @@ var Search = (function () {
         el('span', { text: 'ファイル ' + h.entry.files.length })
       ])
     ]);
-    b.addEventListener('click', function () { Library.openEntry(h.entry, true); });
+    // 読み込んだら装置全体ではなく、当たった部品 (無ければタグの行 → 装置) だけを残して見せる
+    b.addEventListener('click', function () {
+      Library.openEntry(h.entry, true).then(function (devs) {
+        var n = App.findLoaded(devs, { name: h.part, tag: h.tag });
+        if (n) App.showOnly(n, { keepXref: true });
+      });
+    });
     return b;
   }
 
@@ -168,9 +174,7 @@ var Search = (function () {
   function apply(h) {
     var n = h.node;
     currentId = n.id;
-    Tree.isolate(n);
-    if (n.isGroup) { App.select(null, { keepXref: true }); Viewer3D.fitNode(n); }
-    else App.select(n, { keepAngle: true, keepXref: true });
+    App.showOnly(n, { keepXref: true });
     mark();
   }
   function mark() {
