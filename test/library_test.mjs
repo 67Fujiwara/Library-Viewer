@@ -142,8 +142,8 @@ await page.waitForFunction(() => Search.query() === 'BASE_PLATE' && Search.hits(
 check((await hitTitles()).includes('メッシュ機H'), 'a part name finds an unloaded library device: ' + await hitTitles());
 check(await page.locator('#search-list .hit-card', { hasText: 'メッシュ機H' }).locator('.badge', { hasText: 'BASE_PLATE' }).count() === 1, 'the card shows which part matched');
 // 保存先は 部署 / 担当者 / 案件コード_装置名 (/ 対象ワーク) を全部出し、既定では 案件コード_装置名 を強調する
-const libSegs = await page.$eval('#search-list .hit-card .path', p => [...p.querySelectorAll('.seg')].map(s => s.title + '=' + s.textContent + (s.classList.contains('em') ? '*' : '')));
-check(libSegs.some(s => s.startsWith('部署=')) && libSegs.some(s => s.startsWith('担当者=')) && libSegs.some(s => /^案件コード_装置名=.*\*$/.test(s)), 'a library card shows the full storage path with the project segment emphasized: ' + libSegs.join(' | '));
+const libSegs = await page.locator('#search-list .hit-card', { hasText: 'メッシュ機H' }).locator('.path').first().evaluate(p => [...p.querySelectorAll('.seg')].map(s => s.title + '=' + s.textContent + (s.classList.contains('em') ? '*' : '')));
+check(libSegs.some(s => s.startsWith('部署=設計1課')) && libSegs.some(s => s.startsWith('担当者=藤原')) && libSegs.some(s => /^案件コード_装置名=P2026-007_メッシュ機H\*$/.test(s)) && !libSegs.some(s => s.includes('models')), 'a library card shows the full storage path with the roles on the right segments and the project one emphasized: ' + libSegs.join(' | '));
 // 設定 (歯車 → 検索 → 保存先の強調) で強調する区切りを変えられる
 await page.click('#btn-settings');
 await page.click('#btn-path-emph');

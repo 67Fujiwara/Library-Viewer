@@ -13,12 +13,13 @@ var Search = (function () {
   var hits = EMPTY, query = '', currentId = null, byNode = {};   // byNode: ノード id → ヒット (左のツリーのフィルター判定に使う)
 
   /* ---- 保存先 (ファイルパス) の表示 ----
-   *   区切りごとに役割 (部署 / 担当者 / 案件コード_装置名 / 対象ワーク / フォルダ / ファイル名 / 部品の階層) を持たせ、
-   *   設定 (歯車 → 検索 → 保存先の強調) で選んだ役割だけ太く濃く出す。パスは切らずに全部出す */
+   *   区切りごとに役割 (部署 / 担当者 / 案件コード_装置名 / 対象ワーク / フォルダ / 部品の階層) を持たせ、
+   *   設定 (歯車 → 検索 → 保存先の強調) で選んだ役割だけ太く濃く出す。パスは切らずに全部出す。
+   *   装置のファイル名は出さない (保存先と同じ情報の繰り返しになるだけ。要望で非表示) */
   var EMPH_KEY = 'lv.pathEmphasis', EMPH_DEFAULT = ['project'];
   var ROLES = [
     { id: 'department', label: '部署' }, { id: 'owner', label: '担当者' }, { id: 'project', label: '案件コード_装置名' },
-    { id: 'workpiece', label: '対象ワーク' }, { id: 'folder', label: 'フォルダ' }, { id: 'device', label: 'ファイル名（装置）' },
+    { id: 'workpiece', label: '対象ワーク' }, { id: 'folder', label: 'フォルダ' },
     { id: 'unit', label: '部品の階層（ユニット）' }
   ];
   var LIB_ROLES = ['department', 'owner', 'project', 'workpiece'];   // models/ の下の並び (09-store.js の LAYOUT と同じ)
@@ -32,7 +33,10 @@ var Search = (function () {
   function roleLabel(id) { var r = ROLES.filter(function (x) { return x.id === id; })[0]; return r ? r.label : ''; }
   function libSegs(rel) {
     var out = [];
-    (rel || []).slice(1).forEach(function (s, i) {   // rel[0] は models
+    // 先頭の models だけ落とす。models/ の無いライブラリ (ルート直下に 部署/ が並ぶ) では rel に models が
+    // 入らないので、無条件に 1 つ落とすと 部署 が消えて役割が 1 つずれる (実際にそうなった)
+    var segs = (rel || []).slice(rel && rel[0] === 'models' ? 1 : 0);
+    segs.forEach(function (s, i) {
       var role = LIB_ROLES[i] || 'folder';
       if (s === '_' && role === 'workpiece') return;   // 対象ワークなし
       out.push({ text: s, role: role });
@@ -45,10 +49,7 @@ var Search = (function () {
     var d = n.device, src = d.source || {};
     if (src.kind === 'library' && src.entry) out = libSegs(src.entry.rel);
     else (d.groupPath || []).forEach(function (s) { out.push({ text: s, role: 'folder' }); });
-    if (n.depth > 0) {
-      out.push({ text: d.name, role: 'device' });
-      n.path.slice(1, -1).forEach(function (s) { out.push({ text: s, role: 'unit' }); });
-    }
+    if (n.depth > 0) n.path.slice(1, -1).forEach(function (s) { out.push({ text: s, role: 'unit' }); });
     return out;
   }
   function pathEl(segs) {
