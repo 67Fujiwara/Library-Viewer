@@ -204,6 +204,16 @@ def safe_component(occ):
         return None
 
 
+def occ_visible(occ):
+    """occ.isVisible。参照先が読めないオカレンスはここで
+    RuntimeError: 2 InternalValidationError: path.valid() を投げるので、名前を控えて False (飛ばす)"""
+    try:
+        return bool(occ.isVisible)
+    except Exception:
+        safe_component(occ)
+        return False
+
+
 def broken_note():
     if not BROKEN_REFS:
         return ''
@@ -448,7 +458,7 @@ def count_visible_bodies(root):
         nonlocal n
         for occ in occs:
             try:
-                if not occ.isVisible:
+                if not occ_visible(occ):
                     continue
                 for body in occ.bRepBodies:
                     if body.isVisible:
@@ -594,7 +604,11 @@ def collect_meshes(design, quality_id, progress=None):
 
     def walk(occs, node):
         for occ in occs:
-            if not occ.isVisible:
+            try:
+                vis = occ.isVisible
+            except Exception:                  # 参照先が読めない (path.valid())
+                safe_component(occ); stat['broken'] += 1; continue
+            if not vis:
                 continue
             sub = {'name': occ.name, 'meshIndex': None, 'matrix': None, 'children': []}
             add_occ_bodies(occ, sub)
@@ -726,7 +740,9 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
                            'ライブラリ上は 1 件のままで、ビューアで開くと全ユニットがまとめて読み込まれます。\n'
                            '(メッシュで格納するときは分割の必要がありません)'
                            if units else 'ルート直下にボディがある / ユニットが 1 つなので分割できません')
-            inputs.addTextBoxCommandInput('preview', '保存先', '', 4 if BROKEN_REFS else 2, True)
+            inputs.addTextBoxCommandInput('preview', '保存先', '', 2, True)
+            if BROKEN_REFS:                    # 参照先が読めないオカレンスがあるときだけ、注意の欄を出す
+                inputs.addTextBoxCommandInput('warn', '注意', '', 3, True)
             update_preview(inputs)
         except Exception:
             _fail()
@@ -789,15 +805,11 @@ def update_preview(inputs):
     segs = layout_segments(p)
     design = adsk.fusion.Design.cast(_app.activeProduct)
     units = split_units(design) if design else None
-    if p['mesh']:
-        note = 'メッシュ (glb.gz) で格納します。ビューアで開くのは一瞬です' + ('。STEP も step/ に置きます' if p['keepStep'] else '')
-    elif p['split'] and units:
-        note = 'STEP をユニット %d 件に分けて書き出します（ライブラリ上は 1 件）' % len(units)
-    else:
-        note = 'STEP 1 ファイルで書き出します（ビューアが初回に glb を作ります）'
-    if BROKEN_REFS:
-        note += '\n※ ' + broken_note()
-    inputs.itemById('preview').text = (p['root'] or '（ライブラリ未設定）') + '/' + '/'.join(segs) + '/\n' + note
+    # 保存先にはパスだけを出す (方式の説明はツールチップにある。関係ない文字を混ぜない)
+    inputs.itemById('preview').text = (p['root'] or '（ライブラリ未設定）') + '/' + '/'.join(segs) + '/'
+    warn = inputs.itemById('warn')
+    if warn:
+        warn.text = broken_note()
 
 
 class InputChangedHandler(adsk.core.InputChangedEventHandler):

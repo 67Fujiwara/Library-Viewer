@@ -185,9 +185,11 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
   名簿がまだ無いライブラリでだけ文字入力に切り替える。「既存の案件から」の候補は置かない
 - **参照先が読めないオカレンス（外部参照が未取得 / 壊れている）で落とさない。** `occ.component` が
   `RuntimeError: 3 The occurrence's referenced component is unavailable` を投げる（PC をスリープから戻した直後・
-  オフラインでリンク先のデザインが手元に無いとき）。必ず `safe_component(occ)` 経由で触り、None なら飛ばして
+  オフラインでリンク先のデザインが手元に無いとき）。**`occ.isVisible` でも落ちる**（`RuntimeError: 2 InternalValidationError:
+  path.valid()`。実機ではこちらが先に出た）。`occ_visible(occ)` / `safe_component(occ)` 経由で触り、落ちたら飛ばして
   `BROKEN_REFS` に名前を控える（`split_units` / `component_tree` / `count_visible_bodies` / `collect_meshes`）。
-  ダイアログの保存先欄と格納後のメッセージに `broken_note()` で出す。
+  ダイアログの「注意」欄（読めないものがあるときだけ作る）と格納後のメッセージに `broken_note()` で出す。
+  **保存先欄にはパスだけ**を出す（方式の説明や注意書きを混ぜない。要望で消した）
   **ダイアログのハンドラ (`inputChanged` / `execute` / `destroy`) は入力欄を作る前に登録する。** 作る途中で例外が出ると
   「部署を変えても担当者が埋まらない / 実行が始まらない」になる（実際にそうなった。1 つの例外で症状が 3 つ出た）
 - Fusion の API は **この環境では動かせない**。`glbwrite.py`（純 Python）はここでテストし、

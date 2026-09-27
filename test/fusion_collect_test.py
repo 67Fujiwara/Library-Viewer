@@ -49,7 +49,9 @@ class Occ:
         s.childOccurrences = Coll()
 class BrokenOcc:
     """外部参照が読めないオカレンス: component / bRepBodies / childOccurrences を触ると RuntimeError"""
-    def __init__(s, name): s.name, s.isVisible, s.appearance = name, True, None
+    def __init__(s, name): s.name, s.appearance = name, None
+    @property
+    def isVisible(s): raise RuntimeError('2 : InternalValidationError : path.valid()')   # 実機ではここで先に落ちた
     @property
     def component(s): raise RuntimeError("3 : The occurrence's referenced component is unavailable (broken or missing external reference).")
     @property
@@ -89,7 +91,7 @@ model, stat = ns['collect_meshes'](design, 'normal')
 check(stat['bodies'] == 6 and stat['triangles'] == 6, 'PLATE + 5 visible bolt placements = 6 solids (%d)' % stat['bodies'])
 check(stat['unique'] == 4, 'meshes stored once per (component, body, color) + fallback: PLATE, BOLT, BOLT(colored), BOLT(baked) = 4 (%d)' % stat['unique'])
 check(stat['fallback'] == 1 and stat['hidden'] == 5, 'one placement fell back to baking; hidden bodies skipped (%d / %d)' % (stat['fallback'], stat['hidden']))
-check(stat['broken'] == 1 and ns['BROKEN_REFS'] == ['LINKED_UNIT:1'], 'an occurrence whose referenced component is unavailable is skipped and named (%d, %s)' % (stat['broken'], ns['BROKEN_REFS']))
+check(stat['broken'] == 1 and ns['BROKEN_REFS'] == ['LINKED_UNIT:1'], 'an occurrence that fails even on isVisible (path.valid) is skipped and named (%d, %s)' % (stat['broken'], ns['BROKEN_REFS']))
 check('LINKED_UNIT' in ns['broken_note']() and '外部参照' in ns['broken_note'](), 'the note names the broken reference: ' + ns['broken_note']().split(chr(10))[0])
 check(ns['count_visible_bodies'](design.rootComponent) == 6, 'count_visible_bodies survives the broken reference (%d)' % ns['count_visible_bodies'](design.rootComponent))
 kids = model['root']['children']

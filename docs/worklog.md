@@ -720,3 +720,5 @@ PC を閉じてから格納しようとしたら `RuntimeError: 3 The occurrence
 「私が作りました」ダイアログの説明文は要望で削除。
 - エラーで止まったときも「スクリプトとアドイン」の実行中 (■) を残さないように、run / CommandCreated / Execute の
   except を `_fail()` (トレースバック → terminate) に。InputChanged はダイアログが生きているのでメッセージだけ
+- 実機では壊れた参照が `occ.isVisible` で先に落ちた (`InternalValidationError: path.valid()`)。`occ_visible` で飛ばす。
+  保存先欄はパスだけにし、注意書きは別の「注意」欄 (読めないものがあるときだけ) に移した
