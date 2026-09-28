@@ -181,7 +181,12 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
   並べ、カードの中の欄 (`.rd-name-input` + 追加) でその場で足す / チップの × で外す / 下の欄 (`#roster-dept-input`) で部署を足す。
   編集中は `draft`（部署 → 担当者の配列）に持ち、「保存」で `{department, name}` の配列に戻す（`members.json` と `lv.roster` の形は変えない）。
   **Enter は「足す」**（フォームの submit = 保存 にしない。`keydown` で `preventDefault`）。担当者のいる部署の削除は `showConfirm`。
-  担当者のいない部署は保存されない（名簿は組の一覧なので）
+  担当者のいない部署は保存されない（名簿は組の一覧なので）。
+  **「ファイルに書き出す」はダウンロードにしない**（ブラウザの「前に選んだフォルダ」に落ちる。要望）。`showSaveFilePicker` の
+  `startIn` に `Library.handle()`（開いているライブラリのディレクトリハンドル）を渡して、保存ダイアログをそのフォルダから始める。
+  「ファイルから読み込む」も `showOpenFilePicker` を同じ場所から始め、読んだ `members.json` を編集中の名簿に**足す**（消さない。
+  `mergeRosterText`）。ピッカーが無い環境はダウンロード / `<input type=file>` に落とす。テストは両方のピッカーを偽物にして
+  `startIn === __root` を見る
 - Fusion の格納ダイアログは **`setDialogInitialSize(560, 560)`** で開く（既定の幅だとラベルが「案件コー…」と切れる）。
   低い画面で下の行が隠れるので、案内文は置かず、「STEP も書き出す」「ユニット分割」は畳んだグループ「詳細」に入れる。
   グループの中の入力も `inputs.itemById` で引ける

@@ -818,3 +818,9 @@ Fusion は `root/members.json` を見ていた。`library_file(root, name)` で 
 - 2 枚目のスクショでも文字入力のままだった (`LibraryExport/` にも `models/` にも名簿が無い)。名簿に頼らず
   `models/<部署>/<担当者>/` のフォルダから候補を作る `folder_members` を足し、`library_members` が名簿 + フォルダを返すようにした。
   それでも空なら「注意」欄に探した場所を出す (`ROSTER_NOTE`)。fusion_collect_test に確認を追加
+
+### 名簿の書き出し / 読み込みを開いているライブラリのフォルダから
+「ファイルに書き出す」がブラウザのダウンロード先 (前に選んだフォルダ) に落ちる、という要望。`showSaveFilePicker({startIn: Library.handle()})`
+で保存ダイアログを開いているライブラリのフォルダから始める。「ファイルから読み込む」(`showOpenFilePicker`、同じ startIn) を足し、
+読んだ members.json は編集中の名簿に足す (重複なし)。ピッカーが無ければ従来のダウンロード / input[type=file]。
+library_test でピッカーを偽物にして startIn と書き出し内容・読み込みの合流を確認。

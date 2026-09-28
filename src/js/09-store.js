@@ -20,8 +20,12 @@ var Store = (function () {
     $('#btn-roster').addEventListener('click', function () { openRoster(); });
     $('#roster-cancel').addEventListener('click', function () { $('#roster-dialog').close(); });
     $('#roster-dialog form').addEventListener('submit', function (e) { e.preventDefault(); saveRoster(); });
-    $('#roster-export').addEventListener('click', function () {
-      downloadBytes(new TextEncoder().encode(JSON.stringify({ schema: 'library-viewer/members/1', updatedAt: isoNowLocal(), members: draftList() }, null, 2)), 'members.json', 'application/json');
+    $('#roster-export').addEventListener('click', function () { exportRoster(); });
+    $('#roster-import').addEventListener('click', function () { importRoster(); });
+    $('#roster-file').addEventListener('change', function () {   // ピッカーが使えないときの代わり
+      var f = $('#roster-file').files && $('#roster-file').files[0];
+      if (f) f.text().then(mergeRosterText).catch(function () { showMessage('名簿', f.name + ' を読めませんでした。'); });
+      $('#roster-file').value = '';
     });
     initRosterEditor();
     rosterEl.addEventListener('click', function (e) {
@@ -141,6 +145,49 @@ var Store = (function () {
     });
     $('#roster-add-dept').addEventListener('click', commitDept);
     deptInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); commitDept(); } });
+  }
+  /* ---- 名簿のファイル書き出し / 読み込み ----
+   *   ブラウザのダウンロード先 (前に選んだフォルダ) に落とさず、保存ダイアログを「開いているライブラリのフォルダ」から
+   *   始める (showSaveFilePicker の startIn にディレクトリハンドルを渡す。要望)。読み込みも同じ場所から始める。
+   *   ピッカーが無い環境はダウンロード / <input type=file> に落とす */
+  function rosterJson() { return JSON.stringify({ schema: 'library-viewer/members/1', updatedAt: isoNowLocal(), members: draftList() }, null, 2); }
+  var JSON_TYPES = [{ description: 'JSON', accept: { 'application/json': ['.json'] } }];
+  function pickerBase() { return Library.handle() || 'documents'; }
+  async function exportRoster() {
+    var text = rosterJson();
+    if (!window.showSaveFilePicker) { downloadBytes(new TextEncoder().encode(text), 'members.json', 'application/json'); return; }
+    try {
+      var fh = await window.showSaveFilePicker({ suggestedName: 'members.json', startIn: pickerBase(), types: JSON_TYPES });
+      var w = await fh.createWritable(); await w.write(text); await w.close();
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;   // やめた
+      showMessage('名簿', '書き出せませんでした。\n' + (e && e.message || e));
+    }
+  }
+  async function importRoster() {
+    if (!window.showOpenFilePicker) { $('#roster-file').click(); return; }
+    try {
+      var hs = await window.showOpenFilePicker({ startIn: pickerBase(), types: JSON_TYPES, multiple: false });
+      var f = await hs[0].getFile();
+      mergeRosterText(await f.text());
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
+      showMessage('名簿', '読み込めませんでした。\n' + (e && e.message || e));
+    }
+  }
+  /* members.json (配列 か {members: [...]}) を今の編集内容に足す (消さない。要らなければ × で外す) */
+  function mergeRosterText(text) {
+    var mj = null;
+    try { mj = JSON.parse(text); } catch (e) { showMessage('名簿', 'members.json の形ではありません。'); return; }
+    var list = Array.isArray(mj) ? mj : (mj && Array.isArray(mj.members) ? mj.members : null);
+    if (!list) { showMessage('名簿', 'members.json の形ではありません（members の配列がありません）。'); return; }
+    var added = 0;
+    list.forEach(function (m) {
+      var d = addDept(m && m.department);
+      if (d && addName(d, m && m.name)) added++;
+    });
+    renderRosterEditor();
+    if (!added) showMessage('名簿', '足す人はいませんでした（全員すでに名簿にいます）。');
   }
   function openRoster() {
     draft = toDraft(currentRoster());

@@ -355,7 +355,9 @@
       <button type="button" id="roster-add-dept" class="btn secondary">部署を追加</button>
     </div>
     <div class="dialog-actions">
-      <button type="button" id="roster-export" class="btn secondary" title="名簿を members.json として保存します（ライブラリを開いていないときに、他の人へ渡す用）">ファイルに書き出す</button>
+      <button type="button" id="roster-export" class="btn secondary" title="名簿を members.json として書き出します。保存ダイアログは開いているライブラリのフォルダから始まります">ファイルに書き出す</button>
+      <button type="button" id="roster-import" class="btn secondary" title="members.json を読み込んで名簿に足します。ファイルの選択は開いているライブラリのフォルダから始まります">ファイルから読み込む</button>
+      <input type="file" id="roster-file" accept=".json,application/json" hidden>
       <span class="spacer"></span>
       <button type="button" id="roster-cancel" class="btn secondary">キャンセル</button>
       <button type="submit" id="roster-save" class="btn primary">保存</button>

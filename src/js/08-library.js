@@ -700,7 +700,7 @@ var Library = (function () {
 
   return {
     init: init, supported: supported, open: open, scan: scan, writeFiles: writeFiles, ensureConfig: ensureConfig, saveMembers: saveMembers,
-    connected: function () { return !!handle; }, name: function () { return handle ? handle.name : ''; }, processInbox: processInbox,
+    connected: function () { return !!handle; }, name: function () { return handle ? handle.name : ''; }, handle: function () { return handle; }, processInbox: processInbox,
     entries: function () { return entries; }, config: function () { return config; }, members: function () { return members; }, deleteEntry: deleteEntry,
     matches: matches, matchedPart: matchedPart, matchedTag: matchedTag, tagsOf: tagsOf, needsNames: needsNames, loadNames: loadNames, openEntry: openEntry,
     openEntries: openEntries, isReady: isReady

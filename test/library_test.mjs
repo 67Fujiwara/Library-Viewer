@@ -113,7 +113,8 @@ const closeSettings = async () => { if (await page.getAttribute('#btn-settings',
 await page.goto('file://' + html);
 await page.waitForTimeout(1500);
 await page.click('#btn-open-lib');
-await page.waitForFunction(() => document.querySelector('#lib-status').textContent.includes('件'), null, { timeout: 15000 });
+// 走査の途中の件数を読まないよう、最終の「4 件」が出るまで待つ (以前は「件」だけ待って途中の数を拾い、まれに落ちた)
+await page.waitForFunction(() => document.querySelector('#lib-status').textContent.includes('4 件'), null, { timeout: 15000 });
 check((await page.textContent('#lib-status')).includes('4 件'), 'library scan found 4 entries');
 check(/catalog\.json で先出し/.test(await page.getAttribute('#lib-status', 'title')), 'the first open showed the list from catalog.json before walking: ' + await page.getAttribute('#lib-status', 'title'));
 check(!(await page.evaluate(() => Library.entries().some(e => e.meta.deviceName === '幽霊装置'))), 'a device that is no longer in the folder is dropped once the walk finishes');
@@ -435,6 +436,20 @@ await page.locator('#roster-list .rd-dept[data-dept="設計2課"] .rd-del-dept')
 await page.waitForSelector('#confirm-dialog[open]');
 await page.click('#confirm-cancel');
 check(await page.locator('#roster-list .rd-dept[data-dept="設計2課"]').count() === 1, 'deleting a department asks first; cancel keeps it');
+// 書き出し / 読み込みは、ブラウザのダウンロード先ではなく開いているライブラリのフォルダから始まる (startIn にハンドル)
+await page.evaluate(() => {
+  window.__picks = [];
+  window.showSaveFilePicker = async (o) => { window.__picks.push(['save', o.startIn === window.__root, o.suggestedName]); return window.__root.getFileHandle('roster-out.json', { create: true }); };
+  window.showOpenFilePicker = async (o) => { window.__picks.push(['open', o.startIn === window.__root]); const f = await window.__root.getFileHandle('roster-in.json', { create: true }); const w = await f.createWritable(); await w.write(JSON.stringify({ members: [{ department: '品質保証', name: '小林' }, { department: '生産技術', name: '高橋' }] })); await w.close(); return [f]; };
+});
+await page.click('#roster-export');
+await page.waitForTimeout(200);
+const exported = JSON.parse((await page.evaluate(() => window.__ls('roster-out.json'))).text);
+check((await page.evaluate(() => window.__picks[0])).join() === 'save,true,members.json' && exported.members.some(m => m.name === '高橋'), 'ファイルに書き出す opens the save dialog in the library folder and writes the current roster');
+await page.click('#roster-import');
+await page.waitForTimeout(200);
+check((await page.evaluate(() => window.__picks[1])).join() === 'open,true', 'ファイルから読み込む opens the file dialog in the library folder');
+check(await page.locator('#roster-list .rd-dept[data-dept="品質保証"] .rd-member', { hasText: '小林' }).count() === 1 && await page.locator('#roster-list .rd-dept[data-dept="生産技術"] .rd-member').count() === 1, 'the file is merged into the editor without duplicating existing members');
 await page.click('#roster-save');
 await page.waitForTimeout(300);
 const mj = JSON.parse((await page.evaluate(() => window.__ls('members.json'))).text);
