@@ -176,6 +176,20 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
     1 つの id だけ見ると塗装以外が既定色に落ちる（実機で起きた）。`COLOR_PROP_IDS` の優先順 → 最初の `ColorProperty`。
     値は sRGB 0..255 なので **リニアに直して** glb に入れる（ビューアは `outputEncoding = sRGB`、occt の色もリニア）。
     ボディで取れなければオカレンスの外観も見る。取れなかった外観は格納後のメッセージに見本を出す
+  - **色は種類ごとに直してから渡す**（`shade_color`。「Fusion と色味が違う」という要望）:
+    (1) **金属 (`metal_f0`) は × `METAL_SHADE` = 0.45（リニア）で暗くする。** f0 は「垂直に見たときの反射率」で鋼でも 0.6 前後の
+    明るい灰色。Fusion は暗めの環境を映り込ませて中間の灰色に見せるが、ビューアには環境マップが無いので、そのまま出すと
+    白っぽく飛ぶ（実機で「全部薄い灰色」になった原因）。
+    (2) **透明な外観（`transparent_color` / `glazing_transmittance_color`）は alpha = `CLEAR_ALPHA` = 0.3 を 4 つ目に付ける。**
+    古い外観の `generic_transparency`（0..1）も `1 - 値` を alpha にする。色は `[r,g,b]` か `[r,g,b,a]`（`color_key` は alpha も鍵）。
+    glb は `baseColorFactor` の alpha + `alphaMode: 'BLEND'`（`glbwrite.py` と `02-glb.js` の `write` の両方）。
+    `GLB.read` は BLEND のときだけ `opacity` に乗せ、**`02-glb.js` の `write` は `m.opacity` も alpha に書く**
+    （変換キャッシュはこの `write` で丸ごと書き直すので、落とすと 2 回目に開いたときだけ不透明に戻る。実際にそうなった）。
+    ビューアは `userData.baseOpacity` で半透明に描く
+    （`applyState` が表示状態を更新するたびに使う。半透明モードでは `min(0.22, base)`）。
+    アクリルの蓋が「白い箱」に見えていたのはこれ
+  - **ビューアの照明は控えめ**（半球 0.42 + 環境 0.1 + 主光 0.9 + 反対側の補助 0.22）。前は 半球 0.55 + 環境 0.25 で
+    陰影の差が小さく全体が白く飛んでいた。照明を変えるときは `panels_test`（黒フレーム 0）が通ることを見る
 - **名簿の編集はテキストで書かせない**（`#roster-dialog`、`09-store.js` の `initRosterEditor`）。以前の「1 行に `部署, 担当者`」の
   テキスト欄は知らない人には JSON にしか見えない（要望で廃止）。部署ごとのカード (`.rd-dept`) に担当者をチップ (`.rd-member`) で
   並べ、カードの中の欄 (`.rd-name-input` + 追加) でその場で足す / チップの × で外す / 下の欄 (`#roster-dept-input`) で部署を足す。

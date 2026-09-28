@@ -41,6 +41,7 @@ def translate(tx, ty, tz, rz_deg=0):
 meshes = [
     as_fusion_mesh('BASE_PLATE', [0.6, 0.6, 0.65], box_cm(0, 0, 0.5, 20, 12, 1), True),          # 200 x 120 x 10 mm (float32 のまま)
     as_fusion_mesh('POST', None, box_cm(0, 0, 6, 2, 2, 10), False, with_normals=False),          # 20 x 20 x 100 mm、部品の原点 (量子化)
+    as_fusion_mesh('COVER', [0.9, 0.9, 0.95, 0.3], box_cm(0, 0, 12, 20, 12, 0.5), True),        # 透明なアクリルの蓋 (alpha 0.3)
 ]
 model = {
     'name': 'MESH_MACHINE',
@@ -48,6 +49,7 @@ model = {
         {'name': 'BASE_PLATE', 'meshIndex': 0, 'matrix': None, 'children': []},
         {'name': 'UNIT_A:1', 'meshIndex': None, 'matrix': None, 'children': [{'name': 'POST', 'meshIndex': 1, 'matrix': translate(50, 0, 0), 'children': []}]},
         {'name': 'UNIT_A:2', 'meshIndex': None, 'matrix': None, 'children': [{'name': 'POST', 'meshIndex': 1, 'matrix': translate(150, 30, 0, 90), 'children': []}]},
+        {'name': 'COVER', 'meshIndex': 2, 'matrix': None, 'children': []},
     ]},
     'meshes': meshes,
 }

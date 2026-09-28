@@ -6,7 +6,8 @@
           'root': {'name': str, 'meshIndex': int|None, 'matrix': [16]|None, 'children': [...]},
           'meshes': [{'name': str, 'positions': [x,y,z,...] (mm), 'normals': [...]|None, 'indices': [...], 'color': [r,g,b]|None}] }
         positions / normals / indices は list でも array('f') / array('I') でもよい。
-        color は **リニア** 0..1 (glTF の baseColorFactor の規約。sRGB を渡すと薄く出る)
+        color は **リニア** 0..1 (glTF の baseColorFactor の規約。sRGB を渡すと薄く出る)。
+        4 つ目があれば alpha (透明な外観。1 未満なら alphaMode = BLEND)
   出力: bytes (glTF 2.0 バイナリ)。ジオメトリは mm / Z-up のまま置き、
         ルートノードに Y-up / m への行列を持たせる (他のビューアでも正しく見える)。
 
@@ -126,9 +127,12 @@ def write(model, quantize=True):
         ia = len(gltf['accessors']) - 1
         c = m.get('color')
         name = m.get('name') or ('solid_' + str(i))
+        alpha = (c[3] if (c and len(c) > 3 and c[3] is not None) else 1.0)
         mat = {'name': name,
-               'pbrMetallicRoughness': {'baseColorFactor': [c[0], c[1], c[2], 1] if c else DEFAULT_COLOR, 'metallicFactor': 0.1, 'roughnessFactor': 0.6},
+               'pbrMetallicRoughness': {'baseColorFactor': [c[0], c[1], c[2], alpha] if c else DEFAULT_COLOR, 'metallicFactor': 0.1, 'roughnessFactor': 0.6},
                'doubleSided': True}
+        if alpha < 1.0:
+            mat['alphaMode'] = 'BLEND'      # 透明な外観 (アクリル・ガラス)。ビューアは baseColorFactor の alpha で半透明に描く
         if not c:
             mat['extras'] = {'defaultColor': True}
         gltf['materials'].append(mat)

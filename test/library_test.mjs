@@ -528,7 +528,10 @@ const meshGlb = await page.evaluate(() => window.__ls('models/設計1課/藤原/
 check(meshGlb.size === meshStat.gz, 'the glb.gz written by Fusion is used as-is (not rewritten)');
 check(await page.evaluate(() => window.__ls('models/設計1課/藤原/P2026-007_メッシュ機H/_/step')) === null, 'no step/ folder for a mesh-stored entry');
 const meshBox = await page.evaluate(() => { const b = new THREE.Box3(); Viewer3D.leavesOf(App.devices()[0].root).forEach(n => { if (n.mesh) b.union(n.mesh.geometry.boundingBox); }); return { x: Math.round(b.max.x - b.min.x), z: Math.round(b.max.z - b.min.z) }; });
-check(meshBox.x === 260 && meshBox.z === 110, 'geometry is in mm, instances placed by their matrices (x 260 = ' + meshBox.x + ', z 110 = ' + meshBox.z + ')');
+check(meshBox.x === 260 && meshBox.z === 123, 'geometry is in mm, instances placed by their matrices (x 260 = ' + meshBox.x + ', z 123 incl. the cover = ' + meshBox.z + ')');
+// 透明なアクリルの蓋 (COVER, alpha 0.3) は半透明で描く。表示状態を更新しても不透明に戻らない
+const coverMat = await page.evaluate(() => { const n = Viewer3D.leavesOf(App.devices()[0].root).find(l => l.name === 'COVER'); Viewer3D.updateAllStates(); return n && n.mesh && { t: n.mesh.material.transparent, o: n.mesh.material.opacity, dw: n.mesh.material.depthWrite }; });
+check(coverMat && coverMat.t && Math.abs(coverMat.o - 0.3) < 1e-6 && !coverMat.dw, 'a transparent appearance renders translucent (opacity 0.3, no depth write): ' + JSON.stringify(coverMat));
 await page.evaluate(() => App.clearDevices());
 await page.click('label[for="tab-lib"]');
 await page.waitForTimeout(200);

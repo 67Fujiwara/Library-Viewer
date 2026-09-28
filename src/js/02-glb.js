@@ -49,10 +49,14 @@ var GLB = (function () {
       var pa = json.accessors.push({ bufferView: pv, componentType: 5126, count: pos.length / 3, type: 'VEC3', min: min, max: max }) - 1;
       var na = json.accessors.push({ bufferView: nv, componentType: 5126, count: nrm.length / 3, type: 'VEC3' }) - 1;
       var ia = json.accessors.push({ bufferView: iv, componentType: 5125, count: idx.length, type: 'SCALAR' }) - 1;
+      // alpha: 読み込んだモデル (GLB.read) は opacity に持つ。変換キャッシュはこの write で丸ごと書き直すので、
+      // ここで落とすと 2 回目に開いたとき (キャッシュから) だけ不透明に戻る (実際にそうなった)
       var c = m.color || null;
+      var alpha = (m.opacity != null && m.opacity < 1) ? m.opacity : ((c && c.length > 3 && c[3] != null) ? c[3] : 1);
       var mat = json.materials.push({
         name: m.name || ('solid_' + i),
-        pbrMetallicRoughness: { baseColorFactor: c ? [c[0], c[1], c[2], 1] : [0.8, 0.8, 0.8, 1], metallicFactor: 0.1, roughnessFactor: 0.6 },
+        pbrMetallicRoughness: { baseColorFactor: c ? [c[0], c[1], c[2], alpha] : [0.8, 0.8, 0.8, 1], metallicFactor: 0.1, roughnessFactor: 0.6 },
+        alphaMode: alpha < 1 ? 'BLEND' : undefined,   // 透明な外観 (glbwrite.py と同じ)
         doubleSided: true,
         extras: c ? undefined : { defaultColor: true }
       }) - 1;
@@ -131,7 +135,9 @@ var GLB = (function () {
       var nrm = pr.attributes.NORMAL != null ? accessor(pr.attributes.NORMAL) : null;
       var idx = pr.indices != null ? accessor(pr.indices) : null;
       if (!idx) { idx = new Uint32Array(pos.length / 3); for (var i = 0; i < idx.length; i++) idx[i] = i; }
-      return { name: m.name || '', positions: pos, normals: nrm, indices: idx, color: (bc && !isDefault) ? [bc[0], bc[1], bc[2]] : null, uses: 0 };
+      // alpha (透明な外観) は opacity に。alphaMode が BLEND のときだけ効かせる (OPAQUE で alpha < 1 のファイルは不透明のまま)
+      var opacity = (bc && bc.length > 3 && bc[3] != null && (mat.alphaMode === 'BLEND')) ? Math.max(0.05, Math.min(1, bc[3])) : 1;
+      return { name: m.name || '', positions: pos, normals: nrm, indices: idx, color: (bc && !isDefault) ? [bc[0], bc[1], bc[2]] : null, opacity: opacity, uses: 0 };
     });
     var meshes = [];
 
@@ -162,7 +168,7 @@ var GLB = (function () {
     function bake(src, m) {
       if (isIdentity(m)) {
         if (src.uses++ === 0) { if (!src.normals) src.normals = computeNormals(src.positions, src.indices); return src; }
-        return { name: src.name, positions: src.positions, normals: src.normals, indices: src.indices, color: src.color };
+        return { name: src.name, positions: src.positions, normals: src.normals, indices: src.indices, color: src.color, opacity: src.opacity };
       }
       var p = src.positions, out = new Float32Array(p.length);
       for (var i = 0; i < p.length; i += 3) {
@@ -180,7 +186,7 @@ var GLB = (function () {
         }
       } else nrm = computeNormals(out, src.indices);
       src.uses++;
-      return { name: src.name, positions: out, normals: nrm, indices: src.indices, color: src.color };
+      return { name: src.name, positions: out, normals: nrm, indices: src.indices, color: src.color, opacity: src.opacity };
     }
 
     function toTree(ni, parentM) {

@@ -26,11 +26,14 @@ var Viewer3D = (function () {
     camera = new THREE.PerspectiveCamera(40, 1, 1, 100000);
     camera.up.set(0, 0, 1);
     ctrl.target = new THREE.Vector3();
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8a8a, 0.55));
-    scene.add(new THREE.AmbientLight(0xffffff, 0.25));
-    dirLight = new THREE.DirectionalLight(0xffffff, 0.75);
+    // 環境光を控えめにして陰影の差を付ける (前は 半球 0.55 + 環境 0.25 で全体が白く飛び、Fusion より薄く見えた)
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x6e6a63, 0.42));
+    scene.add(new THREE.AmbientLight(0xffffff, 0.1));
+    dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
     dirLight.position.set(0.6, 0.8, 1.6);
-    camera.add(dirLight); scene.add(camera);   // ライトはカメラに追随させ、回転しても陰影が安定するように
+    var fill = new THREE.DirectionalLight(0xffffff, 0.22);   // 反対側から弱く (影側が真っ黒にならない程度)
+    fill.position.set(-0.8, -0.4, 0.5);
+    camera.add(dirLight); camera.add(fill); scene.add(camera);   // ライトはカメラに追随させ、回転しても陰影が安定するように
     worldGroup = new THREE.Group(); scene.add(worldGroup);
     overlayGroup = new THREE.Group(); overlayGroup.renderOrder = 999; scene.add(overlayGroup);   // 計測の線・点 (クリッピングの影響を受けない)
     edgeMat = new THREE.LineBasicMaterial({ color: 0x000000 });
@@ -129,6 +132,9 @@ var Viewer3D = (function () {
     var mat = new THREE.MeshStandardMaterial({ color: rec.color ? new THREE.Color(rec.color[0], rec.color[1], rec.color[2]) : new THREE.Color(colors.solid), roughness: 0.62, metalness: 0.08, side: THREE.DoubleSide });
     var mesh = new THREE.Mesh(g, mat);
     mesh.userData.node = node; mesh.userData.hasColor = !!rec.color; mesh.userData.baseColor = mat.color.clone();
+    // 透明な外観 (アクリル・ガラス): glb の alpha をそのまま不透明度に。表示状態を更新するたびに applyState が使う
+    mesh.userData.baseOpacity = (rec.opacity != null && rec.opacity < 1) ? rec.opacity : 1;
+    if (mesh.userData.baseOpacity < 1) { mat.transparent = true; mat.opacity = mesh.userData.baseOpacity; mat.depthWrite = false; }
     node.mesh = mesh; node.edges = null;
     node.tris = rec.indices.length / 3; node.verts = rec.positions.length / 3;
     return mesh;
@@ -185,7 +191,9 @@ var Viewer3D = (function () {
       else m.visible = false;
     } else {
       m.visible = true;
-      if (mode === 'xray' && !isSel) { mat.transparent = true; mat.opacity = 0.22; mat.depthWrite = false; }
+      var bo = m.userData.baseOpacity || 1;
+      if (mode === 'xray' && !isSel) { mat.transparent = true; mat.opacity = Math.min(0.22, bo); mat.depthWrite = false; }
+      else if (bo < 1) { mat.transparent = true; mat.opacity = bo; mat.depthWrite = false; }   // 透明な外観はそのまま半透明
       else { mat.transparent = false; mat.opacity = 1; mat.depthWrite = true; }
     }
     mat.clippingPlanes = (mode === 'section') ? [section.plane] : null;

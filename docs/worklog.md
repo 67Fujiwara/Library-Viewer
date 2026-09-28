@@ -827,3 +827,14 @@ library_test でピッカーを偽物にして startIn と書き出し内容・�
 - 3 枚目のスクショ: ビューアが開いている `models/` には `catalog.json` しか無く、名簿 (`members.json`) はどこにも無かった
   (名簿ダイアログの中身はブラウザの localStorage)。Fusion のダイアログに「注意」欄が無い = 動いているのは古い版。
   見分けられるように、ダイアログの題名に版を出す (`script_version()` → `fusion/LibraryExport/VERSION`。build.py が書く)
+
+### Fusion と色味を合わせる (金属を暗く / 透明な外観を半透明に / 照明)
+「ビューアの色味が Fusion と違う」(全部が薄い灰色、アクリルの蓋が白い箱)。原因は 3 つ:
+(1) 金属の色を `metal_f0` (垂直反射率、鋼で 0.6 前後) のまま拡散色に使っていた → `METAL_SHADE` 0.45 で暗く
+(2) 透明な外観 (`transparent_color` / glazing) を不透明で書いていた → alpha 0.3 (`CLEAR_ALPHA`) を付け、
+    glb は alphaMode BLEND、`GLB.read` → `opacity` → ビューアの `baseOpacity`。両方の GLB ライターを同時に直した
+(3) 照明が明るすぎて陰影が薄かった → 半球 0.42 / 環境 0.1 / 主光 0.9 / 補助 0.22
+fusion_glb_box に透明な COVER を足し、fusion_glb_test で BLEND と opacity を確認。fusion_collect_test に偽 Appearance で shade_color の確認。
+環境マップは持たない (dist が 5MB 上限に近い)。Fusion のレンダリングと完全には一致しない。
+- 変換キャッシュ (`ConvCache` = `GLB.write` → `GLB.read`) が opacity を落としていて、2 回目に開くと蓋が不透明に戻った。
+  `write` が `m.opacity` を alpha に書くようにし、fusion_glb_test に往復の確認、library_test に「蓋が半透明のまま」の確認を足した

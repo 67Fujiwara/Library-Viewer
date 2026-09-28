@@ -161,4 +161,32 @@ try:
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 check(ns['script_version']().isdigit(), 'script_version reads the VERSION next to the script (v%s); the dialog title shows it' % ns['script_version']())
+# 外観の色: 種類ごとに直す (金属は暗く / 透明は alpha / 古い外観の透明度も alpha)。偽の Appearance で通す
+class FColor:
+    def __init__(s, r, g, b): s.red, s.green, s.blue = r, g, b
+class FProp:
+    def __init__(s, pid, value): s.id, s.value = pid, value
+class FProps:
+    def __init__(s, items): s._items = items
+    @property
+    def count(s): return len(s._items)
+    def item(s, i): return s._items[i]
+    def itemById(s, pid):
+        for p in s._items:
+            if p.id == pid: return p
+        return None
+class FApp:
+    def __init__(s, name, items): s.name, s.id, s.appearanceProperties = name, 'id-' + name, FProps(items)
+lin = ns['srgb_to_linear']
+paint = ns['appearance_color'](FApp('Paint', [FProp('opaque_albedo', FColor(30, 30, 30))]))
+check(len(paint) == 3 and abs(paint[0] - lin(30)) < 1e-9, 'a painted appearance keeps its albedo as is (no alpha): %s' % paint)
+steel = ns['appearance_color'](FApp('Steel', [FProp('surface_roughness', 0.3), FProp('metal_f0', FColor(200, 200, 200))]))
+check(len(steel) == 3 and abs(steel[0] - lin(200) * ns['METAL_SHADE']) < 1e-9, 'a metal appearance is darkened by METAL_SHADE (f0 is a reflectance, not the visible grey): %.3f' % steel[0])
+acr = ns['appearance_color'](FApp('Acrylic', [FProp('transparent_ior', 1.49), FProp('transparent_color', FColor(250, 250, 250))]))
+check(len(acr) == 4 and acr[3] == ns['CLEAR_ALPHA'], 'a transparent appearance gets alpha CLEAR_ALPHA: %s' % acr)
+old = ns['appearance_color'](FApp('OldPlastic', [FProp('generic_diffuse', FColor(255, 0, 0)), FProp('generic_transparency', 0.6)]))
+check(len(old) == 4 and abs(old[3] - 0.4) < 1e-9 and abs(old[0] - 1.0) < 1e-9, 'a legacy appearance with generic_transparency 0.6 gets alpha 0.4: %s' % old)
+opaque_old = ns['appearance_color'](FApp('OldOpaque', [FProp('generic_diffuse', FColor(0, 255, 0)), FProp('generic_transparency', 0.0)]))
+check(len(opaque_old) == 3, 'generic_transparency 0 stays opaque')
+check(ns['appearance_color'](FApp('Steel', [FProp('metal_f0', FColor(10, 10, 10))])) == steel, 'the color cache is keyed by (name, id): the same appearance returns the cached color')
 print('collect_meshes OK')

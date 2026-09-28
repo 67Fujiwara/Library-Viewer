@@ -400,7 +400,15 @@ def body_extent_mm(body):
 # (ビューアは renderer.outputEncoding = sRGB で、glb の baseColorFactor はリニア。occt の色もリニア)。
 COLOR_PROP_IDS = ['opaque_albedo', 'layered_diffuse', 'metal_f0', 'surface_albedo', 'generic_diffuse',
                   'transparent_color', 'glazing_transmittance_color', 'wood_color']
-_color_cache = {}          # appearance.id → [r,g,b] | None
+# 透明な外観 (アクリル・ガラス): 色のプロパティが transparent_* / glazing_* のもの。glb には alpha を付けて渡し、
+# ビューアが半透明で描く (Fusion では中が透けて見えるのに、ビューアで白い箱になっていた)
+TRANSPARENT_PROP_IDS = ('transparent_color', 'glazing_transmittance_color')
+CLEAR_ALPHA = 0.3
+# 金属 (metal_f0) の色は「垂直に見たときの反射率」なので鋼でも 0.55〜0.6 (明るい灰色) になる。
+# Fusion は暗めの環境を映り込ませて中間の灰色に見せるが、ビューアは環境マップを持たないので
+# そのまま出すと白っぽく飛ぶ。見た目を寄せるために暗くする (リニアで × METAL_SHADE)
+METAL_SHADE = 0.45
+_color_cache = {}          # appearance.id → [r,g,b] | [r,g,b,a] | None
 _uncolored_samples = []    # 色が取れなかった外観の見本 (格納後のメッセージに出す)
 
 
@@ -433,7 +441,7 @@ def appearance_color(app):
             return _color_cache[key]
     except Exception:
         key = None
-    color, last_err, props = None, '', None
+    color, last_err, props, hit = None, '', None, None
     try:
         props = app.appearanceProperties
     except Exception as e:
@@ -445,6 +453,7 @@ def appearance_color(app):
             except Exception as e:
                 color, last_err = None, repr(e)
             if color:
+                hit = pid
                 break
         if color is None:                                # どれでもいいので最初の色プロパティ
             try:
@@ -474,9 +483,38 @@ def appearance_color(app):
         except Exception:
             pass
         _uncolored_samples.append('%s: [%s]%s' % (name, ', '.join(ids[:12]), ('  err=' + last_err) if last_err else ''))
+    if color:
+        color = shade_color(color, hit, props)
     if key is not None:
         _color_cache[key] = color
     return color
+
+
+def _float_prop(props, pid):
+    try:
+        v = props.itemById(pid).value
+        return float(v)
+    except Exception:
+        return None
+
+
+def shade_color(color, hit, props):
+    """色のプロパティの種類に応じて、ビューアで Fusion に近く見えるように直す。
+    金属 (metal_f0) は暗くし、透明な外観には alpha を付ける ([r,g,b,a])。
+    generic_transparency (古い外観の「透明度」0..1) があればそれも alpha にする"""
+    c = list(color[:3])
+    if hit == 'metal_f0':
+        c = [v * METAL_SHADE for v in c]
+    alpha = None
+    if hit in TRANSPARENT_PROP_IDS:
+        alpha = CLEAR_ALPHA
+    else:
+        t = _float_prop(props, 'generic_transparency') if props is not None else None
+        if t is not None and 0.0 < t <= 1.0:
+            alpha = max(CLEAR_ALPHA, 1.0 - t)
+    if alpha is not None and alpha < 1.0:
+        c.append(round(alpha, 3))
+    return c
 
 
 def body_color(body, occ=None):
@@ -621,7 +659,7 @@ def collect_meshes(design, quality_id, progress=None):
             gc.collect()
 
     def color_key(c):
-        return None if not c else (round(c[0], 3), round(c[1], 3), round(c[2], 3))
+        return None if not c else tuple(round(v, 3) for v in c)   # alpha も鍵に入れる (透明と不透明を同じメッシュにしない)
 
     def comp_key(comp):
         try:
