@@ -808,3 +808,10 @@ panels / browser / madeby を通した。
 前の節の `App.keepOnly` (選んだ装置以外のライブラリの装置を閉じる) と `Search.chosenQuery` を外し、
 `only` (`Tree.isolate(n, {only})` → `onlyDevs`) だけにした。読み込んだ装置はそのまま残り、ツリーでは行ごと隠れ、
 カウンタは選んだ装置だけ。library_test の自動読み込みの節を「他の装置は残る / カードに戻らない / 問い合わせを変えても読み直さない」に。
+
+### Fusion: 部署のプルダウンが出なくなった (名簿の置き場所のずれ)
+ダイアログの 部署 / 担当者 が文字入力になっていた = `members.json` が見つからない。保存先が `…/LibraryExport/models/…` で、
+ビューア側は保存先に `models` が入らない (= `models/` の中を開いている) ので、ビューアが書いた名簿は `models/members.json`、
+Fusion は `root/members.json` を見ていた。`library_file(root, name)` で root → 親 (root が models のとき) → root/models の順に
+探し、書くときも同じ所へ。`library.json` (ネーミングルール) も同じ。fusion_collect_test に置き場所の確認を追加。
+根本的には、ビューアと Fusion で同じフォルダ (`models/` の親) を開くのが正しい。

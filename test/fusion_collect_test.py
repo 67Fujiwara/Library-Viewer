@@ -71,6 +71,7 @@ exec(src[src.index('CM_TO_MM ='):src.index('CM_TO_MM =') + len('CM_TO_MM = 10.0'
 exec(src[src.index('MESH_QUALITY = ['):src.index('class CommandCreatedHandler')], ns)
 exec(src[src.index('BROKEN_REFS = []'):src.index('def placement_of')], ns)
 exec(src[src.index('def component_tree'):src.index('# ---- メッシュで格納')], ns)
+exec(src[src.index('def read_json'):src.index('def library_layout')], ns)   # read_json / library_file / library_members (純 Python)
 ns['body_color'] = lambda body, occ=None: body.appearance or (occ.appearance if occ is not None else None)   # 外観は色そのものを入れておく
 
 def check(c, m):
@@ -122,4 +123,24 @@ check(not any(r['name'] == 'LINKED_UNIT:1' for r in crows), 'component_tree skip
 d2 = Design(); d2.rootComponent.occurrences.extend([Occ('BOLT:1', bolt, T(5)), Occ('BOLT:2', bolt, T(10)), BrokenOcc('LINKED_UNIT:2')])
 units = ns['split_units'](d2)
 check(units is not None and len(units) == 2 and 'LINKED_UNIT:2' in ns['BROKEN_REFS'], 'split_units skips the broken reference instead of raising (%s)' % (units and len(units)))
+# library_file: 名簿・ルールの置き場所。ビューアが models/ を開いているとその中に書かれるので、そこも見る
+import tempfile, shutil
+tmp = tempfile.mkdtemp()
+try:
+    lf = ns['library_file']
+    check(lf(tmp, 'members.json') == os.path.join(tmp, 'members.json'), 'library_file: nothing exists → root (where it will be written)')
+    os.makedirs(os.path.join(tmp, 'models'))
+    with open(os.path.join(tmp, 'models', 'members.json'), 'w', encoding='utf-8') as f:
+        json.dump({'members': [{'department': '設計1課', 'name': '藤原'}]}, f)
+    check(lf(tmp, 'members.json') == os.path.join(tmp, 'models', 'members.json'), 'library_file: root has none but models/ has it → models/ (viewer opened models/)')
+    check(ns['library_members'](tmp) == [('設計1課', '藤原')], 'library_members reads the roster the viewer wrote inside models/')
+    check(lf(os.path.join(tmp, 'models'), 'members.json') == os.path.join(tmp, 'models', 'members.json'), 'library_file: root = models/ itself → there')
+    with open(os.path.join(tmp, 'members.json'), 'w', encoding='utf-8') as f:
+        json.dump({'members': [{'department': '設計2課', 'name': '鈴木'}]}, f)
+    check(lf(tmp, 'members.json') == os.path.join(tmp, 'members.json'), 'library_file: root wins when both exist')
+    os.remove(os.path.join(tmp, 'models', 'members.json'))
+    check(lf(os.path.join(tmp, 'models'), 'members.json') == os.path.join(tmp, 'members.json'), 'library_file: root = models/ with the file in the parent → parent')
+    check(ns['library_members'](os.path.join(tmp, 'models')) == [('設計2課', '鈴木')], 'library_members follows it')
+finally:
+    shutil.rmtree(tmp, ignore_errors=True)
 print('collect_meshes OK')

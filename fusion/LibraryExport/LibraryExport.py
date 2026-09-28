@@ -83,16 +83,35 @@ def now_iso():
     return d.strftime('%Y-%m-%dT%H:%M:%S%z')[:-2] + ':' + d.strftime('%z')[-2:]
 
 
+def library_file(root, name):
+    """ライブラリの設定ファイル (members.json / library.json) の場所。
+    ビューアで models/ の中を「ライブラリ」として開いていると、名簿もルールも models/ の中に書かれる。
+    root の直下に無ければ root/models、root 自身が models ならその親も見る (見つかった所を使い、書くときも同じ所へ。
+    2 か所に分かれると「ビューアで足した担当者が Fusion のプルダウンに出ない」になる。実機で起きた)。"""
+    if not root:
+        return ''
+    norm = os.path.normpath(root)
+    cands = [root]
+    if os.path.basename(norm) == 'models':
+        cands.append(os.path.dirname(norm))
+    cands.append(os.path.join(root, 'models'))
+    for c in cands:
+        p = os.path.join(c, name)
+        if os.path.isfile(p):
+            return p
+    return os.path.join(root, name)
+
+
 def library_members(root):
     """members.json → [(部署, 担当者)]。無ければ空。"""
-    mj = read_json(os.path.join(root, 'members.json'))
+    mj = read_json(library_file(root, 'members.json'))
     lst = mj if isinstance(mj, list) else (mj or {}).get('members', [])
     return [(m.get('department', ''), m.get('name', '')) for m in lst if m.get('department') and m.get('name')]
 
 
 def library_layout(root):
     """library.json があるかどうか (階層そのものは 1 つに固定なので、記録の有無だけ見る)。"""
-    cfg = read_json(os.path.join(root, 'library.json'))
+    cfg = read_json(library_file(root, 'library.json'))
     return cfg.get('layout') if cfg else None
 
 
@@ -104,7 +123,7 @@ NAMING_GREEDY = 'deviceName'
 
 
 def naming_rule(root):
-    cfg = read_json(os.path.join(root, 'library.json')) if root else None
+    cfg = read_json(library_file(root, 'library.json')) if root else None
     rule = (cfg or {}).get('naming') or NAMING_DEFAULT
     return rule if naming_fields(rule) else NAMING_DEFAULT
 
@@ -736,8 +755,12 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
                 dd3 = inputs.addDropDownCommandInput('owner', '担当者 *', adsk.core.DropDownStyles.TextListDropDownStyle)
                 fill_owners(dd3, members, cur_dept, last_owner)
             else:
-                inputs.addStringValueInput('dept', '部署 *', last_dept)
-                inputs.addStringValueInput('owner', '担当者 *', last_owner)
+                # 名簿が見つからない: 文字入力にして、理由と作り方をツールチップに出す
+                tip = ('ライブラリに名簿 (members.json) が無いので文字で入力します。\n'
+                       'ビューアの 歯車 → 名簿 で作ると、次回からプルダウンで選べます。\n'
+                       '探した場所: ' + (library_file(root, 'members.json') or '（ライブラリ未設定）'))
+                ti_d = inputs.addStringValueInput('dept', '部署 *', last_dept); ti_d.tooltip = tip
+                ti_o = inputs.addStringValueInput('owner', '担当者 *', last_owner); ti_o.tooltip = tip
 
             mesh_on = bool(st.get('lastMesh', True))
             chk_mesh = inputs.addBoolValueInput('mesh', 'メッシュで格納', True, '', mesh_on)
@@ -893,7 +916,7 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
 
             # library.json が無ければ、選んだ階層でライブラリを初期化 (以後この階層で固定)
             if library_layout(p['root']) is None:
-                with open(os.path.join(p['root'], 'library.json'), 'w', encoding='utf-8') as f:
+                with open(library_file(p['root'], 'library.json'), 'w', encoding='utf-8') as f:
                     json.dump({'schema': 'library-viewer/library/1', 'layout': LAYOUT_LABEL, 'naming': NAMING_DEFAULT, 'inboxAuto': False, 'createdAt': now_iso(),
                                'note': 'このファイルはライブラリの保存階層とネーミングルールを記録します。編集はビューアの「ネーミングルール」から。'}, f, ensure_ascii=False, indent=2)
             segs = layout_segments(p)
@@ -1006,7 +1029,7 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
             members = library_members(p['root'])
             if (p['deptRaw'], p['ownerRaw']) not in members:
                 members.append((p['deptRaw'], p['ownerRaw']))
-                with open(os.path.join(p['root'], 'members.json'), 'w', encoding='utf-8') as f:
+                with open(library_file(p['root'], 'members.json'), 'w', encoding='utf-8') as f:
                     json.dump({'schema': 'library-viewer/members/1', 'updatedAt': now_iso(),
                                'members': [{'department': d, 'name': n} for d, n in members]}, f, ensure_ascii=False, indent=2)
 
