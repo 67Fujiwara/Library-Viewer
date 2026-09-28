@@ -30,11 +30,15 @@ class Coll(list):
     @property
     def count(s): return len(s)
     def item(s, i): return s[i]
+class Face:
+    """面: 自分の外観 (色そのもの) と、自分だけの三角形"""
+    def __init__(s, pts, color=None): s.pts, s.appearance, s.broken = pts, color, False; s.meshManager = MeshMgr(s)
 class Body:
-    def __init__(s, name, pts, visible=True, broken=False, color=None):
+    def __init__(s, name, pts, visible=True, broken=False, color=None, faces=None):
         s.name, s.pts, s.isVisible, s.broken = name, pts, visible, broken
         s.meshManager = MeshMgr(s); s.vertices = Coll([Vtx(Pt(*pts[0]))]); s.appearance = color
         s.boundingBox = types.SimpleNamespace(minPoint=Pt(0, 0, 0), maxPoint=Pt(1, 1, 1))
+        s.faces = Coll(faces if faces is not None else [Face(pts)])   # 既定は面 1 つ (色はボディのまま)
     def moved(s, m):   # プロキシ: 行列 (cm) で動かしたコピー
         def ap(p):
             x, y, z = p
@@ -75,6 +79,7 @@ exec(src[src.index('def read_json'):src.index('def library_layout')], ns)
 exec(src[src.index("def script_version"):src.index("SETTINGS_PATH =")], ns)
 ns['_DIR'] = os.path.join(here, '..', 'fusion', 'LibraryExport')
 ns['body_color'] = lambda body, occ=None: body.appearance or (occ.appearance if occ is not None else None)   # 外観は色そのものを入れておく
+ns['face_color'] = lambda face, bc: face.appearance or bc                                                    # 面も同じ (色そのもの)
 
 def check(c, m):
     if not c: raise SystemExit('FAIL: ' + m)
@@ -125,6 +130,16 @@ check(not any(r['name'] == 'LINKED_UNIT:1' for r in crows), 'component_tree skip
 d2 = Design(); d2.rootComponent.occurrences.extend([Occ('BOLT:1', bolt, T(5)), Occ('BOLT:2', bolt, T(10)), BrokenOcc('LINKED_UNIT:2')])
 units = ns['split_units'](d2)
 check(units is not None and len(units) == 2 and 'LINKED_UNIT:2' in ns['BROKEN_REFS'], 'split_units skips the broken reference instead of raising (%s)' % (units and len(units)))
+# 面ごとに色が違うボディ (モニタ・非常停止ボタンのような取引先支給の部品) は頂点色付きの 1 メッシュになる
+tri_a, tri_b = [(0, 0, 0), (1, 0, 0), (0, 1, 0)], [(0, 0, 1), (1, 0, 1), (0, 1, 1)]
+estop = Body('ESTOP', tri_a, color=[0.5, 0.5, 0.5], faces=[Face(tri_a, [1.0, 0.0, 0.0]), Face(tri_b, [1.0, 1.0, 0.0]), Face(tri_a)])
+fm = ns['tessellate'](estop, 'normal', [0.5, 0.5, 0.5])
+check(fm is not None and 'colors' in fm and len(fm['positions']) == 27 and len(fm['indices']) == 9, 'a body with per-face colors is tessellated face by face into one mesh (3 faces × 3 nodes)')
+check(bytes(fm['colors'][:3]) == bytes([255, 0, 0]) and bytes(fm['colors'][9:12]) == bytes([255, 255, 0]) and bytes(fm['colors'][18:21]) == bytes([128, 128, 128]), 'vertex colors follow each face (red / yellow / body grey for a face without its own appearance): %s' % list(fm['colors']))
+plain = Body('PLAIN', tri_a, color=[0.5, 0.5, 0.5], faces=[Face(tri_a), Face(tri_b, [0.5, 0.5, 0.5])])
+pm = ns['tessellate'](plain, 'normal', [0.5, 0.5, 0.5])
+check(pm is not None and 'colors' not in pm and len(pm['positions']) == 9, 'faces that all match the body color keep the single body mesh (no vertex colors)')
+check(ns['face_colors'](Body('MANY', tri_a, faces=[Face(tri_a, [1, 0, 0])] * (ns['FACE_COLOR_MAX_FACES'] + 1)), None) is None, 'bodies with too many faces skip the per-face scan')
 # library_file: 名簿・ルールの置き場所。ビューアが models/ を開いているとその中に書かれるので、そこも見る
 import tempfile, shutil
 tmp = tempfile.mkdtemp()

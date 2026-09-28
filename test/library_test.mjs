@@ -532,6 +532,15 @@ check(meshBox.x === 260 && meshBox.z === 123, 'geometry is in mm, instances plac
 // 透明なアクリルの蓋 (COVER, alpha 0.3) は半透明で描く。表示状態を更新しても不透明に戻らない
 const coverMat = await page.evaluate(() => { const n = Viewer3D.leavesOf(App.devices()[0].root).find(l => l.name === 'COVER'); Viewer3D.updateAllStates(); return n && n.mesh && { t: n.mesh.material.transparent, o: n.mesh.material.opacity, dw: n.mesh.material.depthWrite }; });
 check(coverMat && coverMat.t && Math.abs(coverMat.o - 0.3) < 1e-6 && !coverMat.dw, 'a transparent appearance renders translucent (opacity 0.3, no depth write): ' + JSON.stringify(coverMat));
+// 面ごとの色 (BUTTON): 頂点色で描き、選択のときだけ頂点色を切って選択色で塗る。選択を外すと戻る
+const btnState = await page.evaluate(() => {
+  const n = Viewer3D.leavesOf(App.devices()[0].root).find(l => l.name === 'BUTTON'); if (!n || !n.mesh) return null;
+  const m = n.mesh, out = { attr: !!m.geometry.getAttribute('color'), vc0: m.material.vertexColors, white: m.material.color.getHex() === 0xffffff };
+  App.select(n); Viewer3D.updateAllStates(); out.vcSel = m.material.vertexColors;
+  App.select(null); Viewer3D.updateAllStates(); out.vcBack = m.material.vertexColors;
+  return out;
+});
+check(btnState && btnState.attr && btnState.vc0 && btnState.white && btnState.vcSel === false && btnState.vcBack === true, 'per-face colors render as vertex colors; selecting swaps to the selection colour and back: ' + JSON.stringify(btnState));
 await page.evaluate(() => App.clearDevices());
 await page.click('label[for="tab-lib"]');
 await page.waitForTimeout(200);

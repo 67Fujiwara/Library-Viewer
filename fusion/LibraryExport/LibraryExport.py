@@ -611,15 +611,101 @@ def _count_body(app):
         pass
 
 
+FACE_COLOR_MAX_FACES = 4000    # 面ごとの色を見るのはこの面数まで (それ以上は面の走査自体が重い)
+
+
+def face_color(face, body_col):
+    """面の外観の色 (面に外観を付けていれば)。無ければボディの色"""
+    try:
+        app = face.appearance
+    except Exception:
+        return body_col
+    c = appearance_color(app) if app is not None else None
+    return c if c else body_col
+
+
+def face_colors(body, body_col):
+    """面ごとに色が違うボディなら [面ごとの色] を返す。全部同じなら None。
+    取引先支給の STEP をインポートした部品 (モニタ・非常停止ボタン …) は色がボディではなく **面** に付いている
+    (Fusion ではそう見える) ので、ボディの外観だけ見ると全部灰色になる (実機で起きた)"""
+    try:
+        faces = body.faces
+        n = faces.count
+    except Exception:
+        return None
+    if n == 0 or n > FACE_COLOR_MAX_FACES:
+        return None
+    cols, differs = [], False
+    key = tuple(round(v, 3) for v in body_col) if body_col else None
+    for i in range(n):
+        try:
+            c = face_color(faces.item(i), body_col)
+        except Exception:
+            c = body_col
+        cols.append(c)
+        if not differs and (tuple(round(v, 3) for v in c) if c else None) != key:
+            differs = True
+    return cols if differs else None
+
+
+def _calc_for(mgr_owner, q, extent_mm):
+    calc = mgr_owner.meshManager.createMeshCalculator()
+    try:
+        tol = adaptive_tolerance(extent_mm, q[2])
+        calc.surfaceTolerance = tol / CM_TO_MM        # cm
+        calc.normalDeviation = q[3]
+    except Exception:
+        calc.setQuality(getattr(adsk.fusion.TriangleMeshQualityOptions, q[4]))
+    return calc
+
+
+def tessellate_faces(body, q, cols, base_col):
+    """面ごとにメッシュにして 1 つに繋ぎ、頂点ごとの色 (COLOR_0、リニア 0..255) を付ける。
+    ビューアは頂点色で描く (1 ボディ = 1 メッシュ のまま。ツリーも変わらない)"""
+    ext = body_extent_mm(body)
+    pos, idx, rgb = array('f'), array('I'), array('B')
+    faces = body.faces
+    for i in range(faces.count):
+        face = faces.item(i)
+        try:
+            mesh = _calc_for(face, q, ext).calculate()
+        except Exception:
+            mesh = None
+        if mesh is None or mesh.triangleCount == 0:
+            continue
+        base = len(pos) // 3
+        pos.extend(v * CM_TO_MM for v in mesh.nodeCoordinatesAsFloat)
+        idx.extend(k + base for k in mesh.nodeIndices)
+        c = cols[i] or base_col or DEFAULT_LINEAR
+        b = bytes(max(0, min(255, int(round(v * 255)))) for v in c[:3])
+        rgb.extend(b * ((len(pos) // 3) - base))
+        del mesh
+    if len(idx) == 0:
+        return None
+    return {'name': body.name, 'positions': pos, 'normals': None, 'indices': idx, 'color': base_col, 'colors': rgb}
+
+
+DEFAULT_LINEAR = [0.4, 0.4, 0.4]
+
+
 def tessellate(body, quality_id, color):
     """ボディ → glbwrite の mesh。座標は **そのボディの文脈のまま** (コンポーネントのボディなら部品の原点)。
-    法線は書かない (ビューアが計算する。ファイルが 8% 小さい)"""
+    法線は書かない (ビューアが計算する。ファイルが 8% 小さい)。
+    面ごとに色が違うボディは面ごとにメッシュにして頂点色を付ける (tessellate_faces)"""
     q = next(x for x in MESH_QUALITY if x[0] == quality_id)
     try:
         if body.faces.count == 0:
             return None                          # 面の無いボディ (空・壊れ) はメッシュにならない
     except Exception:
         pass
+    cols = face_colors(body, color)
+    if cols:
+        try:
+            m = tessellate_faces(body, q, cols, color)
+            if m is not None:
+                return m
+        except Exception:
+            pass                                 # 面ごとがだめならボディ全体で (色は 1 色になる)
     calc = body.meshManager.createMeshCalculator()
     try:
         tol = adaptive_tolerance(body_extent_mm(body), q[2])
@@ -720,7 +806,7 @@ def collect_meshes(design, quality_id, progress=None):
     戻り: (model, {'bodies', 'unique', 'hidden', 'failed', 'triangles', 'colored', 'fallback'})"""
     root = design.rootComponent
     meshes, cache = [], {}          # cache: (コンポーネント id, ボディ番号, 色) → メッシュ番号
-    stat = {'bodies': 0, 'unique': 0, 'hidden': 0, 'failed': 0, 'failedNames': [], 'broken': 0, 'triangles': 0, 'seen': 0, 'colored': 0, 'fallback': 0,
+    stat = {'bodies': 0, 'unique': 0, 'hidden': 0, 'failed': 0, 'failedNames': [], 'broken': 0, 'triangles': 0, 'seen': 0, 'colored': 0, 'faceColored': 0, 'fallback': 0,
             'small_tris': 0, 'top': [], 'colors': set()}
 
     def fail(name):
@@ -771,6 +857,8 @@ def collect_meshes(design, quality_id, progress=None):
             meshes.append(m)
             if m['color']:
                 stat['colored'] += 1
+            if m.get('colors'):
+                stat['faceColored'] += 1
             place(node, body.name, len(meshes) - 1, None, len(m['indices']) // 3, body_extent_mm(body))
 
     def add_occ_bodies(occ, node):
@@ -798,6 +886,8 @@ def collect_meshes(design, quality_id, progress=None):
                     meshes.append(m); mi = len(meshes) - 1; cache[key] = mi
                     if color:
                         stat['colored'] += 1
+                    if m.get('colors'):
+                        stat['faceColored'] += 1
                 tick()
                 place(node, pb.name, mi, mtx, len(meshes[mi]['indices']) // 3, body_extent_mm(pb))
             else:
@@ -808,6 +898,8 @@ def collect_meshes(design, quality_id, progress=None):
                 meshes.append(m)
                 if color:
                     stat['colored'] += 1
+                if m.get('colors'):
+                    stat['faceColored'] += 1
                 place(node, pb.name, len(meshes) - 1, None, len(m['indices']) // 3, body_extent_mm(pb))
 
     def walk(occs, node):
@@ -1217,6 +1309,7 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
                     ('  ※ %d 件はメッシュにできませんでした (%s)' % (mesh_stat['failed'], ', '.join(mesh_stat['failedNames']) + (' …' if mesh_stat['failed'] > len(mesh_stat['failedNames']) else '')) if mesh_stat['failed'] else '') +
                     ('\n※ ' + broken_note() if mesh_stat['broken'] else '') +
                     '\n色: %d / %d 種類 (色の種類 %d)' % (mesh_stat['colored'], mesh_stat['unique'], len(mesh_stat['colors'])) +
+                    ('  面ごとの色 %d 種類' % mesh_stat['faceColored'] if mesh_stat.get('faceColored') else '') +
                     '\n三角形の内訳: 30mm 未満の小物 %d%% / 多い順: %s' % (
                         int(100.0 * mesh_stat['small_tris'] / max(mesh_stat['triangles'], 1)),
                         ', '.join('%s %s' % (n, format(t, ',')) for t, n in mesh_stat['top'][:5])) +

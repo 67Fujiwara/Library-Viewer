@@ -118,6 +118,12 @@ def write(model, quantize=True):
             dequant.append(None)
         pa = len(gltf['accessors']) - 1
         attrs = {'POSITION': pa}
+        vcol = m.get('colors')
+        if vcol is not None and len(vcol) == node_count * 3:
+            # 面ごとの色: 頂点色 COLOR_0 (uint8 正規化・リニア)。材質は白にして頂点色を掛ける
+            cv = add_view(bytes(vcol), 34962)
+            gltf['accessors'].append({'bufferView': cv, 'componentType': 5121, 'normalized': True, 'count': node_count, 'type': 'VEC3'})
+            attrs['COLOR_0'] = len(gltf['accessors']) - 1
         if nrm is not None:
             nv = add_view(_le_bytes(nrm), 34962)
             gltf['accessors'].append({'bufferView': nv, 'componentType': 5126, 'count': len(nrm) // 3, 'type': 'VEC3'})
@@ -128,12 +134,15 @@ def write(model, quantize=True):
         c = m.get('color')
         name = m.get('name') or ('solid_' + str(i))
         alpha = (c[3] if (c and len(c) > 3 and c[3] is not None) else 1.0)
+        has_vcol = 'COLOR_0' in attrs
         mat = {'name': name,
-               'pbrMetallicRoughness': {'baseColorFactor': [c[0], c[1], c[2], alpha] if c else DEFAULT_COLOR, 'metallicFactor': 0.1, 'roughnessFactor': 0.6},
+               'pbrMetallicRoughness': {'baseColorFactor': [1, 1, 1, alpha] if has_vcol else ([c[0], c[1], c[2], alpha] if c else DEFAULT_COLOR), 'metallicFactor': 0.1, 'roughnessFactor': 0.6},
                'doubleSided': True}
+        if has_vcol:
+            mat['extras'] = {'vertexColors': True}
         if alpha < 1.0:
             mat['alphaMode'] = 'BLEND'      # 透明な外観 (アクリル・ガラス)。ビューアは baseColorFactor の alpha で半透明に描く
-        if not c:
+        if not c and not has_vcol:
             mat['extras'] = {'defaultColor': True}
         gltf['materials'].append(mat)
         gltf['meshes'].append({'name': name, 'primitives': [{'attributes': attrs, 'indices': ia, 'material': len(gltf['materials']) - 1}]})

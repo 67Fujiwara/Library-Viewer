@@ -194,6 +194,16 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
     ビューアは `userData.baseOpacity` で半透明に描く
     （`applyState` が表示状態を更新するたびに使う。半透明モードでは `min(0.22, base)`）。
     アクリルの蓋が「白い箱」に見えていたのはこれ
+  - **面ごとの色は頂点色で運ぶ**（`face_colors` / `tessellate_faces`。「モニタや非常停止ボタンが Fusion では色付きなのに
+    ビューアでは灰色」という要望）。取引先支給の STEP をインポートした部品は色が **ボディではなく面** に付いていることが
+    多く、ボディの外観だけ見ると全部灰色になる。面の外観 (`face.appearance`) がボディと違う面が 1 つでもあれば、
+    面ごとに `face.meshManager.createMeshCalculator()` でメッシュにして 1 つに繋ぎ、頂点ごとの色を `colors`
+    （uint8 ×3、リニア）に持つ。**1 ボディ = 1 メッシュ のまま**（ツリーも変わらない）。面が `FACE_COLOR_MAX_FACES` = 4000 を
+    超えるボディは走査しない。glb は `COLOR_0`（5121・normalized・VEC3）+ 材質は白 + `extras.vertexColors`
+    （`glbwrite.py` と `02-glb.js` の `write` の両方。`GLB.read` は `colors` に乗せ、`bake` も持ち回る）。
+    ビューアは `vertexColors: true` の白い材質で描き、**選択中だけ頂点色を切って選択色で塗る**（`applyState`。
+    切り替えたときだけ `needsUpdate`。前は毎回 `needsUpdate = false` にしていたので、そこで打ち消さないこと）。
+    面ごとの alpha は持たない（ボディの alpha）
   - **ビューアの照明は控えめ**（半球 0.42 + 環境 0.1 + 主光 0.9 + 反対側の補助 0.22）。前は 半球 0.55 + 環境 0.25 で
     陰影の差が小さく全体が白く飛んでいた。照明を変えるときは `panels_test`（黒フレーム 0）が通ることを見る
 - **名簿の編集はテキストで書かせない**（`#roster-dialog`、`09-store.js` の `initRosterEditor`）。以前の「1 行に `部署, 担当者`」の

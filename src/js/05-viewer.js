@@ -129,9 +129,12 @@ var Viewer3D = (function () {
     g.setIndex(new THREE.BufferAttribute(rec.indices, 1));
     if (rec.normals) g.setAttribute('normal', new THREE.BufferAttribute(rec.normals, 3)); else g.computeVertexNormals();
     g.computeBoundingBox(); g.computeBoundingSphere();
-    var mat = new THREE.MeshStandardMaterial({ color: rec.color ? new THREE.Color(rec.color[0], rec.color[1], rec.color[2]) : new THREE.Color(colors.solid), roughness: 0.62, metalness: 0.08, side: THREE.DoubleSide });
+    // 面ごとの色 (頂点色 COLOR_0): 材質は白にして頂点色を掛ける。選択のときだけ頂点色を切って選択色に
+    var vcol = !!(rec.colors && rec.colors.length === rec.positions.length);   // undefined を渡すと three が警告を出す
+    if (vcol) g.setAttribute('color', new THREE.BufferAttribute(rec.colors instanceof Uint8Array ? rec.colors : new Uint8Array(rec.colors), 3, true));
+    var mat = new THREE.MeshStandardMaterial({ color: vcol ? new THREE.Color(1, 1, 1) : (rec.color ? new THREE.Color(rec.color[0], rec.color[1], rec.color[2]) : new THREE.Color(colors.solid)), roughness: 0.62, metalness: 0.08, side: THREE.DoubleSide, vertexColors: vcol });
     var mesh = new THREE.Mesh(g, mat);
-    mesh.userData.node = node; mesh.userData.hasColor = !!rec.color; mesh.userData.baseColor = mat.color.clone();
+    mesh.userData.node = node; mesh.userData.hasColor = !!rec.color || vcol; mesh.userData.vertexColors = vcol; mesh.userData.baseColor = mat.color.clone();
     // 透明な外観 (アクリル・ガラス): glb の alpha をそのまま不透明度に。表示状態を更新するたびに applyState が使う
     mesh.userData.baseOpacity = (rec.opacity != null && rec.opacity < 1) ? rec.opacity : 1;
     if (mesh.userData.baseOpacity < 1) { mat.transparent = true; mat.opacity = mesh.userData.baseOpacity; mat.depthWrite = false; }
@@ -198,10 +201,12 @@ var Viewer3D = (function () {
     }
     mat.clippingPlanes = (mode === 'section') ? [section.plane] : null;
     var base = m.userData.baseColor;
+    var recompile = false;
+    if (m.userData.vertexColors && mat.vertexColors === isSel) { mat.vertexColors = !isSel; recompile = true; }   // 選択中は頂点色を切る (選択色で塗る)
     if (isSel) { mat.color.set(colors.select); mat.emissive.set(colors.select); mat.emissiveIntensity = 0.25; }
     else if (isHov) { mat.color.copy(base).lerp(new THREE.Color(colors.hover), 0.55); mat.emissive.set(colors.hover); mat.emissiveIntensity = 0.15; }
     else { mat.color.copy(base); mat.emissive.set(0x000000); mat.emissiveIntensity = 0; }
-    mat.needsUpdate = false;
+    mat.needsUpdate = recompile;   // 頂点色の on/off を変えたときだけシェーダを作り直す
     if (n.edges) n.edges.visible = edgesOn && vis;
   }
   function updateAllStates() {

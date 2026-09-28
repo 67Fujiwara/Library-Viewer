@@ -845,3 +845,9 @@ fusion_glb_box に透明な COVER を足し、fusion_glb_test で BLEND と opac
 (2) 候補に無いときは「色らしい名前 (albedo / diffuse / _color / tint)」を優先し、反射率系 (f0 / specular / sheen …) を避け、
 (3) 格納後のメッセージに「外観 → 使ったプロパティ → sRGB」の見本 (`appearance_report`) を出し、全部を
 `~/.library-viewer/appearances.txt` に書く (`save_appearance_log`)。色が合わないときはこれを送ってもらって直す。
+
+### 面ごとの色 (モニタ・非常停止ボタンが灰色になる)
+取引先支給の STEP から来た部品は色が面に付いている。面の外観がボディと違うボディだけ面ごとにメッシュにして頂点色
+(COLOR_0 uint8 正規化) で 1 メッシュに繋ぐ (`face_colors` / `tessellate_faces`)。glb は白い材質 + `extras.vertexColors`、
+ビューアは `vertexColors` の材質、選択中だけ頂点色を切る。fusion_collect_test (偽 Face)・fusion_glb_box の BUTTON・
+fusion_glb_test (COLOR_0 / 往復)・library_test (選択で切り替わる) で確認。実機は未確認 (face.appearance / face.meshManager)。

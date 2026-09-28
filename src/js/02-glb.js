@@ -49,18 +49,24 @@ var GLB = (function () {
       var pa = json.accessors.push({ bufferView: pv, componentType: 5126, count: pos.length / 3, type: 'VEC3', min: min, max: max }) - 1;
       var na = json.accessors.push({ bufferView: nv, componentType: 5126, count: nrm.length / 3, type: 'VEC3' }) - 1;
       var ia = json.accessors.push({ bufferView: iv, componentType: 5125, count: idx.length, type: 'SCALAR' }) - 1;
+      var attrs = { POSITION: pa, NORMAL: na }, hasVcol = false;
+      if (m.colors && m.colors.length === pos.length) {   // 面ごとの色 (頂点色 COLOR_0、uint8 正規化。glbwrite.py と同じ)
+        var cv = addView(m.colors instanceof Uint8Array ? m.colors : new Uint8Array(m.colors), 34962);
+        attrs.COLOR_0 = json.accessors.push({ bufferView: cv, componentType: 5121, normalized: true, count: pos.length / 3, type: 'VEC3' }) - 1;
+        hasVcol = true;
+      }
       // alpha: 読み込んだモデル (GLB.read) は opacity に持つ。変換キャッシュはこの write で丸ごと書き直すので、
       // ここで落とすと 2 回目に開いたとき (キャッシュから) だけ不透明に戻る (実際にそうなった)
       var c = m.color || null;
       var alpha = (m.opacity != null && m.opacity < 1) ? m.opacity : ((c && c.length > 3 && c[3] != null) ? c[3] : 1);
       var mat = json.materials.push({
         name: m.name || ('solid_' + i),
-        pbrMetallicRoughness: { baseColorFactor: c ? [c[0], c[1], c[2], alpha] : [0.8, 0.8, 0.8, 1], metallicFactor: 0.1, roughnessFactor: 0.6 },
+        pbrMetallicRoughness: { baseColorFactor: hasVcol ? [1, 1, 1, alpha] : (c ? [c[0], c[1], c[2], alpha] : [0.8, 0.8, 0.8, 1]), metallicFactor: 0.1, roughnessFactor: 0.6 },
         alphaMode: alpha < 1 ? 'BLEND' : undefined,   // 透明な外観 (glbwrite.py と同じ)
         doubleSided: true,
-        extras: c ? undefined : { defaultColor: true }
+        extras: hasVcol ? { vertexColors: true } : (c ? undefined : { defaultColor: true })
       }) - 1;
-      meshIdMap[i] = json.meshes.push({ name: m.name || ('solid_' + i), primitives: [{ attributes: { POSITION: pa, NORMAL: na }, indices: ia, material: mat }] }) - 1;
+      meshIdMap[i] = json.meshes.push({ name: m.name || ('solid_' + i), primitives: [{ attributes: attrs, indices: ia, material: mat }] }) - 1;
     });
 
     // ノード階層 (ルートは変換行列だけ持つラッパー)
@@ -126,6 +132,20 @@ var GLB = (function () {
       throw new Error('未対応の componentType ' + a.componentType);
     }
 
+    // 頂点色 (COLOR_0): uint8 正規化 か float。RGB の uint8 (リニア) に揃える。VEC4 なら alpha は捨てる
+    function vertexColors(i) {
+      var a = json.accessors[i], bv = json.bufferViews[a.bufferView];
+      var comps = { VEC3: 3, VEC4: 4 }[a.type]; if (!comps) return null;
+      var start = bin.byteOffset + (bv.byteOffset || 0) + (a.byteOffset || 0), n = a.count * comps, src;
+      if (a.componentType === 5121) src = new Uint8Array(bin.buffer.slice(start, start + n));
+      else if (a.componentType === 5126) { var f = new Float32Array(bin.buffer.slice(start, start + n * 4)); src = new Uint8Array(n); for (var k = 0; k < n; k++) src[k] = Math.max(0, Math.min(255, Math.round(f[k] * 255))); }
+      else if (a.componentType === 5123) { var u = new Uint16Array(bin.buffer.slice(start, start + n * 2)); src = new Uint8Array(n); for (var k2 = 0; k2 < n; k2++) src[k2] = u[k2] >> 8; }
+      else return null;
+      if (comps === 3) return src;
+      var out = new Uint8Array(a.count * 3);
+      for (var v = 0; v < a.count; v++) { out[v * 3] = src[v * 4]; out[v * 3 + 1] = src[v * 4 + 1]; out[v * 3 + 2] = src[v * 4 + 2]; }
+      return out;
+    }
     // ファイル上のメッシュ (共有される元)。配置ごとに焼き込んだものは meshes に積む
     var srcMeshes = (json.meshes || []).map(function (m) {
       var pr = m.primitives[0], mat = pr.material != null ? json.materials[pr.material] : null;
@@ -134,10 +154,12 @@ var GLB = (function () {
       var pos = accessor(pr.attributes.POSITION);
       var nrm = pr.attributes.NORMAL != null ? accessor(pr.attributes.NORMAL) : null;
       var idx = pr.indices != null ? accessor(pr.indices) : null;
+      var vcol = pr.attributes.COLOR_0 != null ? vertexColors(pr.attributes.COLOR_0) : null;
+      if (vcol && vcol.length !== pos.length) vcol = null;
       if (!idx) { idx = new Uint32Array(pos.length / 3); for (var i = 0; i < idx.length; i++) idx[i] = i; }
       // alpha (透明な外観) は opacity に。alphaMode が BLEND のときだけ効かせる (OPAQUE で alpha < 1 のファイルは不透明のまま)
       var opacity = (bc && bc.length > 3 && bc[3] != null && (mat.alphaMode === 'BLEND')) ? Math.max(0.05, Math.min(1, bc[3])) : 1;
-      return { name: m.name || '', positions: pos, normals: nrm, indices: idx, color: (bc && !isDefault) ? [bc[0], bc[1], bc[2]] : null, opacity: opacity, uses: 0 };
+      return { name: m.name || '', positions: pos, normals: nrm, indices: idx, color: (bc && !isDefault) ? [bc[0], bc[1], bc[2]] : null, colors: vcol, opacity: opacity, uses: 0 };
     });
     var meshes = [];
 
@@ -168,7 +190,7 @@ var GLB = (function () {
     function bake(src, m) {
       if (isIdentity(m)) {
         if (src.uses++ === 0) { if (!src.normals) src.normals = computeNormals(src.positions, src.indices); return src; }
-        return { name: src.name, positions: src.positions, normals: src.normals, indices: src.indices, color: src.color, opacity: src.opacity };
+        return { name: src.name, positions: src.positions, normals: src.normals, indices: src.indices, color: src.color, colors: src.colors, opacity: src.opacity };
       }
       var p = src.positions, out = new Float32Array(p.length);
       for (var i = 0; i < p.length; i += 3) {
@@ -186,7 +208,7 @@ var GLB = (function () {
         }
       } else nrm = computeNormals(out, src.indices);
       src.uses++;
-      return { name: src.name, positions: out, normals: nrm, indices: src.indices, color: src.color, opacity: src.opacity };
+      return { name: src.name, positions: out, normals: nrm, indices: src.indices, color: src.color, colors: src.colors, opacity: src.opacity };
     }
 
     function toTree(ni, parentM) {
