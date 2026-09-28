@@ -189,4 +189,13 @@ check(len(old) == 4 and abs(old[3] - 0.4) < 1e-9 and abs(old[0] - 1.0) < 1e-9, '
 opaque_old = ns['appearance_color'](FApp('OldOpaque', [FProp('generic_diffuse', FColor(0, 255, 0)), FProp('generic_transparency', 0.0)]))
 check(len(opaque_old) == 3, 'generic_transparency 0 stays opaque')
 check(ns['appearance_color'](FApp('Steel', [FProp('metal_f0', FColor(10, 10, 10))])) == steel, 'the color cache is keyed by (name, id): the same appearance returns the cached color')
+# 古い (Protein) 系の id と、候補に無い id からの「色らしい」選び方
+pv = ns['appearance_color'](FApp('Vinyl', [FProp('plasticvinyl_color', FColor(0, 0, 255))]))
+check(len(pv) == 3 and abs(pv[2] - 1.0) < 1e-9 and abs(pv[0]) < 1e-9, 'a Protein plastic/vinyl appearance is read from plasticvinyl_color: %s' % pv)
+odd = ns['appearance_color'](FApp('Odd', [FProp('odd_f0', FColor(255, 255, 255)), FProp('odd_specular', FColor(200, 200, 200)), FProp('odd_diffuse', FColor(255, 0, 0))]))
+check(abs(odd[0] - 1.0) < 1e-9 and abs(odd[1]) < 1e-9, 'an unknown schema picks the diffuse-looking color, not f0 / specular: %s' % odd)
+only_f0 = ns['appearance_color'](FApp('OnlyF0', [FProp('x_f0', FColor(128, 128, 128))]))
+check(only_f0 is not None and len(only_f0) == 3, 'if only a reflectance color exists it is still used rather than the default')
+rep = ns['appearance_report']()
+check(any(r.startswith('Odd ×0: odd_diffuse → #ff0000') for r in rep) and any('Acrylic' in r and 'α0.30' in r for r in rep), 'the appearance report lists property id, sRGB hex and alpha per appearance: %s' % rep[:3])
 print('collect_meshes OK')

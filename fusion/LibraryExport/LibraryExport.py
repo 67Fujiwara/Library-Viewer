@@ -399,7 +399,15 @@ def body_extent_mm(body):
 # 無ければ最初の ColorProperty を使う。値は sRGB 0..255 なので **リニアに直して**渡す
 # (ビューアは renderer.outputEncoding = sRGB で、glb の baseColorFactor はリニア。occt の色もリニア)。
 COLOR_PROP_IDS = ['opaque_albedo', 'layered_diffuse', 'metal_f0', 'surface_albedo', 'generic_diffuse',
-                  'transparent_color', 'glazing_transmittance_color', 'wood_color']
+                  'transparent_color', 'glazing_transmittance_color', 'wood_color',
+                  # 古い (Protein) 系の外観: 種類ごとに id が違う
+                  'plasticvinyl_color', 'metal_color', 'metallicpaint_base_color', 'ceramic_color', 'concrete_color',
+                  'hardwood_color', 'masonrycmu_color', 'stone_color', 'wallpaint_color', 'water_tint_color',
+                  'mirror_tintcolor', 'solidglass_transmittance_custom_color']
+# 候補に無い id から選ぶとき: 「色らしい」名前を優先し、反射率・ハイライト系 (f0 / specular / sheen …) は避ける
+_LIKELY_COLOR = re.compile(r'albedo|diffuse|base_?color|_color|tint|colour', re.I)
+_NOT_COLOR = re.compile(r'f0|specular|reflect|sheen|normal|bump|emiss|luminance|anisotrop', re.I)
+_appearance_log = {}       # 外観名 → {'id': 使ったプロパティ, 'hex': '#rrggbb', 'alpha': float|None, 'n': ボディ数}  (格納後の見本と控えに出す)
 # 透明な外観 (アクリル・ガラス): 色のプロパティが transparent_* / glazing_* のもの。glb には alpha を付けて渡し、
 # ビューアが半透明で描く (Fusion では中が透けて見えるのに、ビューアで白い箱になっていた)
 TRANSPARENT_PROP_IDS = ('transparent_color', 'glazing_transmittance_color')
@@ -455,18 +463,32 @@ def appearance_color(app):
             if color:
                 hit = pid
                 break
-        if color is None:                                # どれでもいいので最初の色プロパティ
+        if color is None:                                # 候補に無い: 色のプロパティを全部集めて「色らしい」ものを選ぶ
+            found = []
             try:
                 n = props.count
             except Exception as e:
                 n, last_err = 0, repr(e)
             for i in range(n):
                 try:
-                    color = _prop_color(props.item(i))
+                    pr = props.item(i)
+                    c = _prop_color(pr)
+                    if c:
+                        found.append((str(pr.id), c))
                 except Exception as e:
-                    color, last_err = None, repr(e)
-                if color:
-                    break
+                    last_err = repr(e)
+            pick = None
+            for pid, c in found:                          # 1. 色らしい名前で、反射率系でないもの
+                if _LIKELY_COLOR.search(pid) and not _NOT_COLOR.search(pid):
+                    pick = (pid, c); break
+            if pick is None:
+                for pid, c in found:                      # 2. 反射率系でないもの
+                    if not _NOT_COLOR.search(pid):
+                        pick = (pid, c); break
+            if pick is None and found:                    # 3. 何でも
+                pick = found[0]
+            if pick:
+                hit, color = pick[0], pick[1]
     if color is None and len(_uncolored_samples) < 6:
         ids = []
         try:
@@ -485,9 +507,57 @@ def appearance_color(app):
         _uncolored_samples.append('%s: [%s]%s' % (name, ', '.join(ids[:12]), ('  err=' + last_err) if last_err else ''))
     if color:
         color = shade_color(color, hit, props)
+    note_appearance(app, hit, color)
     if key is not None:
         _color_cache[key] = color
     return color
+
+
+def linear_to_srgb8(v):
+    v = max(0.0, min(1.0, float(v)))
+    s = v * 12.92 if v <= 0.0031308 else 1.055 * (v ** (1 / 2.4)) - 0.055
+    return int(round(s * 255))
+
+
+def note_appearance(app, hit, color):
+    """外観ごとに「どのプロパティを色に使い、何色になったか」を控える (格納後の見本と ~/.library-viewer/appearances.txt)。
+    ビューアで色が違って見えるとき、どこで違えたかをこれで見分ける"""
+    try:
+        name = app.name or '(名前なし)'
+    except Exception:
+        name = '(名前なし)'
+    rec = _appearance_log.get(name)
+    if rec is None:
+        hexs = ('#%02x%02x%02x' % tuple(linear_to_srgb8(v) for v in color[:3])) if color else None
+        rec = {'id': hit or '-', 'hex': hexs, 'alpha': (color[3] if color and len(color) > 3 else None), 'n': 0}
+        _appearance_log[name] = rec
+
+
+def appearance_report(limit=12):
+    """格納後のメッセージに出す見本 (ボディ数の多い順)"""
+    rows = sorted(_appearance_log.items(), key=lambda kv: -kv[1]['n'])
+    out = []
+    for name, r in rows[:limit]:
+        out.append('%s ×%d: %s → %s%s' % (name, r['n'], r['id'], r['hex'] or '既定色', (' α%.2f' % r['alpha']) if r['alpha'] is not None else ''))
+    if len(rows) > limit:
+        out.append('… 他 %d 種類 (全部は appearances.txt に)' % (len(rows) - limit))
+    return out
+
+
+def save_appearance_log():
+    """~/.library-viewer/appearances.txt に全部を書く (色が合わないときに送ってもらう)"""
+    try:
+        os.makedirs(os.path.dirname(SETTINGS_PATH), exist_ok=True)
+        path = os.path.join(os.path.dirname(SETTINGS_PATH), 'appearances.txt')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write('外観名\tボディ数\t使ったプロパティ\tsRGB\talpha\n')
+            for name, r in sorted(_appearance_log.items(), key=lambda kv: -kv[1]['n']):
+                f.write('%s\t%d\t%s\t%s\t%s\n' % (name, r['n'], r['id'], r['hex'] or '-', '' if r['alpha'] is None else '%.2f' % r['alpha']))
+            if _uncolored_samples:
+                f.write('\n色が取れなかった外観 (プロパティ id の一覧):\n' + '\n'.join(_uncolored_samples) + '\n')
+        return path
+    except Exception:
+        return ''
 
 
 def _float_prop(props, pid):
@@ -518,15 +588,27 @@ def shade_color(color, hit, props):
 
 
 def body_color(body, occ=None):
-    """外観の色 [r,g,b] (リニア 0..1)。ボディ → オカレンスの順に見る。取れなければ None (ビューアの既定色)"""
+    """外観の色 [r,g,b] か [r,g,b,a] (リニア 0..1)。ボディ → オカレンスの順に見る。取れなければ None (ビューアの既定色)"""
     for get in (lambda: body.appearance, lambda: occ.appearance if occ is not None else None):
         try:
-            c = appearance_color(get())
+            app = get()
+            c = appearance_color(app)
         except Exception:
-            c = None
+            app, c = None, None
         if c:
+            _count_body(app)
             return c
     return None
+
+
+def _count_body(app):
+    """見本のボディ数 (appearance_color はキャッシュに当たると note しないので、ここで数える)"""
+    try:
+        rec = _appearance_log.get(app.name or '(名前なし)')
+        if rec is not None:
+            rec['n'] += 1
+    except Exception:
+        pass
 
 
 def tessellate(body, quality_id, color):
@@ -645,7 +727,7 @@ def collect_meshes(design, quality_id, progress=None):
         stat['failed'] += 1
         if len(stat['failedNames']) < 8:
             stat['failedNames'].append(name)
-    _color_cache.clear(); del _uncolored_samples[:]
+    _color_cache.clear(); del _uncolored_samples[:]; _appearance_log.clear()
 
     def tick():
         stat['seen'] += 1
@@ -1138,7 +1220,8 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
                     '\n三角形の内訳: 30mm 未満の小物 %d%% / 多い順: %s' % (
                         int(100.0 * mesh_stat['small_tris'] / max(mesh_stat['triangles'], 1)),
                         ', '.join('%s %s' % (n, format(t, ',')) for t, n in mesh_stat['top'][:5])) +
-                    ('\n色が取れなかった外観:\n  ' + '\n  '.join(_uncolored_samples) if _uncolored_samples else ''))
+                    ('\n色が取れなかった外観:\n  ' + '\n  '.join(_uncolored_samples) if _uncolored_samples else '') +
+                    ('\n外観 → 色 (ビューアで色が合わないときはこの一覧を送ってください。全部は %s):\n  ' % (save_appearance_log() or 'appearances.txt') + '\n  '.join(appearance_report()) if _appearance_log else ''))
             else:
                 detail = ('\n\nユニット %d 件に分けて書き出しました（ライブラリ上は 1 件です）。' % len(exported) if units else '')
             _ui.messageBox('格納しました:\n' + target + detail)

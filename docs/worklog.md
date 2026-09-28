@@ -838,3 +838,10 @@ fusion_glb_box に透明な COVER を足し、fusion_glb_test で BLEND と opac
 環境マップは持たない (dist が 5MB 上限に近い)。Fusion のレンダリングと完全には一致しない。
 - 変換キャッシュ (`ConvCache` = `GLB.write` → `GLB.read`) が opacity を落としていて、2 回目に開くと蓋が不透明に戻った。
   `write` が `m.opacity` を alpha に書くようにし、fusion_glb_test に往復の確認、library_test に「蓋が半透明のまま」の確認を足した
+
+### 部品の色が全部グレーになる (外観の色の見分け方と見本)
+「照度だけでなく各部品の色が全部グレー」。どの外観でどのプロパティを色に使ったかが実機でしか分からないので、
+(1) 候補 id を Protein 系 (plasticvinyl_color / metal_color / metallicpaint_base_color …) まで広げ、
+(2) 候補に無いときは「色らしい名前 (albedo / diffuse / _color / tint)」を優先し、反射率系 (f0 / specular / sheen …) を避け、
+(3) 格納後のメッセージに「外観 → 使ったプロパティ → sRGB」の見本 (`appearance_report`) を出し、全部を
+`~/.library-viewer/appearances.txt` に書く (`save_appearance_log`)。色が合わないときはこれを送ってもらって直す。

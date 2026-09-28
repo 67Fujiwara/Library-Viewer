@@ -175,7 +175,13 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
   - **色は外観の種類ごとにプロパティ id が違う**（塗装 `opaque_albedo` / 金属 `metal_f0` / 積層 `layered_diffuse` …）。
     1 つの id だけ見ると塗装以外が既定色に落ちる（実機で起きた）。`COLOR_PROP_IDS` の優先順 → 最初の `ColorProperty`。
     値は sRGB 0..255 なので **リニアに直して** glb に入れる（ビューアは `outputEncoding = sRGB`、occt の色もリニア）。
-    ボディで取れなければオカレンスの外観も見る。取れなかった外観は格納後のメッセージに見本を出す
+    ボディで取れなければオカレンスの外観も見る。取れなかった外観は格納後のメッセージに見本を出す。
+    候補は Prism 系 (`opaque_albedo` / `metal_f0` / `layered_diffuse` / `transparent_color` …) と古い Protein 系
+    (`plasticvinyl_color` / `metal_color` / `metallicpaint_base_color` …)。候補に無いときは `_LIKELY_COLOR`（albedo / diffuse /
+    _color / tint）を優先し `_NOT_COLOR`（f0 / specular / sheen / normal …）を避ける（反射率の色を拾うと薄い灰色になる）。
+    **格納後のメッセージに「外観 → 使ったプロパティ → sRGB」の見本を出し、全部を `~/.library-viewer/appearances.txt` に書く**
+    （`_appearance_log` / `appearance_report` / `save_appearance_log`）。「色が Fusion と違う」はこの一覧を見て直す
+    （Fusion の API はここで動かせないので、実機の外観のプロパティ名はこれでしか分からない）
   - **色は種類ごとに直してから渡す**（`shade_color`。「Fusion と色味が違う」という要望）:
     (1) **金属 (`metal_f0`) は × `METAL_SHADE` = 0.45（リニア）で暗くする。** f0 は「垂直に見たときの反射率」で鋼でも 0.6 前後の
     明るい灰色。Fusion は暗めの環境を映り込ませて中間の灰色に見せるが、ビューアには環境マップが無いので、そのまま出すと
