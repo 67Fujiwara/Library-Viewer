@@ -187,6 +187,10 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
   「ファイルから読み込む」も `showOpenFilePicker` を同じ場所から始め、読んだ `members.json` を編集中の名簿に**足す**（消さない。
   `mergeRosterText`）。ピッカーが無い環境はダウンロード / `<input type=file>` に落とす。テストは両方のピッカーを偽物にして
   `startIn === __root` を見る
+- **Fusion の格納ダイアログの題名に版を出す**（`Library に格納 v75`。`script_version()` が隣の `VERSION` を読む。
+  `build.py` がルートの `VERSION` と一緒に `fusion/LibraryExport/VERSION` にも書く）。「入れ替えたはずなのに直らない」は
+  たいてい古い版が動いている（Fusion が実行するのは「スクリプトとアドイン」に登録したフォルダの `LibraryExport.py`。
+  共有フォルダのコピーを直しても、そちらを差し替えないと変わらない）。題名の版で見分ける
 - Fusion の格納ダイアログは **`setDialogInitialSize(560, 560)`** で開く（既定の幅だとラベルが「案件コー…」と切れる）。
   低い画面で下の行が隠れるので、案内文は置かず、「STEP も書き出す」「ユニット分割」は畳んだグループ「詳細」に入れる。
   グループの中の入力も `inputs.itemById` で引ける

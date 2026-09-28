@@ -71,7 +71,9 @@ exec(src[src.index('CM_TO_MM ='):src.index('CM_TO_MM =') + len('CM_TO_MM = 10.0'
 exec(src[src.index('MESH_QUALITY = ['):src.index('class CommandCreatedHandler')], ns)
 exec(src[src.index('BROKEN_REFS = []'):src.index('def placement_of')], ns)
 exec(src[src.index('def component_tree'):src.index('# ---- メッシュで格納')], ns)
-exec(src[src.index('def read_json'):src.index('def library_layout')], ns)   # read_json / library_file / library_members (純 Python)
+exec(src[src.index('def read_json'):src.index('def library_layout')], ns)
+exec(src[src.index("def script_version"):src.index("SETTINGS_PATH =")], ns)
+ns['_DIR'] = os.path.join(here, '..', 'fusion', 'LibraryExport')
 ns['body_color'] = lambda body, occ=None: body.appearance or (occ.appearance if occ is not None else None)   # 外観は色そのものを入れておく
 
 def check(c, m):
@@ -158,4 +160,5 @@ try:
     shutil.rmtree(other, ignore_errors=True)
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
+check(ns['script_version']().isdigit(), 'script_version reads the VERSION next to the script (v%s); the dialog title shows it' % ns['script_version']())
 print('collect_meshes OK')

@@ -824,3 +824,6 @@ Fusion は `root/members.json` を見ていた。`library_file(root, name)` で 
 で保存ダイアログを開いているライブラリのフォルダから始める。「ファイルから読み込む」(`showOpenFilePicker`、同じ startIn) を足し、
 読んだ members.json は編集中の名簿に足す (重複なし)。ピッカーが無ければ従来のダウンロード / input[type=file]。
 library_test でピッカーを偽物にして startIn と書き出し内容・読み込みの合流を確認。
+- 3 枚目のスクショ: ビューアが開いている `models/` には `catalog.json` しか無く、名簿 (`members.json`) はどこにも無かった
+  (名簿ダイアログの中身はブラウザの localStorage)。Fusion のダイアログに「注意」欄が無い = 動いているのは古い版。
+  見分けられるように、ダイアログの題名に版を出す (`script_version()` → `fusion/LibraryExport/VERSION`。build.py が書く)

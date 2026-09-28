@@ -38,6 +38,18 @@ _app = None
 _ui = None
 _handlers = []          # イベントハンドラを GC から守る
 CMD_ID = 'libraryViewerExport'
+
+
+def script_version():
+    """隣の VERSION (build.py が書く通し番号)。ダイアログの題名に v75 のように出す。
+    実機で「入れ替えたはずなのに直らない」ときに、動いている版を見分けるため。無ければ '?'"""
+    try:
+        with open(os.path.join(_DIR, 'VERSION'), 'r', encoding='utf-8') as f:
+            return f.read().strip() or '?'
+    except Exception:
+        return '?'
+
+
 SETTINGS_PATH = os.path.join(os.path.expanduser('~'), '.library-viewer', 'fusion.json')
 
 # ビューアと同じ保存階層。**1 つに固定** (09-store.js の LAYOUT と必ず揃える)
@@ -1104,7 +1116,7 @@ def run(context):
         cmd_def = _ui.commandDefinitions.itemById(CMD_ID)
         if cmd_def:
             cmd_def.deleteMe()
-        cmd_def = _ui.commandDefinitions.addButtonDefinition(CMD_ID, 'Library に格納', 'STEP と案件情報を Library Viewer の共有フォルダに格納します')
+        cmd_def = _ui.commandDefinitions.addButtonDefinition(CMD_ID, 'Library に格納 v' + script_version(), 'メッシュ (または STEP) と案件情報を Library Viewer の共有フォルダに格納します (スクリプト v' + script_version() + ')')
         on_created = CommandCreatedHandler()
         cmd_def.commandCreated.add(on_created)
         _handlers.append(on_created)

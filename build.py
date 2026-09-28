@@ -40,12 +40,15 @@ def build_version():
         except Exception:
             n = 0
     else:
-        try:
-            if not os.path.exists(path) or read(path).strip() != str(n):
-                with open(path, 'w', encoding='utf-8') as f:
-                    f.write(str(n) + '\n')
-        except Exception:
-            pass
+        # ルートの VERSION と、Fusion スクリプトの隣にも控えを置く (スクリプトがダイアログの題名に版を出す。
+        # 「入れ替えたはずなのに直らない」= 古い版が動いている、を実機で見分けるため)
+        for p in (path, os.path.join(ROOT, 'fusion', 'LibraryExport', 'VERSION')):
+            try:
+                if not os.path.exists(p) or read(p).strip() != str(n):
+                    with open(p, 'w', encoding='utf-8') as f:
+                        f.write(str(n) + '\n')
+            except Exception:
+                pass
     return str(n)
 
 
