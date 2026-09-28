@@ -102,11 +102,48 @@ def library_file(root, name):
     return os.path.join(root, name)
 
 
+def folder_members(root):
+    """models/<部署>/<担当者>/ のフォルダから (部署, 担当者) を拾う。
+    名簿 (members.json) が無い / 足りないときの候補。ライブラリの真実はフォルダなので (管理者レス)、
+    一度でも格納した人はここに出る。root に models が無ければ何も返さない (関係ないフォルダを部署にしない)。"""
+    out = []
+    if not root:
+        return out
+    norm = os.path.normpath(root)
+    base = os.path.join(root, 'models') if os.path.isdir(os.path.join(root, 'models')) else (root if os.path.basename(norm) == 'models' else '')
+    if not base:
+        return out
+    try:
+        depts = sorted(os.listdir(base))
+    except Exception:
+        return out
+    for d in depts:
+        dp = os.path.join(base, d)
+        if d.startswith('.') or d in ('_', 'inbox') or not os.path.isdir(dp):
+            continue
+        try:
+            owners = sorted(os.listdir(dp))
+        except Exception:
+            continue
+        for o in owners:
+            if o.startswith('.') or o == '_' or not os.path.isdir(os.path.join(dp, o)):
+                continue
+            out.append((d, o))
+    return out
+
+
 def library_members(root):
-    """members.json → [(部署, 担当者)]。無ければ空。"""
+    """members.json → [(部署, 担当者)] に、models/<部署>/<担当者>/ のフォルダにいる組を足したもの。無ければ空。"""
     mj = read_json(library_file(root, 'members.json'))
     lst = mj if isinstance(mj, list) else (mj or {}).get('members', [])
-    return [(m.get('department', ''), m.get('name', '')) for m in lst if m.get('department') and m.get('name')]
+    out = [(m.get('department', ''), m.get('name', '')) for m in lst if m.get('department') and m.get('name')]
+    for pair in folder_members(root):
+        if pair not in out:
+            out.append(pair)
+    return out
+
+
+ROSTER_NOTE = ''   # 名簿が見つからず文字入力にしたときの説明 (ダイアログの「注意」欄に出す)
 
 
 def library_layout(root):
@@ -718,7 +755,9 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             on_change = InputChangedHandler(); cmd.inputChanged.add(on_change); _handlers.append(on_change)
             on_exec = ExecuteHandler(); cmd.execute.add(on_exec); _handlers.append(on_exec)
             on_destroy = DestroyHandler(); cmd.destroy.add(on_destroy); _handlers.append(on_destroy)
+            global ROSTER_NOTE
             del BROKEN_REFS[:]
+            ROSTER_NOTE = ''
             st = load_settings()
             root = st.get('libraryRoot', '')
             design = adsk.fusion.Design.cast(_app.activeProduct)
@@ -755,12 +794,12 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
                 dd3 = inputs.addDropDownCommandInput('owner', '担当者 *', adsk.core.DropDownStyles.TextListDropDownStyle)
                 fill_owners(dd3, members, cur_dept, last_owner)
             else:
-                # 名簿が見つからない: 文字入力にして、理由と作り方をツールチップに出す
-                tip = ('ライブラリに名簿 (members.json) が無いので文字で入力します。\n'
-                       'ビューアの 歯車 → 名簿 で作ると、次回からプルダウンで選べます。\n'
-                       '探した場所: ' + (library_file(root, 'members.json') or '（ライブラリ未設定）'))
-                ti_d = inputs.addStringValueInput('dept', '部署 *', last_dept); ti_d.tooltip = tip
-                ti_o = inputs.addStringValueInput('owner', '担当者 *', last_owner); ti_o.tooltip = tip
+                # 名簿が見つからない (models/部署/担当者 のフォルダも無い): 文字入力にして、理由と作り方を「注意」欄に出す
+                ROSTER_NOTE = ('名簿 (members.json) が見つからないので部署・担当者は文字入力です。'
+                               'ビューアの 歯車 → 名簿 で作ると、次回からプルダウンで選べます。 探した場所: '
+                               + (library_file(root, 'members.json') or '（ライブラリ未設定）'))
+                ti_d = inputs.addStringValueInput('dept', '部署 *', last_dept); ti_d.tooltip = ROSTER_NOTE
+                ti_o = inputs.addStringValueInput('owner', '担当者 *', last_owner); ti_o.tooltip = ROSTER_NOTE
 
             mesh_on = bool(st.get('lastMesh', True))
             chk_mesh = inputs.addBoolValueInput('mesh', 'メッシュで格納', True, '', mesh_on)
@@ -784,7 +823,7 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
                            '(メッシュで格納するときは分割の必要がありません)'
                            if units else 'ルート直下にボディがある / ユニットが 1 つなので分割できません')
             inputs.addTextBoxCommandInput('preview', '保存先', '', 2, True)
-            if BROKEN_REFS:                    # 参照先が読めないオカレンスがあるときだけ、注意の欄を出す
+            if BROKEN_REFS or ROSTER_NOTE:     # 参照先が読めない / 名簿が無い ときだけ、注意の欄を出す
                 inputs.addTextBoxCommandInput('warn', '注意', '', 3, True)
             update_preview(inputs)
         except Exception:
@@ -852,7 +891,7 @@ def update_preview(inputs):
     inputs.itemById('preview').text = (p['root'] or '（ライブラリ未設定）') + '/' + '/'.join(segs) + '/'
     warn = inputs.itemById('warn')
     if warn:
-        warn.text = broken_note()
+        warn.text = '\n'.join([t for t in (broken_note() if BROKEN_REFS else '', ROSTER_NOTE) if t])
 
 
 class InputChangedHandler(adsk.core.InputChangedEventHandler):

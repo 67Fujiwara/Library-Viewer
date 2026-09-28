@@ -815,3 +815,6 @@ panels / browser / madeby を通した。
 Fusion は `root/members.json` を見ていた。`library_file(root, name)` で root → 親 (root が models のとき) → root/models の順に
 探し、書くときも同じ所へ。`library.json` (ネーミングルール) も同じ。fusion_collect_test に置き場所の確認を追加。
 根本的には、ビューアと Fusion で同じフォルダ (`models/` の親) を開くのが正しい。
+- 2 枚目のスクショでも文字入力のままだった (`LibraryExport/` にも `models/` にも名簿が無い)。名簿に頼らず
+  `models/<部署>/<担当者>/` のフォルダから候補を作る `folder_members` を足し、`library_members` が名簿 + フォルダを返すようにした。
+  それでも空なら「注意」欄に探した場所を出す (`ROSTER_NOTE`)。fusion_collect_test に確認を追加

@@ -141,6 +141,21 @@ try:
     os.remove(os.path.join(tmp, 'models', 'members.json'))
     check(lf(os.path.join(tmp, 'models'), 'members.json') == os.path.join(tmp, 'members.json'), 'library_file: root = models/ with the file in the parent → parent')
     check(ns['library_members'](os.path.join(tmp, 'models')) == [('設計2課', '鈴木')], 'library_members follows it')
+    # 名簿が無くても、models/<部署>/<担当者>/ のフォルダにいる組は候補になる (格納した人はフォルダにいる)
+    os.remove(os.path.join(tmp, 'members.json'))
+    for p in (('設計1課', '藤原', 'P2026-007_メッシュ機H', '_'), ('設計2課', '鈴木', 'P2026-002_搬送装置B', '_'), ('_', '_', 'X', '_'), ('inbox',)):
+        os.makedirs(os.path.join(tmp, 'models', *p), exist_ok=True)
+    with open(os.path.join(tmp, 'models', 'catalog.json'), 'w') as f:
+        f.write('{}')
+    fm = ns['folder_members'](tmp)
+    check(fm == [('設計1課', '藤原'), ('設計2課', '鈴木')], 'folder_members lists 部署/担当者 pairs from models/, skipping _ / inbox / files: %s' % (fm,))
+    check(ns['library_members'](tmp) == fm and ns['library_members'](os.path.join(tmp, 'models')) == fm, 'library_members falls back to the folders (root or root = models/)')
+    with open(os.path.join(tmp, 'members.json'), 'w', encoding='utf-8') as f:
+        json.dump({'members': [{'department': '設計1課', 'name': '山田'}, {'department': '設計1課', 'name': '藤原'}]}, f)
+    check(ns['library_members'](tmp) == [('設計1課', '山田'), ('設計1課', '藤原'), ('設計2課', '鈴木')], 'roster entries come first, folder-only pairs are appended without duplicates')
+    other = tempfile.mkdtemp(); os.makedirs(os.path.join(other, 'src', 'js'))
+    check(ns['folder_members'](other) == [], 'a folder without models/ yields no candidates (unrelated folders are not departments)')
+    shutil.rmtree(other, ignore_errors=True)
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 print('collect_meshes OK')
