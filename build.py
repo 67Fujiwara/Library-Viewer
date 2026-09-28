@@ -90,8 +90,7 @@ def main():
         f.write(html)
     size = os.path.getsize(OUT)
     print(f'built {os.path.relpath(OUT, ROOT)}  {size/1024/1024:.2f} MB  (wasm gz+b64 {len(wasm_b64)/1024/1024:.2f} MB, three {len(three)/1024:.0f} KB, occt js {len(occt_js)/1024:.0f} KB, app {len(app_js)/1024:.0f} KB)')
-    if size > 5 * 1024 * 1024:
-        print('WARNING: over 5 MB target')
+    # サイズの上限は設けない (5MB を超えてよい、と決めた)。内訳だけ出して、何で増えたかを追えるようにしておく
 
 
 if __name__ == '__main__':

@@ -851,3 +851,8 @@ fusion_glb_box に透明な COVER を足し、fusion_glb_test で BLEND と opac
 (COLOR_0 uint8 正規化) で 1 メッシュに繋ぐ (`face_colors` / `tessellate_faces`)。glb は白い材質 + `extras.vertexColors`、
 ビューアは `vertexColors` の材質、選択中だけ頂点色を切る。fusion_collect_test (偽 Face)・fusion_glb_box の BUTTON・
 fusion_glb_test (COLOR_0 / 往復)・library_test (選択で切り替わる) で確認。実機は未確認 (face.appearance / face.meshManager)。
+
+### サイズの上限をやめる
+「データサイズは 5MB を超えてもいい」。CLAUDE.md / 開発プロンプト.md の「5MB 以下」を外し、build.py の警告を消した。
+内訳 (wasm / three / occt / app) はビルドの出力にそのまま残す。環境マップなど、これまで大きさを理由に見送ったものは
+必要になれば入れてよい。
