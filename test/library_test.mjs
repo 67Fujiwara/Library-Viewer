@@ -16,12 +16,20 @@ const stored = outDir + '/browser-unz/models/設計1課/山田/P2026-001_検査�
 const unzip = p => zlib.gunzipSync(fs.readFileSync(p)).toString('base64');
 const oldMeta = JSON.parse(fs.readFileSync(stored + '/meta.json', 'utf8'));
 oldMeta.files.forEach(f => { f.glb = f.name + '.glb'; f.step = 'step/' + f.name + '.step'; });
+delete oldMeta.inspection;   // 前の版には検査方法が無い (browser_test が書き直した meta.json には入っているので外す)
 // Fusion スクリプトが「メッシュで格納」した想定: glb.gz が最初からあり STEP は無い (glbwrite.py が書いたもの)
 const meshStat = JSON.parse(execFileSync('python3', ['test/fusion_glb_box.py']).toString());
+// 1×1 の PNG (サムネイルの読み込み経路を見るだけ。中身は何でもよい)
+function tinyPng() {
+  const crc = (buf) => { let c = ~0; for (const b of buf) { c ^= b; for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1)); } return (~c) >>> 0; };
+  const chunk = (type, data) => { const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const td = Buffer.concat([Buffer.from(type), data]); const c = Buffer.alloc(4); c.writeUInt32BE(crc(td)); return Buffer.concat([len, td, c]); };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(1, 0); ihdr.writeUInt32BE(1, 4); ihdr[8] = 8; ihdr[9] = 2;
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(Buffer.from([0, 200, 120, 92]))), chunk('IEND', Buffer.alloc(0))]);
+}
 const seed = {
   'models/設計1課/藤原/P2026-007_メッシュ機H/_/fusion_mesh.glb.gz': b64('test/out/fusion_mesh.glb.gz'),
   'models/設計1課/藤原/P2026-007_メッシュ機H/_/meta.json': Buffer.from(JSON.stringify({
-    schema: 'library-viewer/1', projectCode: 'P2026-007', deviceName: 'メッシュ機H', workpiece: '', department: '設計1課', owner: '藤原',
+    schema: 'library-viewer/1', projectCode: 'P2026-007', deviceName: 'メッシュ機H', workpiece: 'ちゃんぽん', inspection: '単品', department: '設計1課', owner: '藤原',
     savedAt: '2026-09-25T10:00:00+09:00', precision: { preset: 'normal', by: 'fusion-mesh' }, split: false,
     files: [{ name: 'fusion_mesh', step: null, glb: 'fusion_mesh.glb.gz', stepSize: null, glbSize: meshStat.gz, rawGlbSize: meshStat.raw, triangles: meshStat.triangles, solids: meshStat.solids, rootName: 'MESH_MACHINE' }],
     source: { cad: 'fusion', app: 'fusion-library-export', document: 'MESH_MACHINE v2' }
@@ -29,6 +37,7 @@ const seed = {
   'models/設計1課/藤原/P2026-007_メッシュ機H/_/index.json': Buffer.from(JSON.stringify({ schema: 'library-viewer/index/1', devices: [{ file: 'fusion_mesh', rootName: 'MESH_MACHINE',
     tree: [{ name: 'MESH_MACHINE', path: 'MESH_MACHINE', depth: 0, solids: 3 }, { name: 'BASE_PLATE', path: 'MESH_MACHINE/BASE_PLATE', depth: 1, solids: 1 },
            { name: 'UNIT_A:1', path: 'MESH_MACHINE/UNIT_A:1', depth: 1, solids: 1 }, { name: 'POST', path: 'MESH_MACHINE/UNIT_A:1/POST', depth: 2, solids: 1 }] }] })).toString('base64'),
+  'models/設計1課/藤原/P2026-007_メッシュ機H/_/thumb.png': tinyPng().toString('base64'),
   'models/設計1課/山田/P2026-001_検査装置A/ワークX/assembly.glb': unzip(stored + '/assembly.glb.gz'),
   'models/設計1課/山田/P2026-001_検査装置A/ワークX/step/assembly.step': b64('test/out/assembly.step'),
   'models/設計1課/山田/P2026-001_検査装置A/ワークX/assembly_b.glb': unzip(stored + '/assembly_b.glb.gz'),
@@ -38,7 +47,7 @@ const seed = {
   // Fusion スクリプトが置いた想定: STEP + meta.json のみ (glb 未生成)
   'models/設計2課/鈴木/P2026-002_搬送装置B/_/step/assembly_b.step': b64('test/out/assembly_b.step'),
   'models/設計2課/鈴木/P2026-002_搬送装置B/_/meta.json': Buffer.from(JSON.stringify({
-    schema: 'library-viewer/1', projectCode: 'P2026-002', deviceName: '搬送装置B', workpiece: '', customer: '△△製作所', department: '設計2課', owner: '鈴木', savedAt: '2026-09-18T10:00:00+09:00', precision: null,
+    schema: 'library-viewer/1', projectCode: 'P2026-002', deviceName: '搬送装置B', workpiece: '', customer: '△△製作所', inspection: '単品', department: '設計2課', owner: '鈴木', savedAt: '2026-09-18T10:00:00+09:00', precision: null,
     files: [{ name: 'assembly_b', step: 'step/assembly_b.step', glb: 'assembly_b.glb' }],
     source: { cad: 'fusion', document: 'DEVICE_B v3', fusionWebURL: 'https://example.autodesk360.com/g/data/xxxx' }
   })).toString('base64'),
@@ -46,7 +55,7 @@ const seed = {
   'models/設計1課/山田/P2026-006_分割機G/_/step/unit_a.step': b64('test/out/box.step'),
   'models/設計1課/山田/P2026-006_分割機G/_/step/unit_b.step': b64('test/out/box.step'),
   'models/設計1課/山田/P2026-006_分割機G/_/meta.json': Buffer.from(JSON.stringify({
-    schema: 'library-viewer/1', projectCode: 'P2026-006', deviceName: '分割機G', workpiece: '', department: '設計1課', owner: '山田',
+    schema: 'library-viewer/1', projectCode: 'P2026-006', deviceName: '分割機G', workpiece: 'ワークZ', inspection: '雑多', department: '設計1課', owner: '山田',
     savedAt: '2026-09-20T10:00:00+09:00', precision: null, split: true,
     files: [
       // 同じ形 (box.step) を別の位置に置く。片方は原点、もう片方は x+1000mm へ z 軸まわり 90°
@@ -397,6 +406,8 @@ await page.fill('#st-device', '組立装置C');
 await page.locator('#st-roster button.dept', { hasText: '設計2課' }).click();
 await page.locator('#st-roster label.member', { hasText: '鈴木' }).click();
 check((await page.textContent('#st-preview')) === 'Library/models/設計2課/鈴木/P2026-003_組立装置C/_/', 'preview uses roster dept (from members.json)');
+check(await page.inputValue('#st-inspection') === '雑多', 'the store dialog starts from 雑多 for 検査方法');
+await page.selectOption('#st-inspection', '単品');
 await page.click('#st-save');
 await page.waitForSelector('#msg-dialog[open]', { timeout: 30000 });
 console.log('  ' + (await page.textContent('#msg-body')).split('\n').join(' / '));
@@ -404,6 +415,10 @@ await page.keyboard.press('Escape');
 const files = await page.evaluate(() => window.__ls('models/設計2課/鈴木/P2026-003_組立装置C/_'));
 check(files && files.includes('meta.json') && files.includes('assembly_b.glb.gz'), 'files written into library: ' + files);
 check(!files.includes('step'), 'no step/ folder is created (the master lives in Fusion cloud): ' + files);
+const thumbC = await page.evaluate(() => window.__ls('models/設計2課/鈴木/P2026-003_組立装置C/_/thumb.jpg'));
+check(thumbC && thumbC.size > 500 && thumbC.size < 20000, 'a small JPEG thumbnail is stored with the device: ' + (thumbC && thumbC.size) + ' bytes');
+const metaC = JSON.parse((await page.evaluate(() => window.__ls('models/設計2課/鈴木/P2026-003_組立装置C/_/meta.json'))).text);
+check(metaC.inspection === '単品', 'meta.json carries the chosen 検査方法: ' + metaC.inspection);
 check((await page.evaluate(() => window.__ls('library.json'))).text.includes('部署 / 担当者 / 案件コード_装置名'), 'library.json records the (fixed) layout');
 await page.waitForFunction(() => document.querySelector('#lib-status').textContent.includes('7 件'), null, { timeout: 15000 });
 check(true, 'library rescanned: 7 entries');
@@ -603,6 +618,60 @@ check(await page.evaluate(() => Library.entries().some(e => e.meta.deviceName ==
 await page.waitForFunction(() => document.querySelector('#lib-status').className.includes('ok'), null, { timeout: 15000 });
 await page.waitForTimeout(300);
 check((await page.evaluate(() => window.__ls('models/設計1課'))).length === 3, '設計1課 has 3 owner folders (山田 / 田中 / 藤原)');
+
+// ---- ワーク / 取引先 タブ: 案件コード_対象ワーク の題名、検査方法のチップ、雑多 → 単品 → 未設定 の順、ホバーでサムネイル ----
+await page.click('label[for="tab-work"]');
+check(!(await page.isHidden('#wl-panel')) && await page.isHidden('#lib-panel') && await page.isHidden('#tree-panel'), 'the ワーク tab shows its own panel');
+const wlRows = async () => page.$$eval('#wl-list .wl-row', rs => rs.map(r => [r.querySelector('.insp').textContent, r.querySelector('.title').textContent, r.querySelector('.sub').textContent]));
+const rowsW = await wlRows();
+console.log('    ワーク:', JSON.stringify(rowsW));
+check(rowsW.map(r => r[1]).join('|') === 'P2026-006_ワークZ|P2026-007_ちゃんぽん|P2026-001_ワークX|P2026-004_ワークY', 'titles are 案件コード_対象ワーク, grouped 雑多 → 単品 → 未設定 then by project code: ' + rowsW.map(r => r[1]).join('|'));
+check(rowsW.map(r => r[0]).join('|') === '雑多|単品|—|—', 'each row carries the 検査方法 chip on the left (unset shows —): ' + rowsW.map(r => r[0]).join('|'));
+check((await page.$$eval('#wl-list .wl-group h3', hs => hs.map(h => h.textContent))).join('|') === '雑多1|単品1|未設定2', 'group headings with counts');
+check((await page.textContent('#wl-note')).includes('対象ワークの無い装置 3 件'), 'devices without a workpiece are counted in the note, not listed: ' + await page.textContent('#wl-note'));
+// ホバー: サムネイルが無い装置 (追加でしか読み込んでいない 検査装置A) は「画像なし」、
+// 「開く」で表示した装置 (分割機G) はそのとき作られた thumb.jpg、Fusion が置いた thumb.png (メッシュ機H) も画像で出る
+const thumbG = await page.evaluate(() => window.__ls('models/設計1課/山田/P2026-006_分割機G/_/thumb.jpg'));
+check(thumbG && thumbG.size > 500 && thumbG.size < 20000, 'a device opened with 開く earlier got a small thumb.jpg written into its folder: ' + (thumbG && thumbG.size) + ' bytes');
+await page.hover('#wl-list .wl-group:nth-child(3) .wl-row:first-of-type');   // 未設定 の 1 行目 = 検査装置A
+await page.waitForTimeout(300);
+check(!(await page.isHidden('#wl-pop')) && !(await page.isHidden('#wl-pop-none')), 'hovering a title floats the preview; a device without a thumbnail says 画像なし');
+check((await page.textContent('#wl-pop-cap')).includes('検査装置A'), 'the preview caption names the device: ' + await page.textContent('#wl-pop-cap'));
+const popBox = await page.evaluate(() => { const r = document.querySelector('#wl-pop').getBoundingClientRect(), l = document.querySelector('#left').getBoundingClientRect(); return { left: r.left, right: l.right }; });
+check(popBox.left >= popBox.right, 'the preview floats to the right of the left panel, like a category menu: ' + JSON.stringify(popBox));
+await page.hover('#wl-list .wl-group:nth-child(2) .wl-row:first-of-type');   // 単品 の 1 行目 = メッシュ機H (thumb.png)
+await page.waitForFunction(() => { const i = document.querySelector('#wl-pop-img'); return !i.hidden && i.complete && i.naturalWidth > 0; }, null, { timeout: 5000 });
+check((await page.evaluate(() => document.querySelector('#wl-pop-img').naturalWidth)) === 1, 'a device with thumb.png (as Fusion may leave it) shows the image, read once from the device folder');
+check(await page.evaluate(() => document.querySelector('#wl-pop-img').src.startsWith('blob:')), 'the image is an object URL of the file in the shared folder (nothing fetched from outside)');
+await page.hover('#wl-list .wl-group:nth-child(1) .wl-row:first-of-type');   // 雑多 の 1 行目 = 分割機G (ビューアが作った thumb.jpg)
+await page.waitForFunction(() => { const i = document.querySelector('#wl-pop-img'); return !i.hidden && i.complete && i.naturalWidth === 160; }, null, { timeout: 5000 });
+check(true, 'the viewer-made thumbnail is 160 px wide');
+await page.screenshot({ path: outDir + '/shot-19-work-tab.png' });
+await page.mouse.move(700, 400);
+await page.waitForTimeout(300);
+check(await page.isHidden('#wl-pop'), 'leaving the row hides the preview');
+// 取引先 タブ
+await page.click('label[for="tab-customer"]');
+const rowsC = await wlRows();
+console.log('    取引先:', JSON.stringify(rowsC));
+check(rowsC.map(r => r[1]).join('|') === 'P2026-002_△△製作所|P2026-001_〇〇食品', 'the 取引先 tab lists 案件コード_取引先 in the same order (単品 before unset)');
+// 題名を押すと開く。サムネイルの無い装置は、開いたついでに thumb.jpg が作られる
+check(await page.evaluate(() => window.__ls('models/設計1課/山田/P2026-001_検査装置A/ワークX/thumb.jpg')) === null, 'no thumbnail yet for the old-format device');
+await page.locator('#wl-list .wl-row', { hasText: 'P2026-001_〇〇食品' }).click();
+await page.waitForFunction(() => document.querySelectorAll('.tree-row.device').length === 2, null, { timeout: 15000 });
+await page.waitForFunction(() => !!window.__ls('models/設計1課/山田/P2026-001_検査装置A/ワークX/thumb.jpg'), null, { timeout: 5000 });
+const thumbA = await page.evaluate(() => window.__ls('models/設計1課/山田/P2026-001_検査装置A/ワークX/thumb.jpg'));
+check(thumbA.size > 500 && thumbA.size < 20000, 'opening a device without a thumbnail writes a small thumb.jpg into its folder: ' + thumbA.size + ' bytes');
+check((await page.$$('.tree-row.device')).length === 2, 'clicking a title opens that device (replacing the workspace)');
+check(await page.evaluate(() => Library.entries().find(e => e.meta.deviceName === '検査装置A').thumb === 'thumb.jpg'), 'the entry now knows its thumbnail without a rescan');
+await page.click('label[for="tab-customer"]');
+await page.hover('#wl-list .wl-group:nth-child(2) .wl-row:first-of-type');   // 未設定 の 1 行目 = 検査装置A (今作った thumb.jpg)
+await page.waitForFunction(() => { const i = document.querySelector('#wl-pop-img'); return !i.hidden && i.complete && i.naturalWidth > 0; }, null, { timeout: 5000 });
+check((await page.evaluate(() => document.querySelector('#wl-pop-img').naturalWidth)) === 160, 'the generated thumbnail shows on hover and is 160 px wide');
+await page.screenshot({ path: outDir + '/shot-20-customer-hover.png' });
+await page.mouse.move(700, 400);
+await page.click('label[for="tab-lib"]');
+
 for (const name of ['溶接装置D', '検査装置A', '分割機G', 'メッシュ機H', '新着機J']) {
   await page.locator('.lib-card', { hasText: name }).locator('button', { hasText: '削除' }).click();
   await page.waitForSelector('#confirm-dialog[open]');

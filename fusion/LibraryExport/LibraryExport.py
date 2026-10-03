@@ -167,6 +167,9 @@ def library_layout(root):
 # ---- ネーミングルール (ビューアの src/js/03b-naming.js と同じ規則) ----
 NAMING_FIELDS = ('projectCode', 'deviceName', 'workpiece', 'customer', 'department', 'owner')
 NAMING_OPTIONAL = ('workpiece', 'customer')   # 空でもよい項目
+INSPECTIONS = ('雑多', '単品')      # 検査方法 (meta.json の inspection)。ビューアの Store.INSPECTIONS と同じ並び。先頭が既定
+THUMB_NAME = 'thumb.jpg'           # 装置フォルダのサムネイル (ビューアのワーク / 取引先タブのホバーで見せる)
+THUMB_W, THUMB_H = 160, 120        # 限りなく軽く (数 KB)。何の装置か分かればよい
 NAMING_DEFAULT = {'pattern': '{projectCode}_{deviceName}_{workpiece}_{department}_{owner}_{customer}', 'separator': '_'}
 NAMING_GREEDY = 'deviceName'
 
@@ -961,6 +964,44 @@ def _fail():
             pass
 
 
+def save_thumbnail(target):
+    """装置フォルダに小さなサムネイル (thumb.jpg) を置く。ビューアのワーク / 取引先 タブでホバーしたときの図。
+    ビューポートを等角 (右上手前) で全体表示にして saveAsImageFile で 160×120 に書き、カメラは元に戻す。
+    形式はファイルの拡張子で決まる (.jpg)。書けなければ .png で 1 回やり直す (ビューアは両方読む)。
+    失敗しても格納は成功扱い (ビューアで「開く」と作られる)。"""
+    try:
+        vp = _app.activeViewport
+        saved = vp.camera
+        cam = vp.camera
+        cam.viewOrientation = adsk.core.ViewOrientations.IsoTopRightViewOrientation
+        cam.isFitView = True
+        cam.isSmoothTransition = False
+        vp.camera = cam
+        vp.refresh()
+        adsk.doEvents()
+        ok = False
+        for name in (THUMB_NAME, 'thumb.png'):
+            path = os.path.join(target, name)
+            try:
+                ok = bool(vp.saveAsImageFile(path, THUMB_W, THUMB_H)) and os.path.exists(path) and os.path.getsize(path) > 0
+            except Exception:
+                ok = False
+            if ok:
+                other = os.path.join(target, 'thumb.png' if name == THUMB_NAME else THUMB_NAME)
+                if os.path.exists(other):
+                    try:
+                        os.remove(other)         # 前の版が置いた方の形式は消す (一覧は .jpg を先に見る)
+                    except OSError:
+                        pass
+                break
+        saved.isSmoothTransition = False
+        vp.camera = saved
+        vp.refresh()
+        return ok
+    except Exception:
+        return False
+
+
 class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
     def notify(self, args):
         try:
@@ -996,6 +1037,9 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             inputs.addStringValueInput('deviceName', '装置名 *', parsed.get('deviceName') or (design.rootComponent.name if design else doc_name))
             inputs.addStringValueInput('workpiece', '対象ワーク', parsed.get('workpiece') or '')
             inputs.addStringValueInput('customer', '取引先', parsed.get('customer') or '')
+            ddi = inputs.addDropDownCommandInput('inspection', '検査方法', adsk.core.DropDownStyles.TextListDropDownStyle)
+            for i, name in enumerate(INSPECTIONS):
+                ddi.listItems.add(name, i == 0)      # 毎回「雑多」から
 
             # 部署・担当者は名簿 (members.json) から選ぶ。手入力欄は置かない (名簿に無い人はビューアの「名簿」で足す)。
             # 名簿がまだ無いライブラリでだけ、代わりに文字入力にする
@@ -1094,7 +1138,15 @@ def get_params(inputs):
         'mesh': bool(inputs.itemById('mesh').value) if inputs.itemById('mesh') else False,
         'keepStep': bool(inputs.itemById('keepStep').value) if inputs.itemById('keepStep') else False,
         'quality': _quality_id(inputs),
+        'inspection': _inspection(inputs),
     }
+
+
+def _inspection(inputs):
+    dd = inputs.itemById('inspection')
+    sel = dd.selectedItem if dd else None
+    name = sel.name if sel else ''
+    return name if name in INSPECTIONS else INSPECTIONS[0]
 
 
 def _quality_id(inputs):
@@ -1274,7 +1326,8 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
                 files_meta.append(fm)
             meta = {
                 'schema': 'library-viewer/1', 'projectCode': p['codeRaw'], 'deviceName': p['devRaw'], 'workpiece': p['workRaw'],
-                'customer': p['customerRaw'], 'department': p['deptRaw'], 'owner': p['ownerRaw'], 'savedAt': now_iso(),
+                'customer': p['customerRaw'], 'inspection': p['inspection'],
+                'department': p['deptRaw'], 'owner': p['ownerRaw'], 'savedAt': now_iso(),
                 # メッシュ格納: Fusion 側で決めた細かさ。STEP 格納: ビューアが初回に開いたときに決める (None)
                 'precision': {'preset': p['quality'], 'by': 'fusion-mesh'} if p['mesh'] else None,
                 'split': bool(units),
@@ -1287,6 +1340,7 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
                 json.dump({'schema': 'library-viewer/index/1',
                            'devices': [{'file': fm['name'], 'rootName': fm['rootName'],
                                         'tree': tree if not units else []} for fm in files_meta]}, f, ensure_ascii=False, indent=2)
+            thumb_ok = save_thumbnail(target)
 
             # 名簿にない人はその場で追加 (管理者レス)
             members = library_members(p['root'])
@@ -1317,6 +1371,8 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
                     ('\n外観 → 色 (ビューアで色が合わないときはこの一覧を送ってください。全部は %s):\n  ' % (save_appearance_log() or 'appearances.txt') + '\n  '.join(appearance_report()) if _appearance_log else ''))
             else:
                 detail = ('\n\nユニット %d 件に分けて書き出しました（ライブラリ上は 1 件です）。' % len(exported) if units else '')
+            if not thumb_ok:
+                detail += '\n※ サムネイル (%s) は作れませんでした。ビューアで「開く」と作られます。' % THUMB_NAME
             _ui.messageBox('格納しました:\n' + target + detail)
         except Exception:
             _fail()

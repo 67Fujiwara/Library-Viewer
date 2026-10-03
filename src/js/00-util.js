@@ -126,3 +126,9 @@ function showMessage(title, body) {
   $('#msg-title').textContent = title; $('#msg-body').textContent = body;
   var d = $('#msg-dialog'); if (!d.open) d.showModal();
 }
+/* data URL (base64) → バイト列 (サムネイルの JPEG を共有フォルダに書くとき) */
+function dataUrlBytes(url) {
+  var i = url.indexOf(','), bin = atob(url.slice(i + 1)), out = new Uint8Array(bin.length);
+  for (var k = 0; k < bin.length; k++) out[k] = bin.charCodeAt(k);
+  return out;
+}

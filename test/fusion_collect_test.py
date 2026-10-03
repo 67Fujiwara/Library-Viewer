@@ -77,6 +77,8 @@ exec(src[src.index('BROKEN_REFS = []'):src.index('def placement_of')], ns)
 exec(src[src.index('def component_tree'):src.index('# ---- メッシュで格納')], ns)
 exec(src[src.index('def read_json'):src.index('def library_layout')], ns)
 exec(src[src.index("def script_version"):src.index("SETTINGS_PATH =")], ns)
+exec(src[src.index('def _inspection'):src.index('def update_preview')], ns)
+_i0 = src.index('INSPECTIONS = ('); exec(src[_i0:src.index('\n', src.index('THUMB_W, THUMB_H', _i0))], ns)
 ns['_DIR'] = os.path.join(here, '..', 'fusion', 'LibraryExport')
 ns['body_color'] = lambda body, occ=None: body.appearance or (occ.appearance if occ is not None else None)   # 外観は色そのものを入れておく
 ns['face_color'] = lambda face, bc: face.appearance or bc                                                    # 面も同じ (色そのもの)
@@ -213,4 +215,46 @@ only_f0 = ns['appearance_color'](FApp('OnlyF0', [FProp('x_f0', FColor(128, 128, 
 check(only_f0 is not None and len(only_f0) == 3, 'if only a reflectance color exists it is still used rather than the default')
 rep = ns['appearance_report']()
 check(any(r.startswith('Odd ×0: odd_diffuse → #ff0000') for r in rep) and any('Acrylic' in r and 'α0.30' in r for r in rep), 'the appearance report lists property id, sRGB hex and alpha per appearance: %s' % rep[:3])
+
+# ---- 検査方法 (INSPECTIONS) はビューアの Store.INSPECTIONS と同じ並び ----
+js = open(os.path.join(here, '..', 'src', 'js', '09-store.js'), encoding='utf-8').read()
+m = re.search(r"var INSPECTIONS = \[([^\]]*)\]", js)
+js_insp = tuple(x.strip().strip("'") for x in m.group(1).split(','))
+check(js_insp == ns['INSPECTIONS'] == ('雑多', '単品'), 'INSPECTIONS match between LibraryExport.py and 09-store.js: %s' % (js_insp,))
+Sel = lambda name: types.SimpleNamespace(selectedItem=types.SimpleNamespace(name=name))
+check(ns['_inspection'](types.SimpleNamespace(itemById=lambda cid: Sel('単品'))) == '単品', 'the 検査方法 dropdown value goes into meta.json')
+check(ns['_inspection'](types.SimpleNamespace(itemById=lambda cid: None)) == '雑多', 'without the dropdown (old dialog) it falls back to 雑多')
+
+# ---- サムネイル: 等角で全体表示にして saveAsImageFile → カメラを戻す。.jpg が書けなければ .png ----
+import tempfile
+class Cam:
+    def __init__(s): s.viewOrientation = 0; s.isFitView = False; s.isSmoothTransition = True
+class VP:
+    def __init__(s, fail_jpg=False): s._cam = Cam(); s.set = []; s.saved = []; s.fail_jpg = fail_jpg; s.refreshed = 0
+    @property
+    def camera(s): c = Cam(); c.__dict__.update(s._cam.__dict__); return c     # 取得はコピー (実機と同じ)
+    @camera.setter
+    def camera(s, c): s._cam = c; s.set.append((c.viewOrientation, c.isFitView))
+    def refresh(s): s.refreshed += 1
+    def saveAsImageFile(s, path, w, h):
+        s.saved.append((os.path.basename(path), w, h))
+        if s.fail_jpg and path.endswith('.jpg'):
+            return False
+        open(path, 'wb').write(b'x' * 100)
+        return True
+adsk.core.ViewOrientations = types.SimpleNamespace(IsoTopRightViewOrientation=7)
+with tempfile.TemporaryDirectory() as td:
+    vp = VP(); ns['_app'] = types.SimpleNamespace(activeViewport=vp)
+    check(ns['save_thumbnail'](td) is True and os.path.exists(os.path.join(td, 'thumb.jpg')), 'save_thumbnail writes thumb.jpg into the device folder')
+    check(vp.saved == [('thumb.jpg', 160, 120)], 'the image is 160×120 (小さく粗く): %s' % vp.saved)
+    check(vp.set[0] == (7, True) and vp.set[-1] == (0, False) and vp._cam.viewOrientation == 0, 'the viewport is turned to iso + fit for the shot and the camera is restored afterwards: %s' % vp.set)
+    open(os.path.join(td, 'thumb.png'), 'wb').write(b'old')
+    ns['save_thumbnail'](td)
+    check(not os.path.exists(os.path.join(td, 'thumb.png')), 'an older thumb.png is removed once thumb.jpg is written')
+with tempfile.TemporaryDirectory() as td:
+    vp = VP(fail_jpg=True); ns['_app'] = types.SimpleNamespace(activeViewport=vp)
+    check(ns['save_thumbnail'](td) is True and os.path.exists(os.path.join(td, 'thumb.png')) and not os.path.exists(os.path.join(td, 'thumb.jpg')), 'if .jpg is refused it falls back to thumb.png (the viewer reads both)')
+    check([n for n, _, _ in vp.saved] == ['thumb.jpg', 'thumb.png'], 'jpg is tried first: %s' % vp.saved)
+ns['_app'] = types.SimpleNamespace(activeViewport=None)
+check(ns['save_thumbnail']('/nonexistent') is False, 'a failing thumbnail never fails the store')
 print('collect_meshes OK')

@@ -1,5 +1,6 @@
 /* 格納: 案件情報を付けてフォルダ階層に保存 (File System Access API が本命、無ければ ZIP) */
 var Store = (function () {
+  var INSPECTIONS = ['雑多', '単品'];   // 検査方法。meta.json の inspection (LibraryExport.py の INSPECTIONS と同じ並び)
   var dlg, form, rosterEl, ownerView, previewEl, methodEl, devicesEl;
   /* 保存先の階層は 1 つに固定する (選ばせない。ライブラリ全体で同じ形でないと探せない)。
    * 担当者を階層に入れてあるので、フォルダを辿るだけで「その人が担当した装置」が集まる。 */
@@ -246,6 +247,7 @@ var Store = (function () {
       $('#st-device').value = $('#st-device').value || devs[0].name;
       note.hidden = false; note.className = 'naming-note miss small'; note.textContent = 'ファイル名を「' + Naming.example() + '」の形にすると、案件情報が自動で入ります。';
     }
+    $('#st-inspection').value = INSPECTIONS[0];   // 検査方法は毎回「雑多」から
     var lib = Library.entries();
     var dl = $('#dl-projects'); dl.textContent = ''; var seen = {};
     lib.forEach(function (e) { var c = e.meta.projectCode; if (c && !seen[c]) { seen[c] = 1; dl.appendChild(el('option', { value: c })); } });
@@ -282,7 +284,8 @@ var Store = (function () {
   }
 
   /* ---- パッケージ生成 (純関数: 3D シーンに依存しない。受信箱の取り込みからも使う) ----
-   *   devs: [{fileName, model, stepBytes, nodes?}]  fields: {projectCode, deviceName, workpiece, department, owner}
+   *   devs: [{fileName, model, stepBytes, nodes?}]  fields: {projectCode, deviceName, workpiece, customer, inspection, department, owner}
+   *   opts: {thumb: Uint8Array}  サムネイル (thumb.jpg)。ダイアログからは 3D の表示を描いて渡す。受信箱は無し (開いたときに作る)
    *   → { files:[{name,data}], segs:[...], meta } */
   function modelStats(model) {
     var tris = 0; model.meshes.forEach(function (m) { tris += m.indices.length / 3; });
@@ -309,7 +312,7 @@ var Store = (function () {
    * 実測 (1.36MB の STEP): glb 1.31MB (96% — ほとんど減らない) / gzip 0.12MB (9%)。
    * STEP のマスターは Fusion のクラウドにあるので共有フォルダには残さない
    * (設定「変換後も STEP を残す」を入れたときだけ置く)。 */
-  async function buildPackage(devs, fields, preset, source) {
+  async function buildPackage(devs, fields, preset, source, opts) {
     var pr = Occt.PRESETS[preset] || Occt.PRESETS.standard;
     var files = [], metaFiles = [], index = { schema: 'library-viewer/index/1', devices: [] }, used = {};
     var keepStep = Settings.keepStep();
@@ -330,12 +333,14 @@ var Store = (function () {
     }
     var meta = {
       schema: 'library-viewer/1', projectCode: fields.projectCode, deviceName: fields.deviceName, workpiece: fields.workpiece || '',
-      customer: fields.customer || '', department: fields.department, owner: fields.owner, savedAt: isoNowLocal(),
+      customer: fields.customer || '', inspection: INSPECTIONS.indexOf(fields.inspection) >= 0 ? fields.inspection : '',
+      department: fields.department, owner: fields.owner, savedAt: isoNowLocal(),
       precision: { preset: preset, linearDeflection: pr.linearDeflection, angularDeflection: pr.angularDeflection },
       files: metaFiles, source: source || { cad: 'step', app: 'library-viewer' }
     };
     files.push({ name: 'meta.json', data: new TextEncoder().encode(JSON.stringify(meta, null, 2)) });
     files.push({ name: 'index.json', data: new TextEncoder().encode(JSON.stringify(index, null, 2)) });
+    if (opts && opts.thumb) files.push({ name: 'thumb.jpg', data: opts.thumb });
     return { files: files, segs: segmentsFor(fields), meta: meta };
   }
 
@@ -354,8 +359,10 @@ var Store = (function () {
     try {
       // Fusion スクリプト等から来た装置なら出所情報を引き継ぐ
       var src = devs[0].source && devs[0].source.entry && devs[0].source.entry.meta && devs[0].source.entry.meta.source;
-      var fields = { projectCode: $('#st-project').value.trim(), deviceName: $('#st-device').value.trim(), workpiece: $('#st-work').value.trim(), customer: $('#st-customer').value.trim(), department: selectedOwner.dept, owner: selectedOwner.name };
-      var pkg = await buildPackage(devs, fields, preset, src || null);
+      var fields = { projectCode: $('#st-project').value.trim(), deviceName: $('#st-device').value.trim(), workpiece: $('#st-work').value.trim(), customer: $('#st-customer').value.trim(), inspection: $('#st-inspection').value, department: selectedOwner.dept, owner: selectedOwner.name };
+      // サムネイル: 今の 3D の表示を小さく描いて一緒に置く (ワーク / 取引先 タブのホバーで見せる)
+      var ts = Library.thumbSize(), thumbUrl = Viewer3D.snapshot(ts.w, ts.h, ts.q);
+      var pkg = await buildPackage(devs, fields, preset, src || null, { thumb: thumbUrl ? dataUrlBytes(thumbUrl) : null });
       var files = pkg.files;
       await ensureMember(selectedOwner.dept, selectedOwner.name);
       var segs = pkg.segs;
@@ -376,5 +383,5 @@ var Store = (function () {
       showMessage('格納に失敗しました', String(e && e.message || e));
     }
   }
-  return { init: init, open: open, buildPackage: buildPackage, segmentsFor: segmentsFor, ensureMember: ensureMember, layoutLabel: function () { return LAYOUT_LABEL; } };
+  return { INSPECTIONS: INSPECTIONS, init: init, open: open, buildPackage: buildPackage, segmentsFor: segmentsFor, ensureMember: ensureMember, layoutLabel: function () { return LAYOUT_LABEL; } };
 })();

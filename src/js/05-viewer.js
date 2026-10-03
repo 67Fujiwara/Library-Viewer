@@ -300,6 +300,41 @@ var Viewer3D = (function () {
   function fitAll() { moveToBox(boxOf(null)); }
   function fitNode(node) { moveToBox(boxOf(node)); }
 
+  /* サムネイル: 今の表示を小さく描いて JPEG の data URL にする (ライブラリの thumb.jpg)。
+   * 角度は今のカメラではなく決まった等角 (右上手前) で、表示中の全体を収める。グリッドと計測の線は入れない。
+   * 描画バッファを一時的に w×h にして描き、同じタスクの中で toDataURL で取る
+   * (preserveDrawingBuffer 無しでも、描いた直後なら読める)。終わったら元の大きさで描き直す。 */
+  function snapshot(w, h, quality) {
+    var box = boxOf(null);
+    if (!box || !leaves.length) return null;
+    var saved = { theta: ctrl.theta, phi: ctrl.phi, dist: ctrl.dist, target: ctrl.target.clone(), pr: renderer.getPixelRatio(), aspect: camera.aspect };
+    var gridWas = grid ? grid.visible : false, ovWas = overlayGroup.visible;
+    try {
+      var c = new THREE.Vector3(), s = new THREE.Vector3();
+      box.getCenter(c); box.getSize(s);
+      var r = Math.max(s.length() / 2, 0.5);
+      ctrl.target.copy(c); ctrl.theta = -Math.PI / 4; ctrl.phi = Math.PI / 3;   // 起動時と同じ等角
+      ctrl.dist = r / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2)) * 0.92;   // 外接球は大きめに出るので少し寄せる
+      updateCamera();
+      if (grid) grid.visible = false;
+      overlayGroup.visible = false;
+      renderer.setPixelRatio(1);
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h; camera.updateProjectionMatrix();
+      renderer.render(scene, camera);
+      return canvas.toDataURL('image/jpeg', quality || 0.55);
+    } finally {
+      ctrl.theta = saved.theta; ctrl.phi = saved.phi; ctrl.dist = saved.dist; ctrl.target.copy(saved.target);
+      if (grid) grid.visible = gridWas;
+      overlayGroup.visible = ovWas;
+      renderer.setPixelRatio(saved.pr);
+      renderer.setSize(lastW || 1, lastH || 1, false);
+      camera.aspect = saved.aspect; camera.updateProjectionMatrix();
+      updateCamera();
+      renderNow();
+    }
+  }
+
   /* ---- 「この部品に寄る」: いちばん面積が大きく見える角度へ回り込んでから寄る ---- */
   var occRay = new THREE.Raycaster();
 
@@ -558,7 +593,7 @@ var Viewer3D = (function () {
     init: init, addDevice: addDevice, removeDevice: removeDevice, applyTheme: applyTheme,
     setHover: setHover, setSelected: setSelected, setMode: setMode, setGhost: setGhost, setEdges: setEdges,
     setSection: setSection, sectionValue: sectionValue, updateAllStates: updateAllStates, updateStates: updateStates,
-    fitAll: fitAll, fitNode: fitNode, focusNode: focusNode, moveToNode: fitNode, leavesOf: leavesOf, stats: stats, requestRender: requestRender,
+    fitAll: fitAll, fitNode: fitNode, focusNode: focusNode, snapshot: snapshot, moveToNode: fitNode, leavesOf: leavesOf, stats: stats, requestRender: requestRender,
     sceneBox: function () { return sceneBox; }, sceneRadius: function () { return sceneRadius; },
     setPickHandler: setPickHandler, toScreen: toScreen, overlay: overlay, onRender: onRender, camera: cameraRef
   };

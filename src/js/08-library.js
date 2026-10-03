@@ -174,7 +174,7 @@ var Library = (function () {
   /* 一覧の中身を 1 本の文字列に。先出しした一覧と走査結果が同じかを見る */
   function signature(list) {
     return list.map(function (e) {
-      return e.id + '|' + (e.meta.savedAt || '') + '|' + e.files.map(function (f) { return f.name + ':' + (f.glb || '') + ':' + (f.step || ''); }).join(',');
+      return e.id + '|' + (e.meta.savedAt || '') + '|' + (e.thumb || '') + '|' + e.files.map(function (f) { return f.name + ':' + (f.glb || '') + ':' + (f.step || ''); }).join(',');
     }).join('\n');
   }
   /* catalog.json (前回の走査結果) から一覧を組む。フォルダのハンドルは開くときに引く (dir: null)。
@@ -187,7 +187,7 @@ var Library = (function () {
       if (!c || !c.path || !c.meta) return;
       var has = {};
       (c.files || []).forEach(function (f) { has[f.name] = f; });
-      list.push({ id: c.path, rel: c.path.split('/'), dir: null, meta: c.meta, files: (c.meta.files || []).map(function (f) {
+      list.push({ id: c.path, rel: c.path.split('/'), dir: null, meta: c.meta, thumb: c.thumb || null, files: (c.meta.files || []).map(function (f) {
         var h = has[f.name] || {};
         return { name: f.name, glb: h.glb || null, step: h.step || null, placement: f.placement || null, meta: f };
       }) });
@@ -356,6 +356,7 @@ var Library = (function () {
    * フォルダを全部確かめる方式の下限。さらにフォルダは PAR 本ずつ同時に降りる。
    * 実測 (1000 装置・往復 2ms): 直列 14.2 秒 → 0.32 秒 / 手元の同期済みフォルダで 1.1 秒 → 0.35 秒 */
   var PAR = 8;
+  var THUMB_NAMES = ['thumb.jpg', 'thumb.png'], THUMB_W = 160, THUMB_H = 120, THUMB_Q = 0.55;
   async function pool(items, n, fn) {
     var i = 0;
     async function run() { while (i < items.length) { var k = i++; await fn(items[k]); } }
@@ -380,7 +381,8 @@ var Library = (function () {
         var f = meta.files[i];
         list.push({ name: f.name, glb: f.glb && files[f.glb] ? f.glb : null, step: f.step && await hasStepFile(f.step, files, dirs) ? f.step : null, placement: f.placement || null, meta: f });
       }
-      found.push({ id: key, rel: rel, dir: dir, meta: meta, files: list });
+      // サムネイル (thumb.jpg) もその場の一覧で判断する。Fusion が .jpg を書けなかったときの .png も読む
+      found.push({ id: key, rel: rel, dir: dir, meta: meta, thumb: THUMB_NAMES.filter(function (n) { return !!files[n]; })[0] || null, files: list });
       return; // 装置フォルダの下は辿らない
     }
     await pool(kids, PAR, function (kv) {
@@ -425,7 +427,7 @@ var Library = (function () {
       var cat = { schema: CATALOG_SCHEMA, generatedAt: isoNowLocal(), count: entries.length, entries: entries.map(function (e) {
         var m = e.meta;
         return { path: e.rel.join('/'), projectCode: m.projectCode, deviceName: m.deviceName, workpiece: m.workpiece, customer: m.customer || '', department: m.department, owner: m.owner, savedAt: m.savedAt,
-          files: e.files.map(function (f) { return { name: f.name, glb: f.glb || null, step: f.step || null }; }), meta: m };
+          thumb: e.thumb || null, files: e.files.map(function (f) { return { name: f.name, glb: f.glb || null, step: f.step || null }; }), meta: m };
       }) };
       await writeFile(handle, 'catalog.json', JSON.stringify(cat, null, 2));
     } catch (e) { /* 読み取り専用など */ }
@@ -488,6 +490,7 @@ var Library = (function () {
   }
 
   function renderList() {
+    if (window.WorkList) WorkList.refresh();   // ワーク / 取引先 タブも同じ一覧から組む
     listEl.textContent = '';
     var q = Tags.fold(searchEl.value.trim());
     if (q && needsNames()) loadNames().then(function () { if (Tags.fold(searchEl.value.trim()) === q) renderList(); });
@@ -578,6 +581,7 @@ var Library = (function () {
     App.hideOverlay();
     devices.forEach(function (d) { App.addDevice(d); });
     if (devices.length) { App.showLeftTab('tree'); App.stepSource(e); Viewer3D.fitAll(); }
+    if (devices.length && !append && !e.thumb) makeThumb(e);   // 前の版で格納した装置にはサムネイルが無い。開いたついでに作って置く
     if (e.files.some(function (f) { return f.glb && f.glb.indexOf('.glb') > 0; })) { renderList(); }
     return devices;   // 呼び出し側が「当たった部品だけ残す」のに使う (検索 / 案件横断のカード)
   }
@@ -614,6 +618,31 @@ var Library = (function () {
   /* 検索で当たった装置をまとめて読み込む (自動読み込み)。glb 済みのものだけ: 未変換の STEP は変換に分単位かかるので
    * カードに残して押してもらう。1 件ずつ addDevice しない (全部読んでから App.addDevices で 1 回)。
    * 読めなかったものは飛ばす (カードに残る) */
+  /* ---- サムネイル (装置フォルダの thumb.jpg)。ワーク / 取引先 タブのホバーで見せる ----
+   * 格納するときに書く (ビューアは snapshot、Fusion は saveAsImageFile)。無い装置は「開く」で表示したついでに作る。
+   * 160×120 / JPEG 品質 0.55 で数 KB (限りなく軽く。粗くてよい。何の装置か分かればよい) */
+  var thumbURLs = {};   // e.id → object URL (読んだものは持ち回る)
+  async function thumbURL(e) {
+    if (!e.thumb) return null;
+    if (thumbURLs[e.id]) return thumbURLs[e.id];
+    try {
+      if (!e.dir) e.dir = await dirAt(e.rel);
+      var f = await fileOf(e.dir, e.thumb);
+      thumbURLs[e.id] = URL.createObjectURL(f);
+      return thumbURLs[e.id];
+    } catch (err) { return null; }
+  }
+  async function makeThumb(e) {
+    try {
+      var url = Viewer3D.snapshot(THUMB_W, THUMB_H, THUMB_Q);
+      if (!url || !e.dir) return false;
+      await writeFile(e.dir, THUMB_NAMES[0], dataUrlBytes(url));
+      e.thumb = THUMB_NAMES[0];
+      if (thumbURLs[e.id]) { URL.revokeObjectURL(thumbURLs[e.id]); delete thumbURLs[e.id]; }
+      if (window.WorkList) WorkList.refresh();
+      return true;
+    } catch (err) { return false; }   // 読み取り専用などで書けなくても表示は続ける
+  }
   function isReady(e) { return e.files.length > 0 && e.files.every(function (f) { return !!f.glb; }); }
   async function openEntries(list, opts) {
     var devs = [], hidden = !!(opts && opts.hidden);
@@ -703,6 +732,6 @@ var Library = (function () {
     connected: function () { return !!handle; }, name: function () { return handle ? handle.name : ''; }, handle: function () { return handle; }, processInbox: processInbox,
     entries: function () { return entries; }, config: function () { return config; }, members: function () { return members; }, deleteEntry: deleteEntry,
     matches: matches, matchedPart: matchedPart, matchedTag: matchedTag, tagsOf: tagsOf, needsNames: needsNames, loadNames: loadNames, openEntry: openEntry,
-    openEntries: openEntries, isReady: isReady
+    openEntries: openEntries, isReady: isReady, thumbURL: thumbURL, thumbSize: function () { return { w: THUMB_W, h: THUMB_H, q: THUMB_Q }; }
   };
 })();

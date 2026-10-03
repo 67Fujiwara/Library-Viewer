@@ -46,6 +46,8 @@
     <div class="tabs" role="tablist">
       <input type="radio" name="left-tab" id="tab-tree" value="tree" checked><label for="tab-tree" role="tab">構成</label>
       <input type="radio" name="left-tab" id="tab-lib" value="lib"><label for="tab-lib" role="tab">ライブラリ <span id="lib-count" class="badge" hidden>0</span></label>
+      <input type="radio" name="left-tab" id="tab-work" value="work"><label for="tab-work" role="tab" title="案件コード_対象ワーク の一覧">ワーク</label>
+      <input type="radio" name="left-tab" id="tab-customer" value="customer"><label for="tab-customer" role="tab" title="案件コード_取引先 の一覧">取引先</label>
     </div>
 
     <section id="tree-panel" class="panel">
@@ -97,6 +99,13 @@
       </div>
       <div id="lib-list" class="lib-list"></div>
       <p id="lib-empty" class="empty">「ライブラリを開く」で共有フォルダを選ぶと、<br>格納済みの装置がここに一覧されます。<br><span class="muted small">フォルダに meta.json があるものを自動で拾います。管理者による登録作業は不要です。</span></p>
+    </section>
+
+    <!-- ワーク / 取引先: 案件コード_対象ワーク (取引先) の題名で並べる。左のチップは検査方法 (雑多 / 単品)。
+         題名にホバーすると右にサムネイルの枠 (#wl-pop) が浮く -->
+    <section id="wl-panel" class="panel" hidden>
+      <div id="wl-list" class="wl-list"></div>
+      <p id="wl-note" class="muted small wl-note" hidden></p>
     </section>
   </aside>
 
@@ -310,6 +319,12 @@
   </div>
 </div>
 
+<div id="wl-pop" class="wl-pop" hidden>
+  <img id="wl-pop-img" alt="" width="240" height="180" hidden>
+  <div id="wl-pop-none" class="wl-pop-none" hidden>画像なし<br><span class="small">「開く」で表示すると作られます</span></div>
+  <div id="wl-pop-cap" class="wl-pop-cap"></div>
+</div>
+
 <dialog id="store-dialog" class="dialog">
   <form method="dialog" id="store-form">
     <h2>ライブラリに格納</h2>
@@ -320,6 +335,7 @@
       <div class="field"><label for="st-device">装置名 <em>必須</em></label><input type="text" id="st-device" required autocomplete="off"></div>
       <div class="field"><label for="st-work">対象ワーク</label><input type="text" id="st-work" autocomplete="off" list="dl-works"><datalist id="dl-works"></datalist></div>
       <div class="field"><label for="st-customer">取引先</label><input type="text" id="st-customer" autocomplete="off" list="dl-customers"><datalist id="dl-customers"></datalist></div>
+      <div class="field"><label for="st-inspection">検査方法</label><select id="st-inspection"><option value="雑多">雑多</option><option value="単品">単品</option></select></div>
     </div>
     <div class="field">
       <span class="label">部署 / 担当者 <em>必須</em> <button type="button" id="st-edit-roster" class="btn link small">名簿を編集</button></span>

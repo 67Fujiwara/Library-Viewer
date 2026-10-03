@@ -10,7 +10,7 @@ var App = (function () {
     Viewer3D.init({ onSelect: function (n) { select(n); }, onHover: function (n) { /* 3D 側ホバーはツリー連動なし */ } });
     Theme.onChange(function () { Viewer3D.applyTheme(); });
     Tree.init({ onSelect: function (n) { select(n); }, onHover: function (n) { Viewer3D.setHover(n); }, onClose: function (d) { removeDevice(d); } });
-    CrossRef.init(); Search.init(); TreeEdit.init(); Library.init(); Store.init(); Measure.init(); Settings.init(); MadeBy.init();
+    CrossRef.init(); Search.init(); TreeEdit.init(); WorkList.init(); Library.init(); Store.init(); Measure.init(); Settings.init(); MadeBy.init();
     bindUI();
     // 起動直後の空き時間に WASM を展開しておく (初回変換を速くする)
     setTimeout(function () { Occt.load().catch(function (e) { showMessage('初期化エラー', e.message); }); }, 400);
@@ -107,6 +107,7 @@ var App = (function () {
   }
   function showLeftTab(name) {
     $('#tree-panel').hidden = name !== 'tree'; $('#lib-panel').hidden = name !== 'lib';
+    WorkList.show(name);   // ワーク / 取引先 (それ以外なら隠す)
     $('#tab-' + name).checked = true;
   }
 

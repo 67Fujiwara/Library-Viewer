@@ -856,3 +856,16 @@ fusion_glb_test (COLOR_0 / 往復)・library_test (選択で切り替わる) で
 「データサイズは 5MB を超えてもいい」。CLAUDE.md / 開発プロンプト.md の「5MB 以下」を外し、build.py の警告を消した。
 内訳 (wasm / three / occt / app) はビルドの出力にそのまま残す。環境マップなど、これまで大きさを理由に見送ったものは
 必要になれば入れてよい。
+
+### ワーク / 取引先 タブ・検査方法・サムネイル
+要望: (1) 左のタブに「ワーク」「取引先」を足す (2) 題名は `A00001_ちゃんぽん` / `A00001_〇〇会社` の形で、ホバーするとミスミのように
+図が出る（図は限りなく軽く、粗くてよい）(3) Fusion の格納に「検査方法」(雑多 / 単品) のプルダウン (4) 題名の左にチップで雑多 / 単品、
+雑多と単品で分けてから案件番号の若い順。
+- `08b-worklist.js` (`WorkList`)。一覧は `Library.entries()` そのまま。空の項目の装置は並べず件数だけ注記
+- サムネイルは装置フォルダの `thumb.jpg` (160×120, JPEG 0.55, 実測 1〜2KB)。走査は一覧に載っているかで判断 (往復を増やさない)。
+  catalog.json にも持つ。書くのは ビューアの格納 (`Viewer3D.snapshot`) / Fusion (`save_thumbnail` = `saveAsImageFile`) /
+  前の版の装置は「開く」のついで (`makeThumb`)。読むのはホバーで 1 回 (object URL を持ち回る)
+- `meta.json` に `inspection`。`Store.INSPECTIONS` と Python の `INSPECTIONS` を fusion_collect_test で突き合わせ
+- タブ 4 つを 310px に収めるため `.tabs label` を 13px / 余白 10px に
+- Fusion 側 (`saveAsImageFile` が .jpg を書けるか、Execute の途中でカメラを動かして撮れるか) は実機未確認。
+  書けなければ .png に落ち、それも駄目なら格納後のメッセージに「サムネイルは作れませんでした」と出る (ビューアで開くと作られる)

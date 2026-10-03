@@ -53,8 +53,8 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
   **原点 + 3 軸**（`origin` / `x` / `y` / `z`、mm）で持つ。行優先・列優先の取り違えが起きないため。
   Fusion 側は `Matrix3D.getAsCoordinateSystem()`、ビューア側は `GLB.place()` が
   `p' = origin + x*px + y*py + z*pz` で戻す。この 2 つは必ず同時に直す
-- Fusion スクリプト (`fusion/LibraryExport/`) とビューアで、**保存階層**・`meta.json` のスキーマ・**ネーミングルールの解析規則**・
-  **GLB の書き方**を別々に変えない。必ず両方を同時に直す
+- Fusion スクリプト (`fusion/LibraryExport/`) とビューアで、**保存階層**・`meta.json` のスキーマ（`inspection` の値も）・**ネーミングルールの解析規則**・
+  **GLB の書き方**・**サムネイル (`thumb.jpg`, 160×120)** を別々に変えない。必ず両方を同時に直す
   （`src/js/03b-naming.js` の `parse`/`format` と `LibraryExport.py` の `naming_parse`/`naming_format` は同じ規則。
   階層は `09-store.js` の `LAYOUT` と `LibraryExport.py` の `layout_segments()`。
   GLB は `src/js/02-glb.js` の `write` と `fusion/LibraryExport/glbwrite.py` の `write` が同じもの。
@@ -343,7 +343,7 @@ DirectCloud かどうかは関係ない。`npm run sample` で実運用と同じ
 
 ## レイアウト（構成は変更しない）
 
-ヘッダー（開く / 格納する だけ） / 左パネル 310px（構成ツリー | ライブラリ の 2 タブ） / 中央 3D ビュー /
+ヘッダー（開く / 格納する だけ） / 左パネル 310px（構成 | ライブラリ | ワーク | 取引先 の 4 タブ） / 中央 3D ビュー /
 右パネル 288px（検索） / フッター（左端に設定の歯車、右へ選択部品の情報バー）
 
 **設定は左下の歯車 1 か所** (`#btn-settings` → `#settings-menu`)。表示（テーマ・非表示の薄さ・私が作りましたマーク）/
@@ -508,6 +508,25 @@ STEP の変換（メッシュ精度・再変換・変換キャッシュ）/ 検�
     toggle のピルのクラスは `.fpill.flag`。**`.toggle` は隠しチェックボックス用の既存クラス**（`pointer-events: none`）なので使わない
     （使ったら押せなくなり、`elementFromPoint` がバー自体を返した）
 
+**ワーク / 取引先 タブ**（`src/js/08b-worklist.js`、`WorkList`）: ライブラリの装置を `案件コード_対象ワーク` / `案件コード_取引先` の
+題名で並べる（ミスミのカテゴリメニューの要領）。一覧は `Library.entries()` をそのまま使い、**別に走査しない**。
+- 行は `<button class="wl-row">`: 左に検査方法のチップ (`.insp`、`meta.inspection` = 雑多 / 単品 / 未設定は `—`) → 題名 → 薄い装置名。
+  並びは **雑多 → 単品 → 未設定 に分けてから案件コードの若い順**（`localeCompare` の numeric）。節の見出しに件数
+- 対象ワーク（取引先）が空の装置は並べず、下の注記 (`#wl-note`) に件数だけ出す（「A00001_」のような壊れた題名を作らない）
+- 題名にホバー（140ms）すると、左パネルの右外に枠 (`#wl-pop`、position fixed) を浮かべてサムネイルと案件情報を出す。
+  枠の上にいる間は消えない。スクロール・リサイズで消す
+- **サムネイルは装置フォルダの `thumb.jpg`**（`.png` も読む）。**160×120 / JPEG 0.55 で数 KB**（限りなく軽く、粗くてよい）。
+  走査ではその場の一覧 (`entries()`) に載っているかで `e.thumb` を決める（`getFileHandle` で探しに行かない）。`catalog.json` にも持つ。
+  読むのはホバーしたときに 1 回だけ（`Library.thumbURL` → object URL を `thumbURLs` に持ち回る）。外に取りに行かない
+- 書くのは 3 か所: (1) ビューアの「格納する」= `Viewer3D.snapshot(w,h,q)`（描画バッファを一時的に w×h にして等角・全体表示で描き、
+  同じタスクの中で `toDataURL`。グリッドと計測の線は消す。終わったら元の大きさで描き直す）→ `buildPackage(..., {thumb})`。
+  (2) Fusion の `save_thumbnail`（`viewport.camera` を等角 + fit にして `saveAsImageFile(path, 160, 120)`、カメラは戻す。
+  `.jpg` が書けなければ `.png`。失敗しても格納は成功扱い）。(3) **前の版で格納した装置は「開く」(`openEntry(e, false)`) のついでに作って置く**
+  (`makeThumb`。「追加」では作らない: 他の装置が混ざる)。受信箱からの格納では作らない（3D に出していない）
+- **検査方法は `meta.json` の `inspection`**。値は `Store.INSPECTIONS` と `LibraryExport.py` の `INSPECTIONS`（同じ並び、先頭が既定）。
+  ビューアの格納ダイアログ (`#st-inspection`) と Fusion のダイアログ (`inspection` ドロップダウン) のどちらも毎回「雑多」から。
+  `test/fusion_collect_test.py` が JS と Python の一致を見る
+
 左右のパネルは畳める（`src/js/01b-panels.js`、ヘッダーのアイコン・端のハンドル・`[` `]` キー、状態は localStorage）。
 - **畳んだ状態は尊重する。** 3D での部品選択やライブラリからの読み込みで勝手に開き直さない
   - 開くのは、ユーザーが `/` や `Ctrl`+`F` で検索へ行こうとしたときだけ（検索欄が中にあるため）。
@@ -543,6 +562,7 @@ src/js/07-crossref.js    案件横断 (名寄せ)
 src/js/07b-search.js     検索結果の一覧 (名称・タグ → 右パネル → 選ぶとそれだけ表示に残す)
 src/js/07c-filters.js    検索結果のフィルター (ピル型の facet。設定でどれを出すか選ぶ。左右の絞り込みに同じ条件を掛ける)
 src/js/08-library.js     ライブラリ (既定の場所の記憶と自動読み込み / フォルダ走査 / 受信箱 inbox / ルール / 書き込み / members.json / catalog.json)
+src/js/08b-worklist.js   ワーク / 取引先 タブ (案件コード_対象ワーク の題名一覧。検査方法のチップ、ホバーでサムネイル thumb.jpg)
 src/js/09-store.js       格納ダイアログ (FS Access API または ZIP)
 src/js/10-app.js         配線
 fusion/LibraryExport/    Fusion 360 スクリプト (メッシュ glb.gz または STEP + meta.json をライブラリに直接格納)
