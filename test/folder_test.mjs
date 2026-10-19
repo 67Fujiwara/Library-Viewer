@@ -13,6 +13,17 @@ page.on('pageerror', e => errors.push('pageerror: ' + e.message));
 page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
 function check(c, m) { if (!c) throw new Error('FAIL: ' + m); console.log('  ok  ' + m); }
 
+// 読み込むフォルダ (test/out/tree-src) は毎回ここで組み立てる (リポジトリには入れない。test:step の出力から作る)
+//   tree-src/装置A/ユニット1/アーム.step (3 ソリッド) + ブラケット.step / 装置A/ユニット2/カバー.step / 装置B/ベース板.step /
+//   直下部品.step / 図面/ (STEP 無し) / README.md / 旧データ.glb → STEP 以外は読まない
+fs.rmSync(SRC, { recursive: true, force: true });
+const assembly = fs.readFileSync(path.join(outDir, 'assembly.step')), box = fs.readFileSync(path.join(outDir, 'box.step'));
+for (const [rel, data] of [
+  ['装置A/ユニット1/アーム.step', assembly], ['装置A/ユニット1/ブラケット.step', box], ['装置A/ユニット2/カバー.step', box],
+  ['装置B/ベース板.step', box], ['直下部品.step', box],
+  ['図面/組立図.txt', Buffer.from('drawing placeholder')], ['README.md', Buffer.from('# tree-src\n')], ['旧データ.glb', fs.readFileSync(path.join(outDir, 'assembly.glb'))],
+]) { fs.mkdirSync(path.dirname(path.join(SRC, rel)), { recursive: true }); fs.writeFileSync(path.join(SRC, rel), data); }
+
 // フォルダ配下を {webkitRelativePath, buffer} として渡す (Playwright は日本語パスを渡せないため)
 const files = [];
 (function walk(dir, rel) {

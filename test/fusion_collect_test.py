@@ -257,4 +257,39 @@ with tempfile.TemporaryDirectory() as td:
     check([n for n, _, _ in vp.saved] == ['thumb.jpg', 'thumb.png'], 'jpg is tried first: %s' % vp.saved)
 ns['_app'] = types.SimpleNamespace(activeViewport=None)
 check(ns['save_thumbnail']('/nonexistent') is False, 'a failing thumbnail never fails the store')
+
+# ---- 同じものを 2 回格納しない: 保存先にある / 同じデザインが別の場所にある (catalog.json → 無ければ models/ を歩く) ----
+exec(src[src.index('def design_key'):src.index('def library_layout')], ns)
+class Doc:
+    def __init__(s, name, fid=None): s.name = name; s._fid = fid
+    @property
+    def dataFile(s):
+        if s._fid is None: raise RuntimeError('unsaved')
+        return types.SimpleNamespace(id=s._fid)
+with tempfile.TemporaryDirectory() as root:
+    def put(rel, meta):
+        d = os.path.join(root, *rel.split('/')); os.makedirs(d, exist_ok=True)
+        json.dump(meta, open(os.path.join(d, 'meta.json'), 'w', encoding='utf-8'), ensure_ascii=False)
+    put('models/設計1課/山田/A1_装置A/_', {'projectCode': 'A1', 'deviceName': '装置A', 'department': '設計1課', 'owner': '山田', 'savedAt': '2026-10-01T10:00:00+09:00', 'source': {'document': 'DEV_A v3', 'dataFileId': 'urn:1'}})
+    put('models/設計1課/山田/A2_装置B/_', {'projectCode': 'A2', 'deviceName': '装置B', 'department': '設計1課', 'owner': '山田', 'savedAt': '2026-10-02T10:00:00+09:00', 'source': {'document': 'DEV_B v1'}})
+    key = ns['design_key'](Doc('DEV_A v5', 'urn:1'))
+    check(key == {'dataFileId': 'urn:1', 'document': 'DEV_A'}, 'design_key strips the version and keeps the dataFile id: %s' % key)
+    check(ns['design_key'](Doc('DEV_X v2'))['dataFileId'] is None, 'an unsaved document has no dataFile id (no exception)')
+    t = os.path.join(root, 'models', '設計1課', '山田', 'A1_装置A', '_')
+    hit = ns['find_stored'](root, t, key)
+    check(hit and hit[0] == 'path' and hit[1] == t, 'storing to a folder that already has meta.json → path: %s' % (hit,))
+    t2 = os.path.join(root, 'models', '設計1課', '山田', 'A9_装置A改', '_')
+    hit = ns['find_stored'](root, t2, key)
+    check(hit and hit[0] == 'design' and hit[1].endswith('A1_装置A' + os.sep + '_'), 'the same design (dataFile id) stored elsewhere is found by walking models/: %s' % (hit,))
+    hit = ns['find_stored'](root, t2, ns['design_key'](Doc('DEV_B v9')))
+    check(hit and hit[0] == 'design' and 'A2_装置B' in hit[1], 'without ids the document name (version stripped) is compared: %s' % (hit,))
+    check(ns['find_stored'](root, t2, ns['design_key'](Doc('DEV_NEW v1', 'urn:9'))) is None, 'a new design is not reported')
+    note = ns['stored_note'](*ns['find_stored'](root, t, key))
+    check(note.startswith('既に格納しています:') and '2026-10-01 10:00' in note and '設計1課 / 山田' in note and note.endswith('上書きしますか？'), 'the popup text names the path, date, owner and asks to overwrite:\n' + note)
+    note2 = ns['stored_note']('design', t, {'savedAt': '', 'source': {}})
+    check(note2.startswith('このデザインは既に別の場所に格納しています:'), 'the other case asks about storing again elsewhere')
+    # catalog.json があればそれを先に見る (models/ を歩かない)
+    json.dump({'entries': [{'path': 'models/設計1課/山田/A2_装置B/_', 'meta': {'source': {'dataFileId': 'urn:1'}}}]}, open(os.path.join(root, 'catalog.json'), 'w'))
+    hit = ns['find_stored'](root, t2, key)
+    check(hit and hit[0] == 'design' and 'A2_装置B' in hit[1], 'catalog.json (written by the viewer) is used first when present: %s' % (hit,))
 print('collect_meshes OK')

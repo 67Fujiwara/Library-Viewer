@@ -869,3 +869,13 @@ fusion_glb_test (COLOR_0 / 往復)・library_test (選択で切り替わる) で
 - タブ 4 つを 310px に収めるため `.tabs label` を 13px / 余白 10px に
 - Fusion 側 (`saveAsImageFile` が .jpg を書けるか、Execute の途中でカメラを動かして撮れるか) は実機未確認。
   書けなければ .png に落ち、それも駄目なら格納後のメッセージに「サムネイルは作れませんでした」と出る (ビューアで開くと作られる)
+
+### 同じデータを 2 回格納しない (「既に格納しています」のポップアップ)
+要望:「同じデータをエクスポートした場合、格納するを押したときに『既に格納してます』とポップアップ」。
+- Fusion: `find_stored(root, target, design_key(doc))`。保存先に meta.json がある → 上書き確認。無ければ同じデザイン
+  (dataFile の id、無ければ版抜きのドキュメント名) を catalog.json → models/ の順に探し、別の場所にあれば確認。YesNo の messageBox。
+- ビューア: `Store.findStored(devs, segs)`。保存先のパスが `Library.entries()` にある → 上書き確認。格納する装置がライブラリから
+  開いたもので保存先が違う → 確認。`showConfirm` でキャンセルなら何も書かず、格納ダイアログは開いたまま。
+- fusion_collect_test (偽 Doc / 一時フォルダ) と library_test (両方のポップアップ、キャンセルで meta.json が変わらない、上書き) で確認。
+- ついでに: folder_test の読み込み元 `test/out/tree-src` は手で作ったフォルダで、コンテナを作り直すと消えて落ちた。
+  テストの先頭で test:step の出力 (assembly.step / box.step) から組み立てるようにした。

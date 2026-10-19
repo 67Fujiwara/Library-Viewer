@@ -409,6 +409,12 @@ check((await page.textContent('#st-preview')) === 'Library/models/設計2課/鈴
 check(await page.inputValue('#st-inspection') === '雑多', 'the store dialog starts from 雑多 for 検査方法');
 await page.selectOption('#st-inspection', '単品');
 await page.click('#st-save');
+// 格納しようとしている装置はライブラリから開いたもの (搬送装置B) → 「既に格納しています」のポップアップで聞く
+await page.waitForSelector('#confirm-dialog[open]');
+const dupBody = await page.textContent('#confirm-body');
+check((await page.textContent('#confirm-title')).includes('既に格納しています') && dupBody.includes('P2026-002_搬送装置B'), 'storing a device opened from the library asks first, naming where it already is: ' + dupBody.split('\n')[0]);
+check(await page.evaluate(() => window.__ls('models/設計2課/鈴木/P2026-003_組立装置C')) === null, 'nothing is written before the answer');
+await page.click('#confirm-ok');
 await page.waitForSelector('#msg-dialog[open]', { timeout: 30000 });
 console.log('  ' + (await page.textContent('#msg-body')).split('\n').join(' / '));
 await page.keyboard.press('Escape');
@@ -424,6 +430,27 @@ await page.waitForFunction(() => document.querySelector('#lib-status').textConte
 check(true, 'library rescanned: 7 entries');
 
 check(files.filter(f => f.endsWith('.glb.gz')).length === 3, 'duplicate base names get suffix: ' + files.filter(f => f.endsWith('.glb.gz')));
+
+// 同じ保存先にもう一度「格納する」→ 「既に格納しています」。キャンセルなら何も書かない、上書きなら書き直す
+const savedAt1 = JSON.parse((await page.evaluate(() => window.__ls('models/設計2課/鈴木/P2026-003_組立装置C/_/meta.json'))).text).savedAt;
+await page.click('#btn-store');
+await page.waitForSelector('#store-dialog[open]');
+check(await page.inputValue('#st-project') === 'P2026-003', 'the dialog still holds the same project code');
+await page.click('#st-save');
+await page.waitForSelector('#confirm-dialog[open]');
+check((await page.textContent('#confirm-title')) === '既に格納しています' && (await page.textContent('#confirm-body')).includes('P2026-003_組立装置C') && (await page.textContent('#confirm-ok')) === '上書きする', 'storing to a path that already holds a device pops up 既に格納しています with 上書きする: ' + (await page.textContent('#confirm-body')).split('\n')[0]);
+await page.click('#confirm-cancel');
+await page.waitForTimeout(300);
+check(await page.isVisible('#store-dialog') && !(await page.isVisible('#msg-dialog')), 'cancel keeps the store dialog open and writes nothing');
+check(JSON.parse((await page.evaluate(() => window.__ls('models/設計2課/鈴木/P2026-003_組立装置C/_/meta.json'))).text).savedAt === savedAt1, 'meta.json is untouched after cancel');
+await page.waitForTimeout(1100);   // savedAt は秒単位
+await page.click('#st-save');
+await page.waitForSelector('#confirm-dialog[open]');
+await page.click('#confirm-ok');
+await page.waitForSelector('#msg-dialog[open]', { timeout: 30000 });
+await page.keyboard.press('Escape');
+check(JSON.parse((await page.evaluate(() => window.__ls('models/設計2課/鈴木/P2026-003_組立装置C/_/meta.json'))).text).savedAt !== savedAt1, '上書きする stores again into the same folder');
+await page.waitForFunction(() => document.querySelector('#lib-status').textContent.includes('7 件'), null, { timeout: 15000 });
 
 // 名簿 → members.json
 await page.click('label[for="tab-lib"]');

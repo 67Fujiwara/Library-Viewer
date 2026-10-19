@@ -344,6 +344,28 @@ var Store = (function () {
     return { files: files, segs: segmentsFor(fields), meta: meta };
   }
 
+  /* 同じものを既に格納していないか。(1) 保存先のパスに装置がある → {kind:'path'}
+   * (2) 格納しようとしている装置がライブラリから開いたもので、その保存先と違う → {kind:'source'} (同じデータを別の場所に 2 つ置こうとしている)。
+   * ライブラリの一覧 (Library.entries) で判断する。走査もファイルの読みもしない */
+  function findStored(devs, segs) {
+    var path = segs.join('/'), hit = Library.entries().filter(function (e) { return e.rel.join('/') === path; })[0];
+    if (hit) return { kind: 'path', entry: hit };
+    for (var i = 0; i < devs.length; i++) {
+      var e = devs[i].source && devs[i].source.kind === 'library' && devs[i].source.entry;
+      if (e && e.rel.join('/') !== path) return { kind: 'source', entry: e };
+    }
+    return null;
+  }
+  function storedNote(dup) {
+    var m = dup.entry.meta || {}, src = m.source || {};
+    return [
+      Library.name() + '/' + dup.entry.rel.join('/') + '/',
+      '格納: ' + fmtDate(m.savedAt) + '  ' + [m.department, m.owner].filter(Boolean).join(' / ') + (src.document ? '  (' + src.document + ')' : ''),
+      '',
+      dup.kind === 'path' ? 'この保存先には既に装置が格納されています。上書きしますか？' : 'この装置はライブラリから開いたものです。別の保存先にもう一度格納しますか？'
+    ].join('\n');
+  }
+
   /* ---- 保存 ---- */
   async function save() {
     var p = params();
@@ -354,12 +376,15 @@ var Store = (function () {
     if (!devs.length) { showMessage('入力を確認してください', '格納する装置を 1 つ以上選んでください。'); return; }
     Storage.set('lv.lastOwner', selectedOwner);
     var preset = App.precision();
+    var fields = { projectCode: $('#st-project').value.trim(), deviceName: $('#st-device').value.trim(), workpiece: $('#st-work').value.trim(), customer: $('#st-customer').value.trim(), inspection: $('#st-inspection').value, department: selectedOwner.dept, owner: selectedOwner.name };
+    // 同じものを 2 回格納しない: 保存先に既にある / ライブラリから開いた装置をまた格納しようとしている → 聞いてから
+    var dup = Library.connected() ? findStored(devs, segmentsFor(fields)) : null;
+    if (dup && !await showConfirm(dup.kind === 'path' ? '既に格納しています' : 'このデータは既に格納しています', storedNote(dup), dup.kind === 'path' ? '上書きする' : '格納する')) return;
     App.showOverlay('格納中', 'glb を生成しています');
     await nextFrames(2);
     try {
       // Fusion スクリプト等から来た装置なら出所情報を引き継ぐ
       var src = devs[0].source && devs[0].source.entry && devs[0].source.entry.meta && devs[0].source.entry.meta.source;
-      var fields = { projectCode: $('#st-project').value.trim(), deviceName: $('#st-device').value.trim(), workpiece: $('#st-work').value.trim(), customer: $('#st-customer').value.trim(), inspection: $('#st-inspection').value, department: selectedOwner.dept, owner: selectedOwner.name };
       // サムネイル: 今の 3D の表示を小さく描いて一緒に置く (ワーク / 取引先 タブのホバーで見せる)
       var ts = Library.thumbSize(), thumbUrl = Viewer3D.snapshot(ts.w, ts.h, ts.q);
       var pkg = await buildPackage(devs, fields, preset, src || null, { thumb: thumbUrl ? dataUrlBytes(thumbUrl) : null });

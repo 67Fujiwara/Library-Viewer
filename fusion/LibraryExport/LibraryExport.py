@@ -158,6 +158,61 @@ def library_members(root):
 ROSTER_NOTE = ''   # 名簿が見つからず文字入力にしたときの説明 (ダイアログの「注意」欄に出す)
 
 
+def design_key(doc):
+    """「同じデザインか」を見分ける鍵。クラウドの dataFile の id が本命、未保存などで取れなければドキュメント名 (版を除く)"""
+    key = {'dataFileId': None, 'document': re.sub(r'\s+v\d+$', '', doc.name or '')}
+    try:
+        key['dataFileId'] = doc.dataFile.id
+    except Exception:
+        pass
+    return key
+
+
+def same_design(meta, key):
+    src = (meta or {}).get('source') or {}
+    if key.get('dataFileId') and src.get('dataFileId'):
+        return src['dataFileId'] == key['dataFileId']
+    doc = re.sub(r'\s+v\d+$', '', src.get('document') or '')
+    return bool(doc) and doc == key.get('document')
+
+
+def find_stored(root, target, key):
+    """同じものを既に格納していないか。(1) 保存先のフォルダに meta.json がある → ('path', そのパス, meta)
+    (2) 同じデザインが別の場所にある → ('design', そのパス, meta)。無ければ None。
+    (2) はビューアが書く catalog.json (全装置の meta 入り) を先に見て、無ければ models/ の下を歩く (装置フォルダで止まる)"""
+    meta = read_json(os.path.join(target, 'meta.json'))
+    if meta:
+        return ('path', target, meta)
+    cat = read_json(library_file(root, 'catalog.json'))
+    base = os.path.dirname(library_file(root, 'catalog.json'))
+    if cat and isinstance(cat.get('entries'), list):
+        for e in cat['entries']:
+            if isinstance(e, dict) and e.get('path') and same_design(e.get('meta'), key):
+                path = os.path.join(base, *e['path'].split('/'))
+                if os.path.normcase(os.path.abspath(path)) != os.path.normcase(os.path.abspath(target)):
+                    return ('design', path, e.get('meta'))
+        return None
+    models = os.path.join(base, 'models')
+    for d, dirs, files in os.walk(models):
+        if 'meta.json' in files:
+            dirs[:] = []                      # 装置フォルダの下は辿らない
+            m = read_json(os.path.join(d, 'meta.json'))
+            if same_design(m, key) and os.path.normcase(os.path.abspath(d)) != os.path.normcase(os.path.abspath(target)):
+                return ('design', d, m)
+    return None
+
+
+def stored_note(kind, path, meta):
+    m = meta or {}
+    src = m.get('source') or {}
+    who = ' / '.join(x for x in (m.get('department'), m.get('owner')) if x)
+    head = '既に格納しています:' if kind == 'path' else 'このデザインは既に別の場所に格納しています:'
+    ask = '上書きしますか？' if kind == 'path' else 'それでも、この保存先にもう一度格納しますか？'
+    return (head + '\n' + path + '\n' +
+            '格納: ' + (m.get('savedAt') or '')[:16].replace('T', ' ') + ('  ' + who if who else '') +
+            ('\nドキュメント: ' + src['document'] if src.get('document') else '') + '\n\n' + ask)
+
+
 def library_layout(root):
     """library.json があるかどうか (階層そのものは 1 つに固定なので、記録の有無だけ見る)。"""
     cfg = read_json(library_file(root, 'library.json'))
@@ -1236,6 +1291,11 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
                                'note': 'このファイルはライブラリの保存階層とネーミングルールを記録します。編集はビューアの「ネーミングルール」から。'}, f, ensure_ascii=False, indent=2)
             segs = layout_segments(p)
             target = os.path.join(p['root'], *segs)
+            # 同じものを 2 回格納しない: 保存先に既にある / 同じデザインが別の場所にある → 聞いてから
+            dup = find_stored(p['root'], target, design_key(_app.activeDocument))
+            if dup and _ui.messageBox(stored_note(*dup), 'Library に格納', adsk.core.MessageBoxButtonTypes.YesNoButtonType,
+                                      adsk.core.MessageBoxIconTypes.QuestionIconType) != adsk.core.DialogResults.DialogYes:
+                return
             write_step = (not p['mesh']) or p['keepStep']
             os.makedirs(os.path.join(target, 'step') if write_step else target, exist_ok=True)
 
