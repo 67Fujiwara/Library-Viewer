@@ -32,6 +32,18 @@ def build_version():
                            capture_output=True, text=True, timeout=5)
         if r.returncode == 0:
             n = int(r.stdout.strip())
+            # 浅いクローン (--depth) だとコミット数が実際より小さく出る (実際に v80 → v50 に下がった)。
+            # 控えの VERSION より小さいときは信用せず、控えを使う (版は下げない)
+            sh = subprocess.run(['git', 'rev-parse', '--is-shallow-repository'], cwd=ROOT,
+                                capture_output=True, text=True, timeout=5)
+            if sh.returncode == 0 and sh.stdout.strip() == 'true':
+                try:
+                    kept = int(read(path).strip())
+                except Exception:
+                    kept = 0
+                if kept > n:
+                    print(f'warning: shallow clone ({n} commits visible) -> keeping VERSION {kept}; run `git fetch --unshallow` for the real count', file=sys.stderr)
+                    n = kept
     except Exception:
         pass
     if n is None:
